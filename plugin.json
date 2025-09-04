@@ -10,6 +10,7 @@
   "frontends": [
     "all"
   ],
+  "disabledInPublish": true,
   "displayName": {
     "default": "Code Snippets Manager",
     "zh_CN": "代码片段管理器",

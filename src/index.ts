@@ -87,12 +87,6 @@ export default class PluginSnippets extends Plugin {
      * 启用插件（进行各种初始化）
      */
     public async onload() {
-        // 发布服务不启用插件
-        if (window.siyuan.isPublish) {
-            console.log(this.displayName + this.i18n.pluginNotSupportedInPublish);
-            return;
-        }
-
         if (!isVersionReach("3.3.0")) {
             // 初始化 window.siyuan.jcsm
             window.siyuan.jcsm ??= {}; // ??= 逻辑空赋值运算符 https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing_assignment
@@ -152,7 +146,7 @@ export default class PluginSnippets extends Plugin {
             // 插件设置加载之后暴露 ignoreNotice 方法到全局
             window.siyuan.jcsm.disableNotification = this.disableNotification.bind(this);
 
-            console.log(this.displayName + this.i18n.pluginOnload);
+            console.log(this.displayName, this.i18n.pluginOnload);
         }
     }
 
@@ -187,9 +181,6 @@ export default class PluginSnippets extends Plugin {
      * 布局加载完成
      */
     public async onLayoutReady() {
-        // 发布服务不启用插件
-        if (window.siyuan.isPublish) return;
-
         if (isVersionReach("3.3.0")) {
             // 初始化 window.siyuan.jcsm
             window.siyuan.jcsm ??= {}; // ??= 逻辑空赋值运算符 https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing_assignment
@@ -235,7 +226,7 @@ export default class PluginSnippets extends Plugin {
                 },
             });
 
-            console.log(this.displayName + this.i18n.pluginOnload);
+            console.log(this.displayName, this.i18n.pluginOnload);
 
             // 调试
             // await new Promise(resolve => setTimeout(resolve, 10000));
@@ -264,9 +255,6 @@ export default class PluginSnippets extends Plugin {
      * 插件更新会先执行 onunload 再执行 onload，不会执行 uninstall
      */
     public onunload() {
-        // 发布服务不启用插件
-        if (window.siyuan.isPublish) return;
-
         // 清理主题监听器
         if (window.siyuan.jcsm?.themeObserver) {
             window.siyuan.jcsm.themeObserver.disconnect();
@@ -279,15 +267,13 @@ export default class PluginSnippets extends Plugin {
         // 停止文件监听
         this.stopFileWatch();
 
-        console.log(this.displayName + this.i18n.pluginOnunload);
+        console.log(this.displayName, this.i18n.pluginOnunload);
     }
 
     /**
      * 卸载插件
      */
     public uninstall() {
-        // 发布服务不启用插件
-        if (window.siyuan.isPublish) return;
         // 移除配置文件
         const response = this.removeData(STORAGE_NAME) as any;
         if (!isPromiseFulfilled(response)) {
@@ -331,7 +317,7 @@ export default class PluginSnippets extends Plugin {
         // 最后移除全局变量
         delete window.siyuan.jcsm;
 
-        console.log(this.displayName + this.i18n.pluginUninstall);
+        console.log(this.displayName, this.i18n.pluginUninstall);
     }
 
 

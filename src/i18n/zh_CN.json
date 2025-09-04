@@ -1,10 +1,9 @@
 {
-  "pluginNotSupportedInPublish": " 插件不支持在发布服务下使用",
   "loadConfigError": "配置文件异常，已移除配置文件",
   "loadConfigIncompatible": "当前的插件配置文件是更高版本的，请升级插件，或者保存一次插件设置以覆盖当前配置",
-  "pluginOnload": " 插件已启用",
-  "pluginOnunload": " 插件已禁用",
-  "pluginUninstall": " 插件已卸载",
+  "pluginOnload": "插件已启用",
+  "pluginOnunload": "插件已禁用",
+  "pluginUninstall": "插件已卸载",
   "getSnippetsListFailed": "获取代码片段列表失败",
   "getSnippetFailed": "获取代码片段失败",
   "saveSnippetsListFailed": "保存代码片段列表失败",

@@ -1,10 +1,9 @@
 {
-  "pluginNotSupportedInPublish": " パブリッシュサービスではプラグインがサポートされていません",
   "loadConfigError": "設定ファイルエラー、設定ファイルが削除されました",
   "loadConfigIncompatible": "現在のプラグイン設定ファイルはより新しいバージョンです。プラグインをアップグレードするか、プラグイン設定を一度保存して現在の設定を上書きしてください",
-  "pluginOnload": " プラグインが有効になりました",
-  "pluginOnunload": " プラグインが無効になりました",
-  "pluginUninstall": " プラグインがアンインストールされました",
+  "pluginOnload": "プラグインが有効になりました",
+  "pluginOnunload": "プラグインが無効になりました",
+  "pluginUninstall": "プラグインがアンインストールされました",
   "getSnippetsListFailed": "スニペットリストの取得に失敗しました",
   "getSnippetFailed": "スニペットの取得に失敗しました",
   "saveSnippetsListFailed": "スニペットリストの保存に失敗しました",
