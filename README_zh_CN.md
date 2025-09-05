@@ -1,4 +1,4 @@
-> v1.3.X 主要更新：管理菜单支持调整代码片段排序 [#17](https://github.com/TCOTC/snippets/issues/17)、修复内存泄露问题、修复代码片段编辑器中使用快捷键时会触发未知的思源原生操作的问题 [#19](https://github.com/TCOTC/snippets/issues/19)、顶栏按钮支持配置在左侧或者右侧（需要思源版本 >= 3.3.0） [#11](https://github.com/TCOTC/snippets/issues/11)
+> 🔔 v1.4.0 更新：支持跨窗口应用样式 [#23](https://github.com/TCOTC/snippets/issues/23)
 
 [繁體中文](https://github.com/TCOTC/snippets/blob/main/README_zh_CHT.md) | [English](https://github.com/TCOTC/snippets/blob/main/README.md) | [日本語](https://github.com/TCOTC/snippets/blob/main/README_ja_JP.md)
 
@@ -46,6 +46,10 @@
 ---
 
 #### 插件更新日志
+
+##### v1.4.0
+
+- 支持跨窗口应用样式 [#23](https://github.com/TCOTC/snippets/issues/23)
 
 ##### v1.3.X
 
