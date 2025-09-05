@@ -906,7 +906,9 @@ export default class PluginSnippets extends Plugin {
                 // 修改顶栏按钮位置后，移除并重新添加顶栏按钮、重新设置菜单位置
                 this.topBarElement?.remove();
                 await this.topBarInit();
-                this.setMenuPosition(true);
+                if (this.menu) {
+                    this.setMenuPosition(true);
+                }
                 break;
 
             // string
@@ -1177,14 +1179,6 @@ export default class PluginSnippets extends Plugin {
             return;
         }
 
-        // 顶栏按钮样式
-        if (!this.isMobile && this.topBarElement) {
-            this.topBarElement.classList.add("toolbar__item--active");
-            // 移除 aria-label 属性，在菜单打开时不显示 tooltip
-            this.topBarElement.removeAttribute("aria-label");
-            this.hideTooltip();
-        }
-
         // 获取代码片段列表
         const snippetsList = await this.getSnippetsList();
         if (snippetsList) {
@@ -1322,6 +1316,8 @@ export default class PluginSnippets extends Plugin {
      * @param isUpdate 是否仅更新菜单位置
      */
     private setMenuPosition(isUpdate: boolean = false) {
+        this.console.log("setMenuPosition: isUpdate =", isUpdate);
+
         let rect = this.topBarElement.getBoundingClientRect();
         // 如果被隐藏，则使用更多按钮
         if (rect.width === 0) {
@@ -1335,8 +1331,6 @@ export default class PluginSnippets extends Plugin {
         const dock = this.topBarPosition === "left" ? document.querySelector("#dockLeft") : document.querySelector("#dockRight");
         const dockRect = dock?.getBoundingClientRect();
         const dockWidth = ((dockRect?.width || 0) + 1).toString() + "px";
-
-        if (!this.menu) return;
 
         if (!isUpdate) {
             this.menu.open({
@@ -1353,6 +1347,14 @@ export default class PluginSnippets extends Plugin {
         } else {
             this.menu.element.style.right = dockWidth;
             this.menu.element.style.left = "";
+        }
+
+        // 顶栏按钮样式
+        if (!this.isMobile && this.topBarElement) {
+            this.topBarElement.classList.add("toolbar__item--active");
+            // 移除 aria-label 属性，在菜单打开时不显示 tooltip
+            this.topBarElement.removeAttribute("aria-label");
+            this.hideTooltip();
         }
     }
 
