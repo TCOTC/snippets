@@ -2372,6 +2372,9 @@ export default class PluginSnippets extends Plugin {
             this.snippetsList.splice(this.snippetsList.indexOf(snippet), 0, copySnippet);
             hasChanges = true;
 
+            // 更新菜单代码片段计数
+            this.setMenuSnippetCount();
+
             // 代码片段有可能未启用，所以不传入 enabled === true 的参数
             await this.updateSnippetElement(copySnippet);
 
