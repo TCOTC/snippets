@@ -2931,7 +2931,6 @@ export default class PluginSnippets extends Plugin {
             // 如果开启了实时预览，并且打开了对应的 CSS 代码片段对话框，则在菜单项上开关代码片段的操作需要忽略
             // 问题案例：全局禁用 CSS，预览一个 CSS 片段，启用片段，在菜单禁用片段会导致预览元素被移除
             //  这是因为从菜单关闭时没有 previewState 参数，此时需要通过是否有实时预览中的代码片段对话框来判断
-            this.console.log("如果开启了实时预览，并且打开了对应的代码片段对话框，则在菜单项上开关代码片段的操作需要忽略");
             return;
         }
 
@@ -4751,69 +4750,6 @@ export default class PluginSnippets extends Plugin {
         this.stopListenerCheckInterval();
     }
 
-
-    // ================================ 其他 ================================
-
-
-    // TODO功能: 桌面端修改代码片段之后同步到打开的新窗口（所有变更都是弹窗确认，避免以后原生改进了 https://github.com/siyuan-note/siyuan/issues/12303 造成冲突）
-    // 问：桌面端使用新窗口的情况下插件能实现跨窗口通信吗？A 窗口的插件将状态同步到 B 窗口的插件，然后执行一些操作
-    // 答：简单的用 localStorage、复杂的用 broadCast
-    //  localStorage.setItem 设置，window.addEventListener('storage' 监听
-    //  我这边用的 broadCast 的ws方案，代码小多
-
-
-    // 这里的代码可能用得上，先留着
-    // 添加菜单选项
-    // menu.addItem({
-    //     icon: "iconSettings",
-    //     label: "Open Setting",
-    //     click: () => {
-    //         openSetting(this.app);
-    //     }
-    // });
-    // menu.addItem({
-    //     icon: "iconInfo",
-    //     label: "Dialog(open doc first)",
-    //     accelerator: this.commands[0].customHotkey,
-    //     click: () => {
-    //         this.showDialog();
-    //     }
-    // });
-    // if (!this.isMobile) {
-    //     menu.addItem({
-    //         icon: "iconFace",
-    //         label: "Open Custom Tab",
-    //         click: () => {
-    //             const tab = openTab({
-    //                 app: this.app,
-    //                 custom: {
-    //                     icon: "iconFace",
-    //                     title: "Custom Tab",
-    //                     data: {
-    //                         text: platformUtils.isHuawei() ? "Hello, Huawei!" : "This is my custom tab",
-    //                     },
-    //                     id: this.name + TAB_TYPE
-    //                 },
-    //             });
-    //             this.console.log(tab);
-    //         }
-    //     });
-    // }
-    // menu.addItem({
-    //     icon: "iconDownload",
-    //     label: "Save Layout",
-    //     click: () => {
-    //         saveLayout(() => {
-    //             showMessage("Layout saved");
-    //         });
-    //     }
-    // });
-    // menu.addSeparator();
-    // menu.addItem({
-    //     icon: "iconSparkles",
-    //     label: this.data[STORAGE_NAME].readonlyText || "Readonly",
-    //     type: "readonly",
-    // });
 
     // ================================ 文件监听功能 ================================
     // AI 写的，没有严格考虑，代码能跑就行
