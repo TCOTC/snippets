@@ -343,7 +343,7 @@ export default class PluginSnippets extends Plugin {
     private version = 1;
     
     /**
-     * CSS 代码片段实时预览
+     * CSS 代码片段实时预览（必须与 snippet.type === "css" 一起使用）
      */
     private realTimePreview: boolean;
 
@@ -1546,28 +1546,7 @@ export default class PluginSnippets extends Plugin {
 
             // 切换全局开关
             if (target.classList.contains("jcsm-all-snippets-switch")) {
-                // 更新全局变量和配置
-                const enabled = (target as HTMLInputElement).checked;
-                if (this.snippetsType === "css") {
-                    window.siyuan.config.snippet.enabledCSS = enabled;
-                } else if (this.snippetsType === "js") {
-                    window.siyuan.config.snippet.enabledJS = enabled;
-                }
-                fetchPost("/api/setting/setSnippet", window.siyuan.config.snippet);
-        
-                // 更新代码片段元素
-                // 切换全局开关只会影响已启用的代码片段，所以过滤出来
-                const filteredSnippets = this.snippetsList.filter((snippet: Snippet) => snippet.type === this.snippetsType && snippet.enabled === true);
-                filteredSnippets.forEach((snippet: Snippet) => {
-                    // enabled 为 true 时，snippet.enabled 也一定为 true
-                    this.updateSnippetElement(snippet, enabled);
-                });
-                
-                // 广播全局开关状态变更到其他窗口
-                this.broadcastMessage('snippet_toggle_global', {
-                    snippetType: this.snippetsType,
-                    enabled: enabled,
-                });
+                this.globalToggleSnippet((target as HTMLInputElement).checked);
             }
 
             // 点击顶部的按钮
@@ -1695,6 +1674,11 @@ export default class PluginSnippets extends Plugin {
         void this.saveSnippetsList(this.snippetsList);
         void this.updateSnippetElement(snippet);
 
+        if (snippet.type === "css" && this.realTimePreview && document.querySelector(`.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id="${snippet.id}"]`)) {
+            // 如果开启了实时预览，并且打开了对应的 CSS 代码片段对话框，则在菜单项上开关代码片段的操作需要忽略，不广播开关状态变更到其他窗口
+            return;
+        }
+
         // 广播开关状态变更到其他窗口
         this.broadcastMessage('snippet_toggle', {
             snippetId: snippet.id,
@@ -1728,12 +1712,47 @@ export default class PluginSnippets extends Plugin {
     }
 
     /**
+     * 切换全局开关状态
+     * @param enabled 是否启用
+     */
+    private globalToggleSnippet(enabled: boolean) {
+        // 更新全局变量和配置
+        if (this.snippetsType === "css") {
+            window.siyuan.config.snippet.enabledCSS = enabled;
+        } else if (this.snippetsType === "js") {
+            window.siyuan.config.snippet.enabledJS = enabled;
+        }
+        fetchPost("/api/setting/setSnippet", window.siyuan.config.snippet);
+
+        // 更新代码片段元素
+        // 切换全局开关只会影响已启用的代码片段，所以过滤出来
+        const filteredSnippets = this.snippetsList.filter((snippet: Snippet) => snippet.type === this.snippetsType && snippet.enabled === true);
+        filteredSnippets.forEach((snippet: Snippet) => {
+            // enabled 为 true 时，snippet.enabled 也一定为 true
+            this.updateSnippetElement(snippet, enabled);
+        });
+
+        let previewingSnippetIds: string[] = [];
+        if (this.realTimePreview) {
+            // 收集正在实时预览的代码片段 ID
+            previewingSnippetIds = Array.from(document.querySelectorAll('.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id]')).map(item => item.getAttribute('data-snippet-id') as string);
+        }
+
+        // 广播全局开关状态变更到其他窗口
+        this.broadcastMessage('snippet_toggle_global', {
+            snippetType: this.snippetsType,
+            enabled: enabled,
+            previewingSnippetIds: previewingSnippetIds,
+        });
+    }
+
+    /**
      * 处理全局开关状态同步
      * @param data 消息数据
      */
     private async globalToggleSnippetSync(data: any) {
-        const { snippetType, enabled } = data;
-        this.console.log('globalToggleSnippetSync:', { snippetType, enabled });
+        const { snippetType, enabled, previewingSnippetIds } = data;
+        this.console.log('globalToggleSnippetSync:', { snippetType, enabled, previewingSnippetIds });
         
         // 更新全局配置
         if (snippetType === "css") {
@@ -1741,10 +1760,25 @@ export default class PluginSnippets extends Plugin {
         } else if (snippetType === "js") {
             window.siyuan.config.snippet.enabledJS = enabled;
         }
+
+        // 如果接受广播的窗口没有打开过菜单，可能不存在 this.snippetsList，需要获取
+        if (!this.snippetsList || this.snippetsList.length === 0) {
+            const snippetsList = await this.getSnippetsList();
+            if (snippetsList) {
+                this.snippetsList = snippetsList;
+            } else {
+                this.console.error('globalToggleSnippetSync: Can not get snippetsList');
+                return;
+            }
+        }
         
         // 更新代码片段元素
         // 切换全局开关只会影响已启用的代码片段，所以过滤出来
-        const filteredSnippets = this.snippetsList.filter((snippet: Snippet) => snippet.type === this.snippetsType && snippet.enabled === true);
+        let filteredSnippets = this.snippetsList.filter((snippet: Snippet) => snippet.type === snippetType && snippet.enabled === true);
+        if (this.realTimePreview) {
+            // 忽略在广播的窗口中正在实时预览的 CSS 代码片段元素更新
+            filteredSnippets = filteredSnippets.filter(snippet => !previewingSnippetIds.includes(snippet.id));
+        }
         filteredSnippets.forEach((snippet: Snippet) => {
             // enabled 为 true 时，snippet.enabled 也一定为 true
             this.updateSnippetElement(snippet, enabled);
@@ -2893,10 +2927,11 @@ export default class PluginSnippets extends Plugin {
             this.showErrorMessage(this.i18n.updateSnippetElementParamError);
             return;
         }
-        if (previewState === undefined && this.realTimePreview && document.querySelector(`.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id="${snippet.id}"]`)) {
-            // 如果开启了实时预览，并且打开了对应的代码片段对话框，则在菜单项上开关代码片段的操作需要忽略
+        if (snippet.type === "css" && previewState === undefined && this.realTimePreview && document.querySelector(`.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id="${snippet.id}"]`)) {
+            // 如果开启了实时预览，并且打开了对应的 CSS 代码片段对话框，则在菜单项上开关代码片段的操作需要忽略
             // 问题案例：全局禁用 CSS，预览一个 CSS 片段，启用片段，在菜单禁用片段会导致预览元素被移除
             //  这是因为从菜单关闭时没有 previewState 参数，此时需要通过是否有实时预览中的代码片段对话框来判断
+            this.console.log("如果开启了实时预览，并且打开了对应的代码片段对话框，则在菜单项上开关代码片段的操作需要忽略");
             return;
         }
 
@@ -2956,6 +2991,22 @@ export default class PluginSnippets extends Plugin {
             // 高亮菜单上的重新加载界面按钮
             await this.setReloadUIButtonBreathing();
         }
+    }
+
+    /**
+     * 处理代码片段元素更新同步
+     * @param data 同步数据，包含 snippet 和 previewState
+     */
+    private updateSnippetElementSync(data: { snippet: Snippet; previewState?: boolean }) {
+        const { snippet, previewState } = data;
+        if (!snippet) {
+            this.console.error('updateSnippetElementSync: snippet is required');
+            return;
+        }
+        
+        // 调用原有的 updateSnippetElement 方法更新元素
+        this.updateSnippetElement(snippet, undefined, previewState);
+        this.console.log('updateSnippetElementSync: updated snippet element for', snippet.id);
     }
 
     /**
@@ -3447,6 +3498,12 @@ export default class PluginSnippets extends Plugin {
                     // 更新 CSS 代码片段元素，恢复为实际状态 https://github.com/TCOTC/snippets/issues/26
                     const realSnippet = this.snippetsList.find((s: Snippet) => s.id === snippet.id);
                     this.updateSnippetElement(realSnippet, undefined, false);
+
+                    // 发送广播消息，在其他窗口调用 this.updateSnippetElementSync() 更新 CSS 代码片段元素
+                    this.broadcastMessage('snippet_element_update', {
+                        snippet: realSnippet,
+                        previewState: false
+                    });
                 }
                 // 关闭 Dialog
                 this.closeDialogByElement(dialog.element);
@@ -3516,8 +3573,15 @@ export default class PluginSnippets extends Plugin {
                 enabled: switchInput.checked,
                 content: codeMirrorView.state.doc.toString(),
             };
+
             // 只更新代码片段元素，不保存代码片段 this.saveSnippet(snippet);
             this.updateSnippetElement(previewSnippet, undefined, true);
+            
+            // 发送广播消息，在其他窗口调用 this.updateSnippetElementSync() 更新 CSS 代码片段元素
+            this.broadcastMessage('snippet_element_update', {
+                snippet: previewSnippet,
+                previewState: true
+            });
         };
         // 新建或更新代码片段
         const saveHandler = async () => {
@@ -5789,32 +5853,37 @@ export default class PluginSnippets extends Plugin {
         return null;
     }
 
-    // ================================ Broadcast Channel 跨窗口通信 ================================
-
-    /**
-     * Broadcast Channel 用于跨窗口通信
-     */
-    private broadcastChannel: BroadcastChannel;
-
+    // ================================ 基于思源内核 broadcast API 的跨窗口通信 ================================
+    
     /**
      * 当前窗口的唯一标识符
      */
     private windowId: string;
+    
+    /**
+     * EventSource 连接用于接收广播消息
+     */
+    private eventSource: EventSource | null = null;
+    
+    /**
+     * 重连间隔（毫秒）
+     */
+    private reconnectInterval: number = 3000;
+    
+    /**
+     * 重连定时器
+     */
+    private reconnectTimer: number | null = null;
 
     /**
-     * 初始化 Broadcast Channel
+     * 初始化基于内核 API 的跨窗口通信
      */
     private initBroadcastChannel() {
         // 生成当前窗口的唯一标识符
         this.windowId = BROADCAST_CHANNEL_NAME + "-" + window.Lute.NewNodeID();
         
-        // 创建 Broadcast Channel
-        this.broadcastChannel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
-        
-        // 监听来自其他窗口的消息
-        this.broadcastChannel.addEventListener('message', (event) => {
-            this.handleBroadcastMessage(event.data);
-        });
+        // 订阅广播频道
+        this.subscribeToBroadcastChannel();
         
         this.console.log('Broadcast Channel has been initialized, Window ID:', this.windowId);
         
@@ -5826,12 +5895,74 @@ export default class PluginSnippets extends Plugin {
     }
 
     /**
-     * 清理 Broadcast Channel
+     * 订阅广播频道
+     */
+    private subscribeToBroadcastChannel() {
+        try {
+            // 构建订阅 URL
+            const subscribeUrl = `/es/broadcast/subscribe?channel=${encodeURIComponent(BROADCAST_CHANNEL_NAME)}&retry=${this.reconnectInterval}`;
+            
+            // 创建 EventSource 连接
+            this.eventSource = new EventSource(subscribeUrl);
+            
+            // 监听连接打开
+            this.eventSource.onopen = () => {
+                this.console.log('Broadcast channel connected');
+                this.clearReconnectTimer();
+            };
+            
+            // 监听消息
+            this.eventSource.addEventListener(BROADCAST_CHANNEL_NAME, (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    this.handleBroadcastMessage(data);
+                } catch (error) {
+                    this.console.error('Failed to parse broadcast message:', error);
+                }
+            });
+            
+            // 监听连接错误
+            this.eventSource.onerror = (error) => {
+                this.console.error('Broadcast channel connection error:', error);
+                this.scheduleReconnect();
+            };
+            
+        } catch (error) {
+            this.console.error('Failed to subscribe to broadcast channel:', error);
+            this.scheduleReconnect();
+        }
+    }
+
+    /**
+     * 安排重连
+     */
+    private scheduleReconnect() {
+        this.clearReconnectTimer();
+        this.reconnectTimer = window.setTimeout(() => {
+            this.console.log('Attempting to reconnect to broadcast channel...');
+            this.subscribeToBroadcastChannel();
+        }, this.reconnectInterval);
+    }
+
+    /**
+     * 清除重连定时器
+     */
+    private clearReconnectTimer() {
+        if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+    }
+
+    /**
+     * 清理广播频道连接
      */
     private cleanupBroadcastChannel() {
-        if (this.broadcastChannel) {
-            this.broadcastChannel.close();
-            this.broadcastChannel = null;
+        this.clearReconnectTimer();
+        
+        if (this.eventSource) {
+            this.eventSource.close();
+            this.eventSource = null;
         }
     }
 
@@ -5861,6 +5992,9 @@ export default class PluginSnippets extends Plugin {
             case 'snippet_delete':
                 this.deleteSnippetSync(data);
                 break;
+            case 'snippet_element_update':
+                this.updateSnippetElementSync(data);
+                break;
             case 'snippets_sort':
                 this.snippetsSortSync();
                 break;
@@ -5878,15 +6012,31 @@ export default class PluginSnippets extends Plugin {
      * @param data 消息数据
      */
     private broadcastMessage(type: string, data: any = {}) {
-        if (this.broadcastChannel) {
-            const message = {
-                type,
-                windowId: this.windowId,
-                timestamp: Date.now(),
-                ...data
-            };
-            this.broadcastChannel.postMessage(message);
-            this.console.log('Send cross-window message:', message);
-        }
+        const message = {
+            type,
+            windowId: this.windowId,
+            timestamp: Date.now(),
+            ...data
+        };
+        
+        // 使用思源内核的 broadcast API 发送消息
+        this.postBroadcastMessage(JSON.stringify(message));
+        this.console.log('Send cross-window message:', message);
+    }
+
+    /**
+     * 通过内核 API 发送广播消息
+     * @param message 消息内容
+     */
+    private postBroadcastMessage(message: string) {
+        // 使用思源前端的 fetchPost 方法调用内核 API
+        fetchPost('/api/broadcast/postMessage', {
+            channel: BROADCAST_CHANNEL_NAME,
+            message: message
+        }, (response: any) => {
+            if (response.code !== 0) {
+                this.console.error('Failed to send broadcast message:', response.msg);
+            }
+        });
     }
 }
