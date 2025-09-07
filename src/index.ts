@@ -3390,8 +3390,9 @@ export default class PluginSnippets extends Plugin {
         const cancelHandler = async () => {
             const cancel = () => {
                 if (snippet.type === "css") {
-                    // 更新 CSS 代码片段元素，恢复预览 CSS 代码片段时的变更
-                    this.updateSnippetElement(snippet, undefined, false);
+                    // 更新 CSS 代码片段元素，恢复为实际状态 https://github.com/TCOTC/snippets/issues/26
+                    const realSnippet = this.snippetsList.find((s: Snippet) => s.id === snippet.id);
+                    this.updateSnippetElement(realSnippet, undefined, false);
                 }
                 // 关闭 Dialog
                 this.closeDialogByElement(dialog.element);
