@@ -1436,6 +1436,13 @@ export default class PluginSnippets extends Plugin {
      * @param event 鼠标事件
      */
     private menuClickHandler = async (event: MouseEvent) => {
+        // 如果正在拖拽或拖拽回到原位，则不执行点击逻辑
+        if (this.isDragging) {
+            this.console.log("menuClickHandler: During drag operation, ignore click events.");
+            this.clearDragState(); // 延迟清除拖拽状态
+            return;
+        }
+        
         // 点击按钮之后默认会关闭整个菜单，这里需要阻止事件冒泡
         event.stopPropagation();
         // 不能阻止事件默认行为，否则点击 label 时无法切换 input 的选中状态
@@ -1750,6 +1757,32 @@ export default class PluginSnippets extends Plugin {
     }
 
     /**
+     * 拖拽状态标志位，用于防止拖拽回到原位后触发点击事件、防止移动端无法划动菜单列表（判断是否应该阻止默认行为）
+     */
+    private isDragging: boolean = false;
+
+    /**
+     * 拖拽清理定时器，用于在拖拽结束后清理标志位
+     */
+    private dragCleanupTimer: number | null = null;
+
+    /**
+     * 清理拖拽状态，延迟清理以确保不会影响正常的点击操作
+     */
+    private clearDragState() {
+        // 清除之前的定时器
+        if (this.dragCleanupTimer) {
+            clearTimeout(this.dragCleanupTimer);
+        }
+        
+        // 延迟 50ms 清理拖拽状态，确保点击事件已经处理完毕
+        this.dragCleanupTimer = window.setTimeout(() => {
+            this.isDragging = false;
+            this.dragCleanupTimer = null;
+        }, 50);
+    }
+
+    /**
      * 代码片段的排序方式
      */
     declare snippetSortType: string;
@@ -1863,18 +1896,19 @@ export default class PluginSnippets extends Plugin {
      * 执行拖拽排序逻辑
      * @param item 原始拖拽项
      * @param selectItem 目标拖拽项
+     * @returns 是否真的发生了位置变化
      */
-    private async executeDragSort(item: HTMLElement, selectItem: HTMLElement): Promise<void> {
+    private async executeDragSort(item: HTMLElement, selectItem: HTMLElement): Promise<boolean> {
         const itemId = item.dataset.id;
         const itemType = item.dataset.type;
-        if (!selectItem) return;
+        if (!selectItem) return false;
         const selectItemId = selectItem.dataset.id;
         const selectItemType = selectItem.dataset.type;
         const isTop = selectItem.classList.contains("dragover__top");
-        if (isTop === undefined) return;
+        if (isTop === undefined) return false;
 
         if (!itemId || !itemType || !selectItemId || !selectItemType || itemId === selectItemId) {
-            return;
+            return false;
         }
 
         // 获取最新代码片段列表
@@ -1882,7 +1916,7 @@ export default class PluginSnippets extends Plugin {
         if (snippetsList) {
             this.snippetsList = snippetsList;
         } else {
-            return;
+            return false;
         }
 
         // 获取当前拖拽项的索引
@@ -1891,7 +1925,7 @@ export default class PluginSnippets extends Plugin {
         const toIndex = this.snippetsList.findIndex((s: any) => s.id === selectItemId);
 
         if (fromIndex === -1 || toIndex === -1) {
-            return;
+            return false;
         }
 
         // 先移除原有项
@@ -1908,7 +1942,7 @@ export default class PluginSnippets extends Plugin {
             } else {
                 // CSS 数量小于等于 1，不进行排序
                 this.snippetsList.splice(fromIndex, 0, moved);
-                return;
+                return false;
             }
         }
         // 如果 itemType 是 JS 而 selectItemType 是 CSS，则将 item 排序到第一个 JS 前面
@@ -1921,7 +1955,7 @@ export default class PluginSnippets extends Plugin {
             } else {
                 // JS 数量小于等于 1，不进行排序
                 this.snippetsList.splice(fromIndex, 0, moved);
-                return;
+                return false;
             }
         }
         // 如果 itemType 和 selectItemType 都是 CSS 或都是 JS，则根据拖拽方向排序
@@ -1949,7 +1983,7 @@ export default class PluginSnippets extends Plugin {
         // 位置没有变化的话就不继续执行
         if (targetIndex === fromIndex) {
             this.console.log("executeDragSort: The position has not changed.");
-            return;
+            return false;
         }
 
         // 更新 DOM 顺序
@@ -1966,6 +2000,8 @@ export default class PluginSnippets extends Plugin {
         // 广播排序到其他窗口
         this.broadcastMessage('snippets_sort', {
         });
+
+        return true;
     }
 
     /**
@@ -1996,6 +2032,8 @@ export default class PluginSnippets extends Plugin {
             return;
         }
 
+        this.isDragging = false;
+
         const documentSelf = document;
         documentSelf.ondragstart = () => false;
         let ghostElement: HTMLElement;
@@ -2017,6 +2055,9 @@ export default class PluginSnippets extends Plugin {
             
             moveEvent.preventDefault();
             moveEvent.stopPropagation();
+            
+            // 标记开始拖拽
+            this.isDragging = true;
             
             if (!ghostElement) {
                 item.style.opacity = "0.38";
@@ -2050,7 +2091,15 @@ export default class PluginSnippets extends Plugin {
             }
 
             // 执行拖拽排序
-            await this.executeDragSort(item, selectItem);
+            const hasPositionChanged = await this.executeDragSort(item, selectItem);
+            
+            // 如果拖拽回到原位，设置标志位阻止点击事件
+            if (this.isDragging && !hasPositionChanged) {
+                // 保持拖拽状态，阻止点击事件，延迟清理
+                this.clearDragState();
+            } else {
+                this.isDragging = false; // 立即清除拖拽状态
+            }
             
             // 清除所有拖拽样式
             dragContainer.querySelectorAll(".dragover__top, .dragover__bottom").forEach(item => {
@@ -2074,13 +2123,14 @@ export default class PluginSnippets extends Plugin {
             return;
         }
 
+        this.isDragging = false;
+
         // 触摸开始时不阻止默认行为，只有在开始拖拽时才阻止
         
         const documentSelf = document;
         let ghostElement: HTMLElement;
         let selectItem: HTMLElement;
         let startTouch: Touch;
-        let isDragging = false;
         let longPressTimer: number;
         let hasMoved = false;
         
@@ -2102,7 +2152,7 @@ export default class PluginSnippets extends Plugin {
         // 长按定时器，500ms 后开始拖拽
         longPressTimer = window.setTimeout(() => {
             if (!hasMoved) {
-                isDragging = true;
+                this.isDragging = true; // 标记开始拖拽
                 ghostElement = this.createDragGhost(item);
                 document.body.appendChild(ghostElement);
                 // 设置幽灵元素初始位置为当前触摸位置
@@ -2129,13 +2179,13 @@ export default class PluginSnippets extends Plugin {
                     longPressTimer = 0;
                 }
                 // 如果还没开始拖拽，允许正常滚动
-                if (!isDragging) {
+                if (!this.isDragging) {
                     return;
                 }
             }
             
             // 只有在拖拽状态下才阻止默认行为
-            if (isDragging) {
+            if (this.isDragging) {
                 moveEvent.preventDefault();
                 
                 // 更新幽灵元素位置
@@ -2163,7 +2213,7 @@ export default class PluginSnippets extends Plugin {
             documentSelf.removeEventListener("touchend", touchendHandler);
             
             // 只有在拖拽状态下才阻止默认行为
-            if (isDragging) {
+            if (this.isDragging) {
                 endEvent.preventDefault();
                 
                 // 清理拖拽状态
@@ -2175,7 +2225,15 @@ export default class PluginSnippets extends Plugin {
                 }
 
                 // 执行拖拽排序
-                await this.executeDragSort(item, selectItem);
+                const hasPositionChanged = await this.executeDragSort(item, selectItem);
+                
+                // 如果拖拽回到原位，设置标志位阻止点击事件
+                if (!hasPositionChanged) {
+                    // 保持拖拽状态，阻止点击事件，延迟清理
+                    this.clearDragState();
+                } else {
+                    this.isDragging = false; // 立即清除拖拽状态
+                }
                 
                 // 清除所有拖拽样式
                 dragContainer.querySelectorAll(".dragover__top, .dragover__bottom").forEach(item => {
