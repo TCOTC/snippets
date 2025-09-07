@@ -1863,13 +1863,15 @@ export default class PluginSnippets extends Plugin {
      * 执行拖拽排序逻辑
      * @param item 原始拖拽项
      * @param selectItem 目标拖拽项
-     * @param isTop 是否拖拽到上方
      */
-    private async executeDragSort(item: HTMLElement, selectItem: HTMLElement, isTop: boolean): Promise<void> {
+    private async executeDragSort(item: HTMLElement, selectItem: HTMLElement): Promise<void> {
         const itemId = item.dataset.id;
         const itemType = item.dataset.type;
+        if (!selectItem) return;
         const selectItemId = selectItem.dataset.id;
         const selectItemType = selectItem.dataset.type;
+        const isTop = selectItem.classList.contains("dragover__top");
+        if (isTop === undefined) return;
 
         if (!itemId || !itemType || !selectItemId || !selectItemType || itemId === selectItemId) {
             return;
@@ -1944,6 +1946,12 @@ export default class PluginSnippets extends Plugin {
         // 插入到目标索引位置
         this.snippetsList.splice(targetIndex, 0, moved);
 
+        // 位置没有变化的话就不继续执行
+        if (targetIndex === fromIndex) {
+            this.console.log("executeDragSort: The position has not changed.");
+            return;
+        }
+
         // 更新 DOM 顺序
         if (isTop) {
             selectItem.before(item);
@@ -1954,7 +1962,7 @@ export default class PluginSnippets extends Plugin {
         // 保存新的排序顺序
         // 需要等 getSnippetsList() 调用的 API 执行完毕之后才推送更新，其他窗口需要用到代码片段的最新数据
         void await this.saveSnippetsList(this.snippetsList);
-        
+
         // 广播排序到其他窗口
         this.broadcastMessage('snippets_sort', {
         });
@@ -2040,15 +2048,9 @@ export default class PluginSnippets extends Plugin {
             if (!selectItem) {
                 selectItem = dragContainer.querySelector(".dragover__top, .dragover__bottom");
             }
-            
-            if (selectItem) {
-                // 执行拖拽排序
-                if (selectItem.classList.contains("dragover__top")) {
-                    await this.executeDragSort(item, selectItem, true);
-                } else if (selectItem.classList.contains("dragover__bottom")) {
-                    await this.executeDragSort(item, selectItem, false);
-                }
-            }
+
+            // 执行拖拽排序
+            await this.executeDragSort(item, selectItem);
             
             // 清除所有拖拽样式
             dragContainer.querySelectorAll(".dragover__top, .dragover__bottom").forEach(item => {
@@ -2171,15 +2173,9 @@ export default class PluginSnippets extends Plugin {
                 if (!selectItem) {
                     selectItem = dragContainer.querySelector(".dragover__top, .dragover__bottom");
                 }
-                
-                if (selectItem) {
-                    // 执行拖拽排序
-                    if (selectItem.classList.contains("dragover__top")) {
-                        await this.executeDragSort(item, selectItem, true);
-                    } else if (selectItem.classList.contains("dragover__bottom")) {
-                        await this.executeDragSort(item, selectItem, false);
-                    }
-                }
+
+                // 执行拖拽排序
+                await this.executeDragSort(item, selectItem);
                 
                 // 清除所有拖拽样式
                 dragContainer.querySelectorAll(".dragover__top, .dragover__bottom").forEach(item => {
