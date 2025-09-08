@@ -88,9 +88,6 @@ export default class PluginSnippets extends Plugin {
      * 启用插件（进行各种初始化）
      */
     public async onload() {
-        // 初始化 Broadcast Channel 用于跨窗口通信
-        this.initBroadcastChannel();
-        
         if (!isVersionReach("3.3.0")) {
             // 初始化 window.siyuan.jcsm
             window.siyuan.jcsm ??= {}; // ??= 逻辑空赋值运算符 https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing_assignment
@@ -252,6 +249,9 @@ export default class PluginSnippets extends Plugin {
             // 获取已打开的所有自定义页签
             // this.getOpenedTab();
         }
+
+        // 初始化 Broadcast Channel 用于跨窗口通信（需要等插件设置加载完成）
+        this.initBroadcastChannel();
     }
 
     /**
@@ -5797,9 +5797,9 @@ export default class PluginSnippets extends Plugin {
     private windowId: string;
     
     /**
-     * EventSource 连接用于接收广播消息
+     * WebSocket 连接用于接收广播消息
      */
-    private eventSource: EventSource | null = null;
+    private websocket: WebSocket | null = null;
     
     /**
      * 重连间隔（毫秒）
@@ -5812,61 +5812,85 @@ export default class PluginSnippets extends Plugin {
     private reconnectTimer: number | null = null;
 
     /**
+     * 其他窗口 ID 集合，用于跟踪其他窗口的存在状态
+     */
+    private otherWindowIds: Set<string> = new Set();
+
+
+    /**
      * 初始化基于内核 API 的跨窗口通信
      */
-    private initBroadcastChannel() {
+    private async initBroadcastChannel() {
         // 生成当前窗口的唯一标识符
         this.windowId = BROADCAST_CHANNEL_NAME + "-" + window.Lute.NewNodeID();
         
         // 订阅广播频道
-        this.subscribeToBroadcastChannel();
+        await this.subscribeToBroadcastChannel();
         
+        // console.log('Broadcast Channel has been initialized, Window ID:', this.windowId);
         this.console.log('Broadcast Channel has been initialized, Window ID:', this.windowId);
         
-        // 发送初始化消息到其他窗口
-        this.broadcastMessage('window_ready', {
+        // 发送初始化消息到其他窗口（用于发现其他窗口，强制发送）
+        this.broadcastMessage('window_online', {
             windowId: this.windowId,
             timestamp: Date.now(),
+        }, true);
+
+        // 监听页面卸载事件，确保窗口关闭时发送下线通知
+        window.addEventListener('beforeunload', () => {
+            this.sendOfflineNotification();
         });
     }
 
     /**
      * 订阅广播频道
      */
-    private subscribeToBroadcastChannel() {
-        try {
-            // 构建订阅 URL
-            const subscribeUrl = `/es/broadcast/subscribe?channel=${encodeURIComponent(BROADCAST_CHANNEL_NAME)}&retry=${this.reconnectInterval}`;
-            
-            // 创建 EventSource 连接
-            this.eventSource = new EventSource(subscribeUrl);
-            
-            // 监听连接打开
-            this.eventSource.onopen = () => {
-                this.console.log('Broadcast channel connected');
-                this.clearReconnectTimer();
-            };
-            
-            // 监听消息
-            this.eventSource.addEventListener(BROADCAST_CHANNEL_NAME, (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    this.handleBroadcastMessage(data);
-                } catch (error) {
-                    this.console.error('Failed to parse broadcast message:', error);
-                }
-            });
-            
-            // 监听连接错误
-            this.eventSource.onerror = (error) => {
-                this.console.error('Broadcast channel connection error:', error);
+    private async subscribeToBroadcastChannel(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            try {
+                // 构建 WebSocket URL
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/ws/broadcast?channel=${encodeURIComponent(BROADCAST_CHANNEL_NAME)}`;
+                
+                // 创建 WebSocket 连接
+                this.websocket = new WebSocket(wsUrl);
+                
+                // 监听连接打开
+                this.websocket.onopen = () => {
+                    this.console.log('Broadcast channel connected');
+                    this.clearReconnectTimer();
+                    resolve(); // 连接建立后 resolve Promise
+                };
+                
+                // 监听消息
+                this.websocket.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        this.handleBroadcastMessage(data);
+                    } catch (error) {
+                        this.console.error('Failed to parse broadcast message:', error);
+                    }
+                };
+                
+                // 监听连接错误
+                this.websocket.onerror = (error) => {
+                    this.console.error('Broadcast channel connection error:', error);
+                    this.scheduleReconnect();
+                    reject(error); // 连接错误时 reject Promise
+                };
+                
+                // 监听连接关闭
+                this.websocket.onclose = (event) => {
+                    this.console.log('Broadcast channel connection closed:', event.code, event.reason);
+                    this.scheduleReconnect();
+                };
+                
+            } catch (error) {
+                this.console.error('Failed to subscribe to broadcast channel:', error);
                 this.scheduleReconnect();
-            };
-            
-        } catch (error) {
-            this.console.error('Failed to subscribe to broadcast channel:', error);
-            this.scheduleReconnect();
-        }
+                reject(error);
+            }
+        });
     }
 
     /**
@@ -5890,15 +5914,53 @@ export default class PluginSnippets extends Plugin {
         }
     }
 
+
+
+    /**
+     * 处理窗口下线通知
+     * @param windowId 下线的窗口 ID
+     */
+    private handleWindowOffline(windowId: string) {
+        // 立即从跟踪列表中移除该窗口
+        this.otherWindowIds.delete(windowId);
+        this.console.log('Window offline notification received, removed from tracking:', windowId);
+    }
+
+    /**
+     * 发送窗口下线通知
+     */
+    private sendOfflineNotification() {
+        // 在页面卸载前发送下线通知
+        try {
+            this.broadcastMessage('window_offline', {
+                windowId: this.windowId,
+                timestamp: Date.now(),
+            }, true);
+        } catch (error) {
+            // 忽略错误，因为页面即将卸载
+            this.console.error('Failed to send offline notification:', error);
+        }
+    }
+
     /**
      * 清理广播频道连接
      */
     private cleanupBroadcastChannel() {
+        // 发送窗口下线通知
+        this.broadcastMessage('window_offline', {
+            windowId: this.windowId,
+            timestamp: Date.now(),
+        }, true);
+        
         this.clearReconnectTimer();
         
-        if (this.eventSource) {
-            this.eventSource.close();
-            this.eventSource = null;
+        
+        // 清理窗口跟踪数据
+        this.otherWindowIds.clear();
+        
+        if (this.websocket) {
+            this.websocket.close();
+            this.websocket = null;
         }
     }
 
@@ -5907,14 +5969,33 @@ export default class PluginSnippets extends Plugin {
      * @param data 消息数据
      */
     private handleBroadcastMessage(data: any) {
+        this.console.log('Received broadcast message:', data);
+        
         // 忽略来自当前窗口的消息
         if (data.windowId === this.windowId) {
+            this.console.log('Ignoring message from current window:', data.windowId);
             return;
         }
 
+        // 记录其他窗口 ID
+        this.otherWindowIds.add(data.windowId);
+
         switch (data.type) {
-            case 'window_ready':
+            case 'window_online':
                 this.console.log('New window detected:', data.windowId);
+                // 向新上线的窗口发送反馈，告知自己的存在
+                this.broadcastMessage('window_online_feedback', {
+                    windowId: this.windowId,
+                    timestamp: Date.now(),
+                });
+                break;
+            case 'window_online_feedback':
+                this.console.log('Received online feedback from:', data.windowId);
+                // 将反馈的窗口 ID 添加到跟踪列表中
+                this.otherWindowIds.add(data.windowId);
+                break;
+            case 'window_offline':
+                this.handleWindowOffline(data.windowId);
                 break;
             case 'snippet_toggle':
                 this.toggleSnippetSync(data);
@@ -5946,8 +6027,12 @@ export default class PluginSnippets extends Plugin {
      * 发送广播消息到其他窗口
      * @param type 消息类型
      * @param data 消息数据
+     * @param force 是否强制发送（忽略其他窗口检查）
      */
-    private broadcastMessage(type: string, data: any = {}) {
+    private broadcastMessage(type: string, data: any = {}, force: boolean = false) {
+        // 如果不是强制发送且不存在其他窗口，则跳过广播
+        if (!force && this.otherWindowIds.size === 0) return;
+
         const message = {
             type,
             windowId: this.windowId,
@@ -5955,24 +6040,20 @@ export default class PluginSnippets extends Plugin {
             ...data
         };
         
-        // 使用思源内核的 broadcast API 发送消息
+        // 通过 WebSocket 连接发送消息
         this.postBroadcastMessage(JSON.stringify(message));
         this.console.log('Send cross-window message:', message);
     }
 
     /**
-     * 通过内核 API 发送广播消息
+     * 通过 WebSocket 连接发送广播消息
      * @param message 消息内容
      */
     private postBroadcastMessage(message: string) {
-        // 使用思源前端的 fetchPost 方法调用内核 API
-        fetchPost('/api/broadcast/postMessage', {
-            channel: BROADCAST_CHANNEL_NAME,
-            message: message
-        }, (response: any) => {
-            if (response.code !== 0) {
-                this.console.error('Failed to send broadcast message:', response.msg);
-            }
-        });
+        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+            this.websocket.send(message);
+        } else {
+            this.console.error('WebSocket connection is not ready, cannot send message');
+        }
     }
 }
