@@ -2,7 +2,7 @@
   "name": "snippets",
   "author": "TCOTC",
   "url": "https://github.com/TCOTC/snippets",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "minAppVersion": "3.1.27",
   "backends": [
     "all"
