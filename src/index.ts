@@ -3669,7 +3669,35 @@ export default class PluginSnippets extends Plugin {
             // 移除菜单上的 b3-menu__item--current，否则 this.globalKeyDownHandler() 会操作菜单
             this.clearMenuSelection();
         });
-        
+
+        // 添加右键菜单 https://github.com/TCOTC/snippets/issues/22
+        this.addListener(dialog.element, "contextmenu", (event: MouseEvent) => {
+            if (!(event.target as HTMLElement).closest(".cm-content[contenteditable='true']")) return;
+            event.stopPropagation();
+            // 尝试使用思源的 ipcRenderer 发送右键菜单事件
+            try {
+                // 检查是否存在 electron 的 ipcRenderer
+                const electron = (window as any).require?.("electron");
+                if (electron?.ipcRenderer) {
+                    this.console.log("electron:", electron);
+                    this.console.log("showContextMenu: use ipcRenderer");
+                    electron.ipcRenderer.send(Constants.SIYUAN_CONTEXT_MENU, {
+                        // undo: window.siyuan.languages.undo, // TODO跟进: 撤销 undo 和重做 redo 用不了，需要去掉 https://github.com/siyuan-note/siyuan/issues/15810
+                        // redo: window.siyuan.languages.redo,
+                        copy: window.siyuan.languages.copy,
+                        cut: window.siyuan.languages.cut,
+                        delete: window.siyuan.languages.delete,
+                        paste: window.siyuan.languages.paste,
+                        pasteAsPlainText: window.siyuan.languages.pasteAsPlainText,
+                        selectAll: window.siyuan.languages.selectAll,
+                    });
+                    return;
+                }
+            } catch (error) {
+                this.console.log("Failed to use ipcRenderer:", error);
+            }
+        }, {capture: true});
+
         // 在菜单打开的情况下，移动端无法上下划动对话框中的编辑器，需要阻止事件冒泡
         this.addListener(dialog.element, "touchmove", (event: TouchEvent) => {
             event.stopPropagation();
