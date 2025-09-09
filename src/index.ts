@@ -812,7 +812,7 @@ export default class PluginSnippets extends Plugin {
         }
 
         // 广播设置更新到其他窗口
-        this.broadcastMessage('setting_apply', {
+        this.broadcastMessage("setting_apply", {
             config: config
         });
 
@@ -967,7 +967,7 @@ export default class PluginSnippets extends Plugin {
                 break;
 
             default:
-                this.console.log('applySetting: Unknown key:', key);
+                this.console.log("applySetting: Unknown key:", key);
                 break;
         }
     }
@@ -979,10 +979,10 @@ export default class PluginSnippets extends Plugin {
     private async applySettingSync(data: any) {
         const { config } = data;
         if (!config) {
-            this.console.error('applySettingSync: Config is missing:', data);
+            this.console.error("applySettingSync: Config is missing:", data);
             return;
         }
-        this.console.log('applySettingSync:', config);
+        this.console.log("applySettingSync:", config);
 
         // 更新本地配置
         this.configItems.forEach(item => {
@@ -1723,7 +1723,7 @@ export default class PluginSnippets extends Plugin {
         }
 
         // 广播开关状态变更到其他窗口
-        this.broadcastMessage('snippet_toggle', {
+        this.broadcastMessage("snippet_toggle", {
             snippetId: snippet.id,
             enabled: snippet.enabled,
         });
@@ -1735,7 +1735,7 @@ export default class PluginSnippets extends Plugin {
      */
     private async toggleSnippetSync(data: any) {
         const { snippetId, enabled } = data;
-        this.console.log('Handling switch state synchronization:', { snippetId, enabled });
+        this.console.log("Handling switch state synchronization:", { snippetId, enabled });
         // 先更新本地数据
         const snippet = await this.getSnippetById(snippetId);
         if (snippet) {
@@ -1748,9 +1748,9 @@ export default class PluginSnippets extends Plugin {
             if (!this.menuItems) return;
             const checkbox = this.menuItems.querySelector(`.jcsm-snippet-item[data-id="${snippetId}"] input[data-type='snippetSwitch']`) as HTMLInputElement;
             checkbox && (checkbox.checked = enabled);
-            this.console.log('toggleSnippetSync: checkbox', checkbox, "enabled", enabled);
+            this.console.log("toggleSnippetSync: checkbox", checkbox, "enabled", enabled);
         } else {
-            this.console.error('toggleSnippetSync: Snippet not found:', snippetId);
+            this.console.error("toggleSnippetSync: Snippet not found:", snippetId);
         }
     }
 
@@ -1764,7 +1764,7 @@ export default class PluginSnippets extends Plugin {
         void this.saveSnippetsList(this.snippetsList);
         // void this.updateSnippetElement(snippet); // 发布服务开关状态变更不需要更新元素
 
-        this.broadcastMessage('snippet_toggle_publish', {
+        this.broadcastMessage("snippet_toggle_publish", {
             snippetId: snippet.id,
             enabled: snippet.disabledInPublish,
         });
@@ -1776,7 +1776,7 @@ export default class PluginSnippets extends Plugin {
      */
     private async toggleSinppetPublishSync(data: any) {
         const { snippetId, enabled } = data;
-        this.console.log('toggleSinppetPublishSync:', { snippetId, enabled });
+        this.console.log("toggleSinppetPublishSync:", { snippetId, enabled });
 
         if (this.isPublish()) {
             // TODO功能: 支持在发布服务启用插件 https://github.com/TCOTC/snippets/issues/33
@@ -1804,14 +1804,14 @@ export default class PluginSnippets extends Plugin {
             if (snippet) {
                 snippet.disabledInPublish = enabled;
             } else {
-                this.console.error('toggleSinppetPublishSync: Snippet not found:', snippetId);
+                this.console.error("toggleSinppetPublishSync: Snippet not found:", snippetId);
             }
 
             // 更新菜单中的开关状态（如果菜单已打开）
             if (!this.menuItems) return;
             const checkbox = this.menuItems.querySelector(`.jcsm-snippet-item[data-id="${snippetId}"] input[data-type='publishSwitch']`) as HTMLInputElement;
             checkbox && (checkbox.checked = enabled);
-            this.console.log('toggleSinppetPublishSync: checkbox', checkbox, "enabled", enabled);
+            this.console.log("toggleSinppetPublishSync: checkbox", checkbox, "enabled", enabled);
         }
     }
 
@@ -1839,11 +1839,11 @@ export default class PluginSnippets extends Plugin {
         let previewingSnippetIds: string[] = [];
         if (this.realTimePreview) {
             // 收集正在实时预览的代码片段 ID
-            previewingSnippetIds = Array.from(document.querySelectorAll('.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id]')).map(item => item.getAttribute('data-snippet-id') as string);
+            previewingSnippetIds = Array.from(document.querySelectorAll('.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id]')).map(item => item.getAttribute("data-snippet-id") as string);
         }
 
         // 广播全局开关状态变更到其他窗口
-        this.broadcastMessage('snippet_toggle_global', {
+        this.broadcastMessage("snippet_toggle_global", {
             snippetType: this.snippetsType,
             enabled: enabled,
             previewingSnippetIds: previewingSnippetIds,
@@ -1856,7 +1856,7 @@ export default class PluginSnippets extends Plugin {
      */
     private async globalToggleSnippetSync(data: any) {
         const { snippetType, enabled, previewingSnippetIds } = data;
-        this.console.log('globalToggleSnippetSync:', { snippetType, enabled, previewingSnippetIds });
+        this.console.log("globalToggleSnippetSync:", { snippetType, enabled, previewingSnippetIds });
         
         // 更新全局配置
         if (snippetType === "css") {
@@ -1871,7 +1871,7 @@ export default class PluginSnippets extends Plugin {
             if (snippetsList) {
                 this.snippetsList = snippetsList;
             } else {
-                this.console.error('globalToggleSnippetSync: Can not get snippetsList');
+                this.console.error("globalToggleSnippetSync: Can not get snippetsList");
                 return;
             }
         }
@@ -2135,7 +2135,7 @@ export default class PluginSnippets extends Plugin {
         void await this.saveSnippetsList(this.snippetsList);
 
         // 广播排序到其他窗口
-        this.broadcastMessage('snippets_sort', {
+        this.broadcastMessage("snippets_sort", {
         });
 
         return true;
@@ -2789,7 +2789,7 @@ export default class PluginSnippets extends Plugin {
             this.applySnippetUIChange(snippet, true, copySnippet);
 
             // 广播代码片段数据更新到其他窗口
-            this.broadcastMessage('snippet_save', {
+            this.broadcastMessage("snippet_save", {
                 snippet: snippet,
                 isCopy: isCopy,
                 copySnippet: copySnippet,
@@ -2805,7 +2805,7 @@ export default class PluginSnippets extends Plugin {
         // const { snippet, isCopy } = data;
         const { snippet, isCopy, copySnippet } = data;
         if (!snippet || isCopy === undefined || (isCopy && copySnippet === undefined)) {
-            this.console.error('saveSnippetSync: Snippet or isCopy is missing:', data);
+            this.console.error("saveSnippetSync: Snippet or isCopy is missing:", data);
             return;
         }
         this.console.log("saveSnippetSync", snippet, isCopy);
@@ -2898,7 +2898,7 @@ export default class PluginSnippets extends Plugin {
         this.applySnippetUIChange(snippet, false);
 
         // 广播代码片段数据更新到其他窗口
-        this.broadcastMessage('snippet_delete', {
+        this.broadcastMessage("snippet_delete", {
             snippet: snippet,
         });
     }
@@ -2910,7 +2910,7 @@ export default class PluginSnippets extends Plugin {
     private async deleteSnippetSync(data: any) {
         const { snippet } = data;
         if (!snippet) {
-            this.console.error('deleteSnippetSync: Snippet is missing:', data);
+            this.console.error("deleteSnippetSync: Snippet is missing:", data);
             return;
         }
         this.console.log("deleteSnippetSync", snippet);
@@ -3121,13 +3121,13 @@ export default class PluginSnippets extends Plugin {
     private updateSnippetElementSync(data: { snippet: Snippet; previewState?: boolean }) {
         const { snippet, previewState } = data;
         if (!snippet) {
-            this.console.error('updateSnippetElementSync: snippet is required');
+            this.console.error("updateSnippetElementSync: snippet is required");
             return;
         }
 
         // 调用原有的 updateSnippetElement 方法更新元素
         this.updateSnippetElement(snippet, undefined, previewState);
-        this.console.log('updateSnippetElementSync: updated snippet element for', snippet.id);
+        this.console.log("updateSnippetElementSync: updated snippet element for", snippet.id);
     }
 
     /**
@@ -3625,7 +3625,7 @@ export default class PluginSnippets extends Plugin {
                     this.updateSnippetElement(realSnippet, undefined, false);
 
                     // 发送广播消息，在其他窗口调用 this.updateSnippetElementSync() 更新 CSS 代码片段元素
-                    this.broadcastMessage('snippet_element_update', {
+                    this.broadcastMessage("snippet_element_update", {
                         snippet: realSnippet,
                         previewState: false
                     });
@@ -3708,7 +3708,7 @@ export default class PluginSnippets extends Plugin {
             this.updateSnippetElement(previewSnippet, undefined, true);
 
             // 发送广播消息，在其他窗口调用 this.updateSnippetElementSync() 更新 CSS 代码片段元素
-            this.broadcastMessage('snippet_element_update', {
+            this.broadcastMessage("snippet_element_update", {
                 snippet: previewSnippet,
                 previewState: true
             });
@@ -5965,16 +5965,16 @@ export default class PluginSnippets extends Plugin {
         await this.subscribeToBroadcastChannel();
 
         // console.log('Broadcast Channel has been initialized, Window ID:', this.windowId);
-        this.console.log('Broadcast Channel has been initialized, Window ID:', this.windowId);
+        this.console.log("Broadcast Channel has been initialized, Window ID:", this.windowId);
         
         // 发送初始化消息到其他窗口（用于发现其他窗口，强制发送）
-        this.broadcastMessage('window_online', {
+        this.broadcastMessage("window_online", {
             windowId: this.windowId,
             timestamp: Date.now(),
         }, true);
 
         // 监听页面卸载事件，确保窗口关闭时发送下线通知
-        window.addEventListener('beforeunload', () => {
+        window.addEventListener("beforeunload", () => {
             this.sendOfflineNotification();
         });
     }
@@ -5986,7 +5986,7 @@ export default class PluginSnippets extends Plugin {
         return new Promise((resolve, reject) => {
             try {
                 // 构建 WebSocket URL
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
                 const wsUrl = `${protocol}//${window.location.host}/ws/broadcast?channel=${encodeURIComponent(BROADCAST_CHANNEL_NAME)}`;
 
                 // 创建 WebSocket 连接
@@ -5994,7 +5994,7 @@ export default class PluginSnippets extends Plugin {
 
                 // 监听连接打开
                 this.websocket.onopen = () => {
-                    this.console.log('Broadcast channel connected');
+                    this.console.log("Broadcast channel connected");
                     this.clearReconnectTimer();
                     resolve(); // 连接建立后 resolve Promise
                 };
@@ -6005,25 +6005,25 @@ export default class PluginSnippets extends Plugin {
                         const data = JSON.parse(event.data);
                         this.handleBroadcastMessage(data);
                     } catch (error) {
-                        this.console.error('Failed to parse broadcast message:', error);
+                        this.console.error("Failed to parse broadcast message:", error);
                     }
                 };
 
                 // 监听连接错误
                 this.websocket.onerror = (error) => {
-                    this.console.error('Broadcast channel connection error:', error);
+                    this.console.error("Broadcast channel connection error:", error);
                     this.scheduleReconnect();
                     reject(error); // 连接错误时 reject Promise
                 };
 
                 // 监听连接关闭
                 this.websocket.onclose = (event) => {
-                    this.console.log('Broadcast channel connection closed:', event.code, event.reason);
+                    this.console.log("Broadcast channel connection closed:", event.code, event.reason);
                     this.scheduleReconnect();
                 };
 
             } catch (error) {
-                this.console.error('Failed to subscribe to broadcast channel:', error);
+                this.console.error("Failed to subscribe to broadcast channel:", error);
                 this.scheduleReconnect();
                 reject(error);
             }
@@ -6036,7 +6036,7 @@ export default class PluginSnippets extends Plugin {
     private scheduleReconnect() {
         this.clearReconnectTimer();
         this.reconnectTimer = window.setTimeout(() => {
-            this.console.log('Attempting to reconnect to broadcast channel...');
+            this.console.log("Attempting to reconnect to broadcast channel...");
             this.subscribeToBroadcastChannel();
         }, this.reconnectInterval);
     }
@@ -6060,7 +6060,7 @@ export default class PluginSnippets extends Plugin {
     private handleWindowOffline(windowId: string) {
         // 立即从跟踪列表中移除该窗口
         this.otherWindowIds.delete(windowId);
-        this.console.log('Window offline notification received, removed from tracking:', windowId);
+        this.console.log("Window offline notification received, removed from tracking:", windowId);
     }
 
     /**
@@ -6069,13 +6069,13 @@ export default class PluginSnippets extends Plugin {
     private sendOfflineNotification() {
         // 在页面卸载前发送下线通知
         try {
-            this.broadcastMessage('window_offline', {
+            this.broadcastMessage("window_offline", {
                 windowId: this.windowId,
                 timestamp: Date.now(),
             }, true);
         } catch (error) {
             // 忽略错误，因为页面即将卸载
-            this.console.error('Failed to send offline notification:', error);
+            this.console.error("Failed to send offline notification:", error);
         }
     }
 
@@ -6084,7 +6084,7 @@ export default class PluginSnippets extends Plugin {
      */
     private cleanupBroadcastChannel() {
         // 发送窗口下线通知
-        this.broadcastMessage('window_offline', {
+        this.broadcastMessage("window_offline", {
             windowId: this.windowId,
             timestamp: Date.now(),
         }, true);
@@ -6106,11 +6106,11 @@ export default class PluginSnippets extends Plugin {
      * @param data 消息数据
      */
     private handleBroadcastMessage(data: any) {
-        this.console.log('Received broadcast message:', data);
+        this.console.log("Received broadcast message:", data);
         
         // 忽略来自当前窗口的消息
         if (data.windowId === this.windowId) {
-            this.console.log('Ignoring message from current window:', data.windowId);
+            this.console.log("Ignoring message from current window:", data.windowId);
             return;
         }
 
@@ -6118,48 +6118,48 @@ export default class PluginSnippets extends Plugin {
         this.otherWindowIds.add(data.windowId);
 
         switch (data.type) {
-            case 'window_online':
-                this.console.log('New window detected:', data.windowId);
+            case "window_online":
+                this.console.log("New window detected:", data.windowId);
                 // 向新上线的窗口发送反馈，告知自己的存在
-                this.broadcastMessage('window_online_feedback', {
+                this.broadcastMessage("window_online_feedback", {
                     windowId: this.windowId,
                     timestamp: Date.now(),
                 });
                 break;
-            case 'window_online_feedback':
-                this.console.log('Received online feedback from:', data.windowId);
+            case "window_online_feedback":
+                this.console.log("Received online feedback from:", data.windowId);
                 // 将反馈的窗口 ID 添加到跟踪列表中
                 this.otherWindowIds.add(data.windowId);
                 break;
-            case 'window_offline':
+            case "window_offline":
                 this.handleWindowOffline(data.windowId);
                 break;
-            case 'snippet_toggle':
+            case "snippet_toggle":
                 this.toggleSnippetSync(data);
                 break;
-            case 'snippet_toggle_publish':
+            case "snippet_toggle_publish":
                 this.toggleSinppetPublishSync(data);
                 break;
-            case 'snippet_toggle_global':
+            case "snippet_toggle_global":
                 this.globalToggleSnippetSync(data);
                 break;
-            case 'snippet_save':
+            case "snippet_save":
                 this.saveSnippetSync(data);
                 break;
-            case 'snippet_delete':
+            case "snippet_delete":
                 this.deleteSnippetSync(data);
                 break;
-            case 'snippet_element_update':
+            case "snippet_element_update":
                 this.updateSnippetElementSync(data);
                 break;
-            case 'snippets_sort':
+            case "snippets_sort":
                 this.snippetsSortSync();
                 break;
-            case 'setting_apply':
+            case "setting_apply":
                 this.applySettingSync(data);
                 break;
             default:
-                this.console.log('Unknown broadcast message type:', data.type);
+                this.console.log("Unknown broadcast message type:", data.type);
         }
     }
 
@@ -6185,7 +6185,7 @@ export default class PluginSnippets extends Plugin {
 
         // 通过 WebSocket 连接发送消息
         this.postBroadcastMessage(JSON.stringify(message));
-        this.console.log('Send cross-window message:', message);
+        this.console.log("Send cross-window message:", message);
     }
 
     /**
@@ -6196,7 +6196,7 @@ export default class PluginSnippets extends Plugin {
         if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
             this.websocket.send(message);
         } else {
-            this.console.error('WebSocket connection is not ready, cannot send message');
+            this.console.error("WebSocket connection is not ready, cannot send message");
         }
     }
 }
