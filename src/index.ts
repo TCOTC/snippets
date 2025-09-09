@@ -1671,7 +1671,7 @@ export default class PluginSnippets extends Plugin {
                 } else if (type === "publishSwitch") {
                     const snippet = await this.getSnippetById(snippetMenuItem.dataset.id);
                     if (snippet) {
-                        this.toggleSinppetPublish(snippet, !(target as HTMLInputElement).checked);
+                        this.toggleSnippetPublish(snippet, !(target as HTMLInputElement).checked);
                     }
                 }
             } else {
@@ -1759,7 +1759,7 @@ export default class PluginSnippets extends Plugin {
      * @param snippet 代码片段
      * @param enabled 是否启用
      */
-    private toggleSinppetPublish(snippet: Snippet, enabled: boolean) {
+    private toggleSnippetPublish(snippet: Snippet, enabled: boolean) {
         snippet.disabledInPublish = enabled;
         void this.saveSnippetsList(this.snippetsList);
         // void this.updateSnippetElement(snippet); // 发布服务开关状态变更不需要更新元素
@@ -1774,9 +1774,9 @@ export default class PluginSnippets extends Plugin {
      * 处理代码片段的发布服务开关状态同步
      * @param data 消息数据
      */
-    private async toggleSinppetPublishSync(data: any) {
+    private async toggleSnippetPublishSync(data: any) {
         const { snippetId, enabled } = data;
-        this.console.log("toggleSinppetPublishSync:", { snippetId, enabled });
+        this.console.log("toggleSnippetPublishSync:", { snippetId, enabled });
 
         if (this.isPublish()) {
             // TODO功能: 支持在发布服务启用插件 https://github.com/TCOTC/snippets/issues/33
@@ -1804,14 +1804,14 @@ export default class PluginSnippets extends Plugin {
             if (snippet) {
                 snippet.disabledInPublish = enabled;
             } else {
-                this.console.error("toggleSinppetPublishSync: Snippet not found:", snippetId);
+                this.console.error("toggleSnippetPublishSync: Snippet not found:", snippetId);
             }
 
             // 更新菜单中的开关状态（如果菜单已打开）
             if (!this.menuItems) return;
             const checkbox = this.menuItems.querySelector(`.jcsm-snippet-item[data-id="${snippetId}"] input[data-type='publishSwitch']`) as HTMLInputElement;
             checkbox && (checkbox.checked = enabled);
-            this.console.log("toggleSinppetPublishSync: checkbox", checkbox, "enabled", enabled);
+            this.console.log("toggleSnippetPublishSync: checkbox", checkbox, "enabled", enabled);
         }
     }
 
@@ -6138,7 +6138,7 @@ export default class PluginSnippets extends Plugin {
                 this.toggleSnippetSync(data);
                 break;
             case "snippet_toggle_publish":
-                this.toggleSinppetPublishSync(data);
+                this.toggleSnippetPublishSync(data);
                 break;
             case "snippet_toggle_global":
                 this.globalToggleSnippetSync(data);
