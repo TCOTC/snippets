@@ -59,6 +59,7 @@ const TEMP_EXPORT_PATH = "/temp/export/";          // 导入导出临时文件�
 const BROADCAST_CHANNEL_NAME = "snippets-plugin-sync"; // 广播通道名称
 // const TAB_TYPE = "custom-tab"; // 自定义标签页
 
+// noinspection JSUnusedGlobalSymbols
 export default class PluginSnippets extends Plugin {
     // private custom: () => Custom; // 自定义标签页
 
@@ -189,9 +190,9 @@ export default class PluginSnippets extends Plugin {
     }
 
     // 顶栏按钮点击回调：打开代码片段管理器
-    private openSnippetsManager = () => {
+    private openSnippetsManager = async () => {
         if (this.getAllModalDialogElements().length > 0) return;
-        this.openMenu();
+        await this.openMenu();
     };
 
     /**
@@ -227,7 +228,7 @@ export default class PluginSnippets extends Plugin {
                 </symbol>
             `);
 
-            this.topBarInit();
+            this.topBarInit().then();
 
             // 注册快捷键（都默认置空）
             this.addCommand({
@@ -270,7 +271,7 @@ export default class PluginSnippets extends Plugin {
         }
 
         // 初始化 Broadcast Channel 用于跨窗口通信（需要等插件设置加载完成）
-        this.initBroadcastChannel();
+        await this.initBroadcastChannel();
     }
 
     /**
@@ -734,7 +735,7 @@ export default class PluginSnippets extends Plugin {
         }
 
         // 读取配置或者设置默认值
-        this.loadConfig(config);
+        await this.loadConfig(config);
 
         // 为每个配置项动态生成 getter/setter
         this.configItems.forEach(item => {
@@ -796,7 +797,7 @@ export default class PluginSnippets extends Plugin {
 
             if ((window.siyuan.jcsm as any)[item.key] !== newValue) {
                 (window.siyuan.jcsm as any)[item.key] = newValue;
-                this.applySetting(item.key, newValue);
+                this.applySetting(item.key, newValue).then();
             }
         });
 
@@ -1833,7 +1834,8 @@ export default class PluginSnippets extends Plugin {
         const filteredSnippets = this.snippetsList.filter((snippet: Snippet) => snippet.type === this.snippetsType && snippet.enabled === true);
         filteredSnippets.forEach((snippet: Snippet) => {
             // enabled 为 true 时，snippet.enabled 也一定为 true
-            this.updateSnippetElement(snippet, enabled);
+            // updateSnippetElement 几乎不会抛出错误，但我们仍需要处理返回的 Promise 以满足 ESLint 要求
+            this.updateSnippetElement(snippet, enabled).then();
         });
 
         let previewingSnippetIds: string[] = [];
@@ -3118,7 +3120,7 @@ export default class PluginSnippets extends Plugin {
      * 处理代码片段元素更新同步
      * @param data 同步数据，包含 snippet 和 previewState
      */
-    private updateSnippetElementSync(data: { snippet: Snippet; previewState?: boolean }) {
+    private async updateSnippetElementSync(data: { snippet: Snippet; previewState?: boolean }) {
         const { snippet, previewState } = data;
         if (!snippet) {
             this.console.error("updateSnippetElementSync: snippet is required");
@@ -3126,7 +3128,7 @@ export default class PluginSnippets extends Plugin {
         }
 
         // 调用原有的 updateSnippetElement 方法更新元素
-        this.updateSnippetElement(snippet, undefined, previewState);
+        await this.updateSnippetElement(snippet, undefined, previewState);
         this.console.log("updateSnippetElementSync: updated snippet element for", snippet.id);
     }
 
@@ -4436,6 +4438,7 @@ export default class PluginSnippets extends Plugin {
         if (hotkey.indexOf("⌥") > -1) keys.push(KEY_MAP.get("⌥"));
 
         // 不能去最后一个，需匹配 F2
+        // noinspection RegExpSingleCharAlternation
         const lastKey = hotkey.replace(/⌘|⇧|⌥|⌃/g, "");
         if (lastKey) {
             keys.push(KEY_MAP.get(lastKey) || lastKey);
@@ -4464,8 +4467,6 @@ export default class PluginSnippets extends Plugin {
      * 控制台调试输出
      */
     private console = (() => {
-        // 是否输出日志编号与调用栈
-        // const enableLogNumberAndCallStack = true;
         // 日志编号计数器，从 1 开始
         let logCounter = 1;
 
@@ -4480,19 +4481,14 @@ export default class PluginSnippets extends Plugin {
 
         /**
          * 通用日志输出方法，简化重复代码
-         * @param type 日志类型（log/warn/error）
          * @param label 日志标签
          * @param args 日志内容
          */
-        const output = (type: "log" | "warn" | "error", label: string, args: any[]) => {
-            // if (enableLogNumberAndCallStack) {
-                const logNumber = getLogNumber();
-                console.groupCollapsed(`[${logNumber}] ${label}:`, ...args); // 使用 console.groupCollapsed 创建可折叠的日志组，保持源代码可点击性
-                console.trace("Call Stack:"); // 使用 console.trace 输出可点击的调用栈
-                console.groupEnd();
-            // } else {
-                // console[type](...args);
-            // }
+        const output = (label: string, args: any[]) => {
+            const logNumber = getLogNumber();
+            console.groupCollapsed(`[${logNumber}] ${label}:`, ...args); // 使用 console.groupCollapsed 创建可折叠的日志组，保持源代码可点击性
+            console.trace("Call Stack:"); // 使用 console.trace 输出可点击的调用栈
+            console.groupEnd();
         };
 
         return {
@@ -4502,21 +4498,21 @@ export default class PluginSnippets extends Plugin {
              */
             log: (...args: any[]) => {
                 if (!this.consoleDebug) return;
-                output("log", "Log", args);
+                output("Log", args);
             },
             /**
              * 输出警告日志
              * @param args 日志内容
              */
             warn: (...args: any[]) => {
-                output("warn", "Warning", args);
+                output("Warning", args);
             },
             /**
              * 输出错误日志
              * @param args 日志内容
              */
             error: (...args: any[]) => {
-                output("error", "Error", args);
+                output("Error", args);
             }
         };
     })();
@@ -5791,6 +5787,11 @@ export default class PluginSnippets extends Plugin {
             return false;
         }
 
+        // noinspection RedundantIfStatementJS
+        if (snippet.disabledInPublish && typeof snippet.disabledInPublish !== "boolean") {
+            return false;
+        }
+
         return true;
     }
 
@@ -6037,7 +6038,9 @@ export default class PluginSnippets extends Plugin {
         this.clearReconnectTimer();
         this.reconnectTimer = window.setTimeout(() => {
             this.console.log("Attempting to reconnect to broadcast channel...");
-            this.subscribeToBroadcastChannel();
+            this.subscribeToBroadcastChannel().catch(error => {
+                this.console.error("Failed to reconnect to broadcast channel:", error);
+            });
         }, this.reconnectInterval);
     }
 
@@ -6105,7 +6108,7 @@ export default class PluginSnippets extends Plugin {
      * 处理来自其他窗口的广播消息
      * @param data 消息数据
      */
-    private handleBroadcastMessage(data: any) {
+    private async handleBroadcastMessage(data: any) {
         this.console.log("Received broadcast message:", data);
         
         // 忽略来自当前窗口的消息
@@ -6135,28 +6138,28 @@ export default class PluginSnippets extends Plugin {
                 this.handleWindowOffline(data.windowId);
                 break;
             case "snippet_toggle":
-                this.toggleSnippetSync(data);
+                await this.toggleSnippetSync(data);
                 break;
             case "snippet_toggle_publish":
-                this.toggleSnippetPublishSync(data);
+                await this.toggleSnippetPublishSync(data);
                 break;
             case "snippet_toggle_global":
-                this.globalToggleSnippetSync(data);
+                await this.globalToggleSnippetSync(data);
                 break;
             case "snippet_save":
-                this.saveSnippetSync(data);
+                await this.saveSnippetSync(data);
                 break;
             case "snippet_delete":
-                this.deleteSnippetSync(data);
+                await this.deleteSnippetSync(data);
                 break;
             case "snippet_element_update":
-                this.updateSnippetElementSync(data);
+                await this.updateSnippetElementSync(data);
                 break;
             case "snippets_sort":
-                this.snippetsSortSync();
+                await this.snippetsSortSync();
                 break;
             case "setting_apply":
-                this.applySettingSync(data);
+                await this.applySettingSync(data);
                 break;
             default:
                 this.console.log("Unknown broadcast message type:", data.type);
