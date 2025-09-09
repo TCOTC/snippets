@@ -1,4 +1,4 @@
-// TODO: https://github.com/siyuan-note/siyuan/issues/15484 实现之后移除该模块，桌面端导出用 window.open(uri) 即可
+// TODO跟进: https://github.com/siyuan-note/siyuan/issues/15484 实现之后移除该模块，桌面端导出用 window.open(uri) 即可
 
 export const isInAndroid = () => {
   return window.siyuan.config.system.container === "android" && window.JSAndroid;
