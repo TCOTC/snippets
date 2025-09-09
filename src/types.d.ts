@@ -98,6 +98,7 @@ interface Snippet {
     content: string;
     type: "css" | "js";
     enabled: boolean;
+    disabledInPublish?: boolean | undefined;
 }
 
 // 扩展 Setting 类
@@ -106,11 +107,11 @@ declare module "siyuan" {
         items: SettingItem[];
 
         addItem(options: {
-            title?: string,
-            direction?: "column" | "row"
-            description?: string,
-            actionElement?: HTMLElement,
-            createActionElement?(): HTMLElement,
+            title?: string;
+            direction?: "column" | "row";
+            description?: string;
+            actionElement?: HTMLElement;
+            createActionElement?(): HTMLElement;
         }): void;
     }
 }

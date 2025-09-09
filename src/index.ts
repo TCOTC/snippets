@@ -80,15 +80,31 @@ export default class PluginSnippets extends Plugin {
     set isTouchDevice(value: boolean) { window.siyuan.jcsm.isTouchDevice = value; }
 
     /**
+     * 是否为发布服务
+     */
+    private isPublish(): boolean { return window.siyuan.config.publish.enable; }
+
+    /**
      * 顶栏按钮元素
      */
     private topBarElement: HTMLElement;
 
     /**
+     * 是否达到 3.3.0 版本
+     */
+    private isVersionReach_3_3_0: boolean;
+
+    /**
+     * 是否达到 3.3.2 版本
+     */
+    private isVersionReach_3_3_2: boolean;
+
+    /**
      * 启用插件（进行各种初始化）
      */
     public async onload() {
-        if (!isVersionReach("3.3.0")) {
+        this.isVersionReach_3_3_0 = isVersionReach("3.3.0");
+        if (!this.isVersionReach_3_3_0) {
             // 初始化 window.siyuan.jcsm
             window.siyuan.jcsm ??= {}; // ??= 逻辑空赋值运算符 https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing_assignment
     
@@ -182,7 +198,10 @@ export default class PluginSnippets extends Plugin {
      * 布局加载完成
      */
     public async onLayoutReady() {
-        if (isVersionReach("3.3.0")) {
+        if (this.isVersionReach_3_3_0 === undefined) {
+            this.isVersionReach_3_3_0 = isVersionReach("3.3.0");
+        }
+        if (this.isVersionReach_3_3_0) {
             // 初始化 window.siyuan.jcsm
             window.siyuan.jcsm ??= {}; // ??= 逻辑空赋值运算符 https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing_assignment
     
@@ -360,27 +379,43 @@ export default class PluginSnippets extends Plugin {
     /**
      * 配置项定义
      */
-    private get configItems() {
-        const configItems: Array<{
-            key: string;
-            description?: string;
-            type?: "boolean" | "string" | "number" | "selectString" | "selectNumber" | "createActionElement";
-            defaultValue?: any;
-            direction?: "row" | "column";
-            createActionElement?: () => HTMLElement;
-            options?: Array<{ value: string | number; text: string }>;
-        }> = [];
+    private configItems: Array<{
+        key: string;
+        description?: string;
+        type?: "boolean" | "string" | "number" | "selectString" | "selectNumber" | "createActionElement";
+        defaultValue?: any;
+        direction?: "row" | "column";
+        createActionElement?: () => HTMLElement;
+        options?: Array<{ value: string | number; text: string }>;
+        ignore?: boolean;
+    }> = [];
 
-        if (!this.isMobile) {
-            configItems.push({
+    /**
+     * 初始化配置项
+     */
+    private async initConfigItems() {
+        // 注意在这里面不能用 this.console 之类的方法，因为它们需要先加载完插件配置才能用
+        this.isVersionReach_3_3_2 = isVersionReach("3.3.2");
+
+        this.configItems.push(
+            {
+                key: "openNativeSnippets",
+                description: "openNativeSnippetsDescription",
+                type: "createActionElement",
+                createActionElement: () => {
+                    return this.htmlToElement(
+                        `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="settingsSnippets"><svg><use xlink:href="#iconJcsm"></use></svg>${this.i18n.openNativeSnippetsWindow}</span>`
+                    );
+                },
+                ignore: this.isMobile,
+            },
+            {
                 key: "multipleSnippetEditors",
                 description: "multipleSnippetEditorsDescription",
                 type: "boolean",
                 defaultValue: true,
-            });
-        }
-
-        configItems.push(
+                ignore: this.isMobile,
+            },
             {
                 key: "realTimePreview",
                 description: "realTimePreviewDescription",
@@ -415,6 +450,18 @@ export default class PluginSnippets extends Plugin {
                 description: "showEditButtonDescription",
                 type: "boolean",
                 defaultValue: true,
+            },
+            {
+                key: "showPublishCheckbox",
+                description: "showPublishCheckboxDescription",
+                type: "selectNumber",
+                defaultValue: 0,
+                options: [
+                    { value: 0, text: "showPublishCheckboxWithPublish" },
+                    { value: 1, text: "showPublishCheckboxShowAlways" },
+                    { value: 2, text: "showPublishCheckboxHideAlways" }
+                ],
+                ignore: !this.isVersionReach_3_3_2,
             },
             {
                 key: "snippetOptionClickBehavior",
@@ -498,42 +545,19 @@ export default class PluginSnippets extends Plugin {
                 description: "fileWatchIntervalDescription",
                 type: "number",
                 defaultValue: 5,
-            }
-        );
-
-        if (!this.isMobile && isVersionReach("3.3.0")) {
-            configItems.push(
-                {
-                    key: "topBarPosition",
-                    description: "topBarPositionDescription",
-                    type: "selectString",
-                    defaultValue: "right",
-                    options: [
-                        { value: "left", text: "topBarPositionLeft" },
-                        { value: "right", text: "topBarPositionRight" }
-                    ],
-                }
-            );
-        }
-
-        if (!this.isMobile) {
-            configItems.push(
-                {
-                    key: "openNativeSnippets",
-                    description: "openNativeSnippetsDescription",
-                    type: "createActionElement",
-                    createActionElement: () => {
-                        return this.htmlToElement(
-                            `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="settingsSnippets"><svg><use xlink:href="#iconJcsm"></use></svg>${this.i18n.openNativeSnippetsWindow}</span>`
-                        );
-                    },
-                }
-            );
-        }
-
-        if (!this.isMobile && !this.isTouchDevice) {
-            // 等实现 https://github.com/siyuan-note/siyuan/issues/15484 之后，通过 API 获取思源版本来判断是否支持，然后添加配置项
-            configItems.push({
+            },
+            {
+                key: "topBarPosition",
+                description: "topBarPositionDescription",
+                type: "selectString",
+                defaultValue: "right",
+                options: [
+                    { value: "left", text: "topBarPositionLeft" },
+                    { value: "right", text: "topBarPositionRight" }
+                ],
+                ignore: this.isMobile || !this.isVersionReach_3_3_0,
+            },
+            {
                 key: "exportSnippets",
                 description: "exportSnippetsDescription",
                 type: "createActionElement",
@@ -542,10 +566,8 @@ export default class PluginSnippets extends Plugin {
                         `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="exportSnippets"><svg><use xlink:href="#iconUpload"></use></svg>${this.i18n.export}</span>`
                     );
                 },
-            });
-        }
-
-        configItems.push(
+                ignore: this.isMobile || this.isTouchDevice, // TODO功能: 等实现 https://github.com/siyuan-note/siyuan/issues/15484 之后，通过思源版本来判断是否在移动端忽略
+            },
             {
                 key: "importSnippetsWithAppend",
                 description: "importSnippetsWithAppendDescription",
@@ -595,8 +617,6 @@ export default class PluginSnippets extends Plugin {
                 defaultValue: true,
             }
         );
-
-        return configItems;
     }
 
     /**
@@ -623,7 +643,8 @@ export default class PluginSnippets extends Plugin {
      * 加载配置或者设置默认值
      * @param config 配置
      */
-    private loadConfig(config: any) {
+    private async loadConfig(config: any) {
+        await this.initConfigItems();
         this.configItems.forEach(item => {
             // 使用全局变量存储配置
             (window.siyuan.jcsm as any)[item.key] = config[item.key] ?? item.defaultValue;
@@ -686,17 +707,6 @@ export default class PluginSnippets extends Plugin {
      * 初始化插件设置
      */
     private async initSetting() {
-
-        // 为每个配置项动态生成 getter/setter
-        this.configItems.forEach(item => {
-            Object.defineProperty(this, item.key, {
-                get: () => this.createConfigGetter(item.key)(),
-                set: (value: any) => this.createConfigSetter(item.key)(value),
-                enumerable: true,
-                configurable: true
-            });
-        });
-
         // 加载配置文件数据
         // TODO测试: 需要测试会不会在同步完成之前加载数据，然后同步修改数据之后插件没有重载。如果有这种情况的话提 issue、试试把 loadData() 和 this.setting 相关的逻辑放在 onLayoutReady 中有没有问题
         await this.loadData(STORAGE_NAME);
@@ -726,10 +736,21 @@ export default class PluginSnippets extends Plugin {
         // 读取配置或者设置默认值
         this.loadConfig(config);
 
+        // 为每个配置项动态生成 getter/setter
+        this.configItems.forEach(item => {
+            Object.defineProperty(this, item.key, {
+                get: () => this.createConfigGetter(item.key)(),
+                set: (value: any) => this.createConfigSetter(item.key)(value),
+                enumerable: true,
+                configurable: true
+            });
+        });
+
         this.setting = new Setting({});
 
         // 插件设置窗口中的各个配置项
         this.configItems.forEach(item => {
+            if (item.ignore) return;
             this.setting.addItem(this.createSettingItem(item));
         });
     }
@@ -862,6 +883,19 @@ export default class PluginSnippets extends Plugin {
                 break;
 
             // selectString || selectNumber
+            case "showPublishCheckbox":
+                // 修改菜单、代码片段编辑对话框
+                const publishSwitchInputs = document.querySelectorAll(".jcsm-snippets-container .jcsm-snippet-item input[data-type='publishSwitch'], .b3-dialog--open[data-key='jcsm-snippet-dialog'] input[data-type='publishSwitch']");
+                if (this.isShowPublishCheckbox()) {
+                    publishSwitchInputs.forEach(input => {
+                        input.classList.remove("fn__none");
+                    });
+                } else {
+                    publishSwitchInputs.forEach(input => {
+                        input.classList.add("fn__none");
+                    });
+                }
+                break;
             case "snippetSearchType":
                 // 修改代码片段搜索类型后，隐藏或显示搜索按钮（和搜索输入框）
                 if (newValue === 0) {
@@ -902,7 +936,7 @@ export default class PluginSnippets extends Plugin {
                 }
                 break;
             case "topBarPosition":
-                if (!isVersionReach("3.3.0")) return;
+                if (!this.isVersionReach_3_3_0) return;
                 // 修改顶栏按钮位置后，移除并重新添加顶栏按钮、重新设置菜单位置
                 this.topBarElement?.remove();
                 await this.topBarInit();
@@ -965,12 +999,12 @@ export default class PluginSnippets extends Plugin {
         const dialog = new Dialog({
             title: this.displayName,
             content: `
-                <div class="b3-dialog__content"></div>
-                <div class="b3-dialog__action">
-                    <button class="b3-button b3-button--cancel" data-type="cancel">${this.i18n.cancel}</button>
-                    <div class="fn__space"></div>
-                    <button class="b3-button b3-button--text" data-type="confirm">${this.i18n.save}</button>
-                </div>
+<div class="b3-dialog__content"></div>
+<div class="b3-dialog__action">
+    <button class="b3-button b3-button--cancel" data-type="cancel">${this.i18n.cancel}</button>
+    <div class="fn__space"></div>
+    <button class="b3-button b3-button--text" data-type="confirm">${this.i18n.save}</button>
+</div>
             `,
             width: this.isMobile ? "92vw" : "768px",
             height: "80vh",
@@ -990,23 +1024,23 @@ export default class PluginSnippets extends Plugin {
             }
             if (item.direction === "row") {
                 html = `
-                    <${tagName} class="b3-label">
-                        <div class="fn__block">
-                            ${item.title ?? ""}
-                            ${item.description ? `<div class="b3-label__text">${item.description}</div>` : ""}
-                            <div class="fn__hr"></div>
-                        </div>
-                    </${tagName}>
+<${tagName} class="b3-label">
+    <div class="fn__block">
+        ${item.title ?? ""}
+        ${item.description ? `<div class="b3-label__text">${item.description}</div>` : ""}
+        <div class="fn__hr"></div>
+    </div>
+</${tagName}>
                 `;
             } else {
                 html = `
-                    <${tagName} class="fn__flex b3-label config__item">
-                        <div class="fn__flex-1">
-                            ${item.title ?? ""}
-                            ${item.description ? `<div class="b3-label__text">${item.description}</div>` : ""}
-                        </div>
-                        ${actionElement ? "<span class='fn__space'></span>" : ""}
-                    </${tagName}>
+<${tagName} class="fn__flex b3-label config__item">
+    <div class="fn__flex-1">
+        ${item.title ?? ""}
+        ${item.description ? `<div class="b3-label__text">${item.description}</div>` : ""}
+    </div>
+    ${actionElement ? "<span class='fn__space'></span>" : ""}
+</${tagName}>
                 `;
             }
             contentElement.insertAdjacentHTML("beforeend", html);
@@ -1125,7 +1159,7 @@ export default class PluginSnippets extends Plugin {
                         void this.importSnippets(true);
                     }
                 }
-                // TODO功能: 需要测试移动端是否能导出导入
+                // TODO功能: 移动端的导出导入
             }
         };
 
@@ -1155,11 +1189,6 @@ export default class PluginSnippets extends Plugin {
      */
     private menuItems: HTMLElement;
 
-    // TODO功能: 菜单项支持拖拽排序（参考原生大纲拖拽实现 app/src/layout/dock/Outline.ts Outline.bindSort 方法）
-    // 支持设置排序方式：固定排序（拖拽排序）、已开启优先、未开启优先
-    // - [ ] 固定排序方式下再支持拖拽菜单选项调整排序（需要先验证一下 API 会不会按自己的逻辑重置顺序、验证一下用内置的代码片段窗口修改代码片段再保存之后会不会把排序重置）
-    // - [ ] 优先排序方式下仅在生成菜单的时候排序，使用菜单的过程中不会再次排序
-
     /**
      * 打开顶栏菜单
      */
@@ -1180,6 +1209,7 @@ export default class PluginSnippets extends Plugin {
         }
 
         // 获取代码片段列表
+        this.console.log("openMenu: 获取代码片段列表");
         const snippetsList = await this.getSnippetsList();
         if (snippetsList) {
             this.snippetsList = snippetsList;
@@ -1195,27 +1225,29 @@ export default class PluginSnippets extends Plugin {
         menuTop.className = "jcsm-top-container fn__flex";
         // 选项卡的实现参考：https://codepen.io/havardob/pen/ExVaELV
         menuTop.innerHTML = `
-            <div class="jcsm-tabs">
-                <input type="radio" id="jcsm-radio-css" data-snippet-type="css" name="jcsm-tabs"/>
-                <label class="jcsm-tab" for="jcsm-radio-css">
-                    <span class="jcsm-tab-text">CSS</span>
-                    <span class="jcsm-tab-count jcsm-tab-count-css">0</span>
-                </label>
-                <input type="radio" id="jcsm-radio-js" data-snippet-type="js" name="jcsm-tabs"/>
-                <label class="jcsm-tab" for="jcsm-radio-js">
-                    <span class="jcsm-tab-text" style="padding-left: .2em;">JS</span>
-                    <span class="jcsm-tab-count jcsm-tab-count-js">0</span>
-                </label>
-                <span class="jcsm-glider"></span>
-            </div>
-            <span class="fn__flex-1"></span>
-            <button class="block__icon block__icon--show fn__flex-center ariaLabel${this.snippetSearchType === 0 ? " fn__none" : ""}" data-type="search" data-position="north" aria-label="${this.i18n.search}"><svg><use xlink:href="#iconSearch"></use></svg></button>
-            <button class="block__icon block__icon--show fn__flex-center ariaLabel" data-type="config" data-position="north"><svg><use xlink:href="#iconSettings"></use></svg></button>
-            <button class="block__icon block__icon--show fn__flex-center ariaLabel${this.isReloadUIRequired ? " jcsm-breathing" : ""}" data-type="reload" data-position="north"><svg><use xlink:href="#iconRefresh"></use></svg></button>
-            <button class="block__icon block__icon--show fn__flex-center ariaLabel" data-type="new" data-position="north"><svg><use xlink:href="#iconAdd"></use></svg></button>
-            <span class="fn__space"></span>
-            <input class="jcsm-switch jcsm-all-snippets-switch b3-switch fn__flex-center" type="checkbox">
+<div class="jcsm-tabs">
+    <input type="radio" id="jcsm-radio-css" data-snippet-type="css" name="jcsm-tabs"/>
+    <label class="jcsm-tab" for="jcsm-radio-css">
+        <span class="jcsm-tab-text">CSS</span>
+        <span class="jcsm-tab-count jcsm-tab-count-css">0</span>
+    </label>
+    <input type="radio" id="jcsm-radio-js" data-snippet-type="js" name="jcsm-tabs"/>
+    <label class="jcsm-tab" for="jcsm-radio-js">
+        <span class="jcsm-tab-text" style="padding-left: .2em;">JS</span>
+        <span class="jcsm-tab-count jcsm-tab-count-js">0</span>
+    </label>
+    <span class="jcsm-glider"></span>
+</div>
+<span class="fn__flex-1"></span>
+<button class="block__icon block__icon--show fn__flex-center ariaLabel${this.snippetSearchType === 0 ? " fn__none" : ""}" data-type="search" data-position="north" aria-label="${this.i18n.search}"><svg><use xlink:href="#iconSearch"></use></svg></button>
+<button class="block__icon block__icon--show fn__flex-center ariaLabel" data-type="config" data-position="north"><svg><use xlink:href="#iconSettings"></use></svg></button>
+<button class="block__icon block__icon--show fn__flex-center ariaLabel${this.isReloadUIRequired ? " jcsm-breathing" : ""}" data-type="reload" data-position="north"><svg><use xlink:href="#iconRefresh"></use></svg></button>
+<button class="block__icon block__icon--show fn__flex-center ariaLabel" data-type="new" data-position="north"><svg><use xlink:href="#iconAdd"></use></svg></button>
+<span class="fn__space"></span>
+<input class="jcsm-switch jcsm-all-snippets-switch b3-switch fn__flex-center" type="checkbox">
         `;
+
+        // TODO功能: 加一个全局的 publishSwitch 开关，批量修改代码片段的 disabledInPublish 字段
 
         const radio = menuTop.querySelector(`[data-snippet-type="${this.snippetsType}"]`) as HTMLInputElement;
         radio.checked = true;
@@ -1551,9 +1583,7 @@ export default class PluginSnippets extends Plugin {
 
             // 点击顶部的按钮
             if (tagName === "button") {
-                const button = target as HTMLButtonElement;
-                const type = button.dataset.type;
-    
+                const type = target.dataset.type;
                 if (type === "search") {
                     // 显示或隐藏搜索输入框
                     const searchInput = this.menuItems.querySelector("input[data-action='search']") as HTMLInputElement;
@@ -1624,41 +1654,48 @@ export default class PluginSnippets extends Plugin {
                     // 点击到不知道哪里的按钮，显示错误信息
                     this.showErrorMessage(this.i18n.unknownButtonType);
                 }
-            } else {
-                // 点击非按钮的部分
-                const type = snippetMenuItem.dataset.type;
-                if (type === "new") {
-                    // 新建代码片段
-                    this.createSnippet();
-                } else {
-                    // 点击代码片段的菜单项
-                    const checkBox = snippetMenuItem.querySelector("input") as HTMLInputElement;
-                    const isCheckBox = target === checkBox;
-                    if (isCheckBox || (!isCheckBox && this.snippetOptionClickBehavior === 1)) {
-                        // 切换代码片段的开关状态
-                        if (!isCheckBox) checkBox.checked = !checkBox.checked; // 如果点击的不是 checkBox 就手工切换开关状态
-                        const snippet = await this.getSnippetById(snippetMenuItem.dataset.id);
-                        if (snippet) {
-                            this.toggleSnippet(snippet, checkBox.checked);
-                        }
-                        if (this.isMobile) {
-                            // 移动端点击之后一直高亮着选项不好看，所以清除选中状态
-                            this.clearMenuSelection();
-                        }
-                    } else if (this.snippetOptionClickBehavior === 2) {
-                        // 打开代码片段编辑器
-                        const snippet = await this.getSnippetById(snippetMenuItem.dataset.id);
-                        if (snippet === undefined) {
-                            // undefined 是数组中没有
-                            this.showErrorMessage(this.i18n.getSnippetFailed);
-                            return;
-                        } else if (snippet === false) {
-                            // false 是调用 API 返回错误
-                            return;
-                        }
-                        void this.openSnippetEditDialog(snippet);
+            } else if (tagName === "input") {
+                // 点击开关
+                const type = target.dataset.type;
+                if (type === "snippetSwitch") {
+                    const snippet = await this.getSnippetById(snippetMenuItem.dataset.id);
+                    if (snippet) {
+                        this.toggleSnippet(snippet, (target as HTMLInputElement).checked);
+                    }
+                } else if (type === "publishSwitch") {
+                    const snippet = await this.getSnippetById(snippetMenuItem.dataset.id);
+                    if (snippet) {
+                        this.toggleSinppetPublish(snippet, !(target as HTMLInputElement).checked);
                     }
                 }
+            } else {
+                // 点击代码片段的菜单项
+                if (this.snippetOptionClickBehavior === 1) {
+                    // 切换代码片段的开关状态
+                    const snippetSwitchCheckBox = snippetMenuItem.querySelector("input[data-type='snippetSwitch']") as HTMLInputElement;
+                    snippetSwitchCheckBox.checked = !snippetSwitchCheckBox.checked;
+                    const snippet = await this.getSnippetById(snippetMenuItem.dataset.id);
+                    if (snippet) {
+                        this.toggleSnippet(snippet, snippetSwitchCheckBox.checked);
+                    }
+                } else if (this.snippetOptionClickBehavior === 2) {
+                    // 打开代码片段编辑器
+                    const snippet = await this.getSnippetById(snippetMenuItem.dataset.id);
+                    if (snippet === undefined) {
+                        // undefined 是数组中没有
+                        this.showErrorMessage(this.i18n.getSnippetFailed);
+                        return;
+                    } else if (snippet === false) {
+                        // false 是调用 API 返回错误
+                        return;
+                    }
+                    void this.openSnippetEditDialog(snippet);
+                }
+            }
+
+            if (this.isMobile) {
+                // 移动端点击之后一直高亮着选项不好看，所以清除选中状态
+                this.clearMenuSelection();
             }
         }
     };
@@ -1700,14 +1737,75 @@ export default class PluginSnippets extends Plugin {
             snippet.enabled = enabled;
             // 更新代码片段元素
             await this.updateSnippetElement(snippet);
-            
+
             // 更新菜单中的开关状态（如果菜单已打开）
             if (!this.menuItems) return;
-            const checkbox = this.menuItems.querySelector(`.jcsm-snippet-item[data-id="${snippetId}"] input[type="checkbox"]`) as HTMLInputElement;
+            const checkbox = this.menuItems.querySelector(`.jcsm-snippet-item[data-id="${snippetId}"] input[data-type='snippetSwitch']`) as HTMLInputElement;
             checkbox && (checkbox.checked = enabled);
             this.console.log('toggleSnippetSync: checkbox', checkbox, "enabled", enabled);
         } else {
-            this.console.error('Snippet not found:', snippetId);
+            this.console.error('toggleSnippetSync: Snippet not found:', snippetId);
+        }
+    }
+
+    /**
+     * 切换代码片段的发布服务开关状态
+     * @param snippet 代码片段
+     * @param enabled 是否启用
+     */
+    private toggleSinppetPublish(snippet: Snippet, enabled: boolean) {
+        snippet.disabledInPublish = enabled;
+        void this.saveSnippetsList(this.snippetsList);
+        // void this.updateSnippetElement(snippet); // 发布服务开关状态变更不需要更新元素
+
+        this.broadcastMessage('snippet_toggle_publish', {
+            snippetId: snippet.id,
+            enabled: snippet.disabledInPublish,
+        });
+    }
+
+    /**
+     * 处理代码片段的发布服务开关状态同步
+     * @param data 消息数据
+     */
+    private async toggleSinppetPublishSync(data: any) {
+        const { snippetId, enabled } = data;
+        this.console.log('toggleSinppetPublishSync:', { snippetId, enabled });
+
+        if (this.isPublish()) {
+            // TODO功能: 支持在发布服务启用插件 https://github.com/TCOTC/snippets/issues/33
+            if (enabled) {
+                // 添加 snippet
+                const snippet = await this.getSnippetById(snippetId);
+                if (snippet) {
+                    await this.updateSnippetElement(snippet); // 通过 updateSnippetElement 来判断是否需要添加元素
+                }
+            } else {
+                // 移除 snippet
+                const snippet = this.snippetsList.find((snippet: Snippet) => snippet.id === snippetId);
+                if (snippet) {
+                    await this.updateSnippetElement(snippet, false); // 必须移除元素
+                    this.snippetsList = this.snippetsList.filter((snippet: Snippet) => snippet.id !== snippetId);
+                }
+            }
+        } else {
+             // 在非发布服务窗口，发布服务开关状态变更不需要更新元素，所以不优先获取最新的代码片段
+            let snippet: Snippet | undefined | false = this.snippetsList.find((snippet: Snippet) => snippet.id === snippetId);
+            if (!snippet) {
+                snippet = await this.getSnippetById(snippetId);
+                await this.updateSnippetElement(snippet);
+            }
+            if (snippet) {
+                snippet.disabledInPublish = enabled;
+            } else {
+                this.console.error('toggleSinppetPublishSync: Snippet not found:', snippetId);
+            }
+
+            // 更新菜单中的开关状态（如果菜单已打开）
+            if (!this.menuItems) return;
+            const checkbox = this.menuItems.querySelector(`.jcsm-snippet-item[data-id="${snippetId}"] input[data-type='publishSwitch']`) as HTMLInputElement;
+            checkbox && (checkbox.checked = enabled);
+            this.console.log('toggleSinppetPublishSync: checkbox', checkbox, "enabled", enabled);
         }
     }
 
@@ -2342,6 +2440,18 @@ export default class PluginSnippets extends Plugin {
     declare showEditButton: boolean;
 
     /**
+     * 是否显示发布服务开关
+     */
+    declare showPublishCheckbox: number;
+
+    /**
+     * 是否显示发布服务开关
+     */
+    private isShowPublishCheckbox() {
+        return this.isVersionReach_3_3_2 && (this.showPublishCheckbox === 0 ? window.siyuan.config.publish.enable === true : this.showPublishCheckbox === 1 ? true : false);
+    }
+
+    /**
      * 生成代码片段列表
      * @param snippetsList 代码片段列表
      * @returns 代码片段列表 HTML 字符串
@@ -2396,23 +2506,26 @@ export default class PluginSnippets extends Plugin {
         }
 
         const isTouch = this.isMobile || this.isTouchDevice;
+        const showPublishCheckbox = this.isShowPublishCheckbox();
         let snippetsHtml = "";
         
         snippetsList.forEach((snippet: Snippet) => {
             // 创建临时的 DOM 元素来安全地设置代码片段名称 https://github.com/TCOTC/snippets/issues/21
             const safeSnippetName = document.createElement("span");
             safeSnippetName.textContent = snippet.name || snippet.content.slice(0, 200);
-            
+
             snippetsHtml += `
-                <div class="jcsm-snippet-item b3-menu__item" data-type="${snippet.type}" data-id="${snippet.id}">
-                    <span class="jcsm-snippet-name fn__flex-1" placeholder="${this.i18n.emptySnippet}">${safeSnippetName.innerHTML}</span>
-                    <span class="fn__space"></span>
-                    <button class="block__icon block__icon--show fn__flex-center${ isTouch ? " jcsm-touch" : ""}${this.showDeleteButton    ? "" : " fn__none"}" data-type="delete"><svg><use xlink:href="#iconTrashcan"></use></svg></button>
-                    <button class="block__icon block__icon--show fn__flex-center${ isTouch ? " jcsm-touch" : ""}${this.showDuplicateButton ? "" : " fn__none"}" data-type="duplicate"><svg><use xlink:href="#iconCopy"></use></svg></button>
-                    <button class="block__icon block__icon--show fn__flex-center${ isTouch ? " jcsm-touch" : ""}${this.showEditButton      ? "" : " fn__none"}" data-type="edit"><svg><use xlink:href="#iconEdit"></use></svg></button>
-                    <span class="fn__space"></span>
-                    <input class="jcsm-switch b3-switch fn__flex-center" type="checkbox"${snippet.enabled ? " checked" : ""}>
-                </div>
+<div class="jcsm-snippet-item b3-menu__item" data-type="${snippet.type}" data-id="${snippet.id}">
+    <span class="jcsm-snippet-name fn__flex-1" placeholder="${this.i18n.emptySnippet}">${safeSnippetName.innerHTML}</span>
+    <span class="fn__space"></span>
+    <button class="block__icon block__icon--show fn__flex-center${ isTouch ? " jcsm-touch" : ""}${this.showDeleteButton    ? "" : " fn__none"}" data-type="delete"><svg><use xlink:href="#iconTrashcan"></use></svg></button>
+    <button class="block__icon block__icon--show fn__flex-center${ isTouch ? " jcsm-touch" : ""}${this.showDuplicateButton ? "" : " fn__none"}" data-type="duplicate"><svg><use xlink:href="#iconCopy"></use></svg></button>
+    <button class="block__icon block__icon--show fn__flex-center${ isTouch ? " jcsm-touch" : ""}${this.showEditButton      ? "" : " fn__none"}" data-type="edit"><svg><use xlink:href="#iconEdit"></use></svg></button>
+    <span class="fn__space"></span>
+    <input data-type="publishSwitch" class="jcsm-switch b3-switch fn__flex-center ariaLabel${ showPublishCheckbox ? "" : " fn__none"}" aria-label="${this.i18n.snippetDisabledInPublish}" data-position="north" type="checkbox"${snippet.disabledInPublish ? "" : " checked"}>
+    <span class="fn__space"></span>
+    <input data-type="snippetSwitch" class="jcsm-switch b3-switch fn__flex-center" type="checkbox"${snippet.enabled ? " checked" : ""}>
+</div>
             `;
         });
         
@@ -2625,7 +2738,7 @@ export default class PluginSnippets extends Plugin {
                 // 如果存在，则更新该代码片段
                 // 比较对象属性值而不是对象引用
                 const nameChanged = oldSnippet.name !== snippet.name;
-                const contentOrEnabledChanged = oldSnippet.content !== snippet.content || oldSnippet.enabled !== snippet.enabled;
+                const contentOrEnabledChanged = oldSnippet.content !== snippet.content || oldSnippet.enabled !== snippet.enabled || oldSnippet.disabledInPublish !== snippet.disabledInPublish;
                 hasChanges = nameChanged || contentOrEnabledChanged;
                 if (hasChanges) {
                     this.snippetsList = this.snippetsList.map((s: Snippet) => s.id === snippet.id ? snippet : s);
@@ -2843,8 +2956,10 @@ export default class PluginSnippets extends Plugin {
                         // 更新菜单项
                         const nameElement = snippetMenuItem.querySelector(".jcsm-snippet-name") as HTMLElement;
                         if (nameElement) nameElement.textContent = snippet.name || snippet.content.slice(0, 200);
-                        const switchElement = snippetMenuItem.querySelector("input") as HTMLInputElement;
-                        if (switchElement) switchElement.checked = snippet.enabled;
+                        const publishSwitchElement = snippetMenuItem.querySelector("input[data-type='publishSwitch']") as HTMLInputElement;
+                        if (publishSwitchElement) publishSwitchElement.checked = !snippet.disabledInPublish;
+                        const snippetSwitchElement = snippetMenuItem.querySelector("input[data-type='snippetSwitch']") as HTMLInputElement;
+                        if (snippetSwitchElement) snippetSwitchElement.checked = snippet.enabled;
                     }
                 } else {
                     // 没有菜单项，在菜单项列表的顶部插入新的菜单项
@@ -2891,7 +3006,17 @@ export default class PluginSnippets extends Plugin {
             this.showErrorMessage(this.i18n.getSnippetsListFailed + " [" + response.msg + "]");
             return false;
         }
-        this.console.log("getSnippetsList", response.data.snippets);
+        const snippetsList = response.data.snippets as Snippet[];
+        if (!this.isVersionReach_3_3_2) {
+            snippetsList.forEach((snippet: Snippet) => {
+                if (snippet.disabledInPublish === undefined) {
+                    // v3.3.2 之后都有 disabledInPublish 属性，默认是 false
+                    // v3.3.2 之前都没有 disabledInPublish 属性，为了便于后续逻辑判断，需要默认设置为 false
+                    snippet.disabledInPublish = false;
+                }
+            });
+        }
+        this.console.log("getSnippetsList", snippetsList);
         return response.data.snippets as Snippet[];
     }
 
@@ -2922,7 +3047,7 @@ export default class PluginSnippets extends Plugin {
      * @param enabled 是否启用
      * @param previewState 为 true 时是预览操作；为 false 时是退出预览操作，需要恢复原始元素
      */
-    private async updateSnippetElement(snippet: Snippet, enabled?: boolean, previewState?: boolean) {
+    private async updateSnippetElement(snippet: Snippet | false, enabled?: boolean, previewState?: boolean) {
         if (!snippet) {
             this.showErrorMessage(this.i18n.updateSnippetElementParamError);
             return;
@@ -3070,32 +3195,35 @@ export default class PluginSnippets extends Plugin {
      * @returns 代码片段编辑对话框 HTML 字符串
      */
     private genSnippetEditDialog(snippet: Snippet, confirmText: string = this.i18n.save): string {
+        const showPublishCheckbox = this.isShowPublishCheckbox();
         // TODO功能: 在删除按钮左边加一个创建副本按钮（始终显示），点击之后创建副本（不直接保存，是新建的代码片段，需要手动点击保存按钮）并且打开编辑对话框
         return `
-            <div class="jcsm-dialog">
-                <div class="jcsm-dialog-header resize__move"></div>
-                <div class="jcsm-dialog-container">
-                    <div class="fn__flex">
-                        <input class="jcsm-dialog-name fn__flex-1 b3-text-field" spellcheck="false" placeholder="${this.i18n.title}">
-                        <div class="fn__space"></div>
-                        <button data-action="delete" class="block__icon block__icon--show ariaLabel fn__none" aria-label="${this.i18n.deleteSnippet}" data-position="north">
-                            <svg><use xlink:href="#iconTrashcan"></use></svg>
-                        </button>
-                        <div class="fn__space"></div>
-                        <input data-type="snippetSwitch" class="b3-switch fn__flex-center" type="checkbox"${snippet.enabled ? " checked" : ""}>
-                    </div>
-                    <div class="fn__hr"></div>
-                    <div class="jcsm-dialog-content"></div>
-                    <div class="fn__hr--b"></div>
-                </div>
-                <div class="b3-dialog__action">
-                    <button data-action="cancel" class="b3-button b3-button--cancel">${this.i18n.cancel}</button>
-                    <div class="fn__space"></div>
-                    <button data-action="preview" class="b3-button b3-button--text${snippet.type === "js" || this.realTimePreview ? " fn__none" : ""}">${this.i18n.preview}</button>
-                    <div class="fn__space"></div>
-                    <button data-action="confirm" class="b3-button b3-button--text">${confirmText}</button>
-                </div>
-            </div>
+<div class="jcsm-dialog">
+    <div class="jcsm-dialog-header resize__move"></div>
+    <div class="jcsm-dialog-container">
+        <div class="fn__flex">
+            <input class="jcsm-dialog-name fn__flex-1 b3-text-field" spellcheck="false" placeholder="${this.i18n.title}">
+            <div class="fn__space"></div>
+            <button data-action="delete" class="block__icon block__icon--show ariaLabel fn__none" aria-label="${this.i18n.deleteSnippet}" data-position="north">
+                <svg><use xlink:href="#iconTrashcan"></use></svg>
+            </button>
+            <div class="fn__space"></div>
+            <input data-type="publishSwitch" class="b3-switch fn__flex-center ariaLabel${ showPublishCheckbox ? "" : " fn__none"}" aria-label="${this.i18n.snippetDisabledInPublish}" data-position="north" type="checkbox"${snippet.disabledInPublish ? "" : " checked"}>
+            <div class="fn__space"></div>
+            <input data-type="snippetSwitch" class="b3-switch fn__flex-center" type="checkbox"${snippet.enabled ? " checked" : ""}>
+        </div>
+        <div class="fn__hr"></div>
+        <div class="jcsm-dialog-content"></div>
+        <div class="fn__hr--b"></div>
+    </div>
+    <div class="b3-dialog__action">
+        <button data-action="cancel" class="b3-button b3-button--cancel">${this.i18n.cancel}</button>
+        <div class="fn__space"></div>
+        <button data-action="preview" class="b3-button b3-button--text${snippet.type === "js" || this.realTimePreview ? " fn__none" : ""}">${this.i18n.preview}</button>
+        <div class="fn__space"></div>
+        <button data-action="confirm" class="b3-button b3-button--text">${confirmText}</button>
+    </div>
+</div>
         `;
     }
 
@@ -3487,7 +3615,8 @@ export default class PluginSnippets extends Plugin {
         const codeMirrorView = this.createCodeMirrorEditor(contentContainer, snippet.content, snippet.type);
         // codeMirrorView.contentDOM.focus();
         
-        const switchInput = dialog.element.querySelector("input[data-type='snippetSwitch']") as HTMLInputElement;
+        const publishSwitchInput = dialog.element.querySelector("input[data-type='publishSwitch']") as HTMLInputElement;
+        const snippetSwitchInput = dialog.element.querySelector("input[data-type='snippetSwitch']") as HTMLInputElement;
         // switchInput.checked = snippet.enabled; // genSnippetDialog 的时候已经添加了 enabled 属性，这里不需要重复设置
         
         // 取消编辑代码片段
@@ -3542,8 +3671,12 @@ export default class PluginSnippets extends Plugin {
             if (currentSnippet.content !== codeMirrorView.state.doc.toString()) {
                 changes.push(this.i18n.snippetContent);
             }
-            if (currentSnippet.enabled !== switchInput.checked) {
+            if (currentSnippet.enabled !== snippetSwitchInput.checked) {
                 changes.push(this.i18n.snippetEnabled);
+            }
+            if (currentSnippet.disabledInPublish !== !publishSwitchInput.checked) {
+                // 注意 !publishSwitchInput.checked 是取反的
+                changes.push(this.i18n.snippetDisabledInPublish);
             }
 
             if (changes.length > 0) {
@@ -3569,7 +3702,8 @@ export default class PluginSnippets extends Plugin {
                 id: snippet.id,
                 name: "",
                 type: "css",
-                enabled: switchInput.checked,
+                enabled: snippetSwitchInput.checked,
+                disabledInPublish: !publishSwitchInput.checked,
                 content: codeMirrorView.state.doc.toString(),
             };
 
@@ -3586,7 +3720,8 @@ export default class PluginSnippets extends Plugin {
         const saveHandler = async () => {
             snippet.name = nameElement.value;
             snippet.content = codeMirrorView.state.doc.toString();
-            snippet.enabled = switchInput.checked;
+            snippet.enabled = snippetSwitchInput.checked;
+            snippet.disabledInPublish = !publishSwitchInput.checked;
 
             // 要先关闭 Dialog，因为通过 saveSnippet 调用的 updateSnippetElement 会根据 Dialog 是否打开来决定是否需要更新代码片段元素
             this.closeDialogByElement(dialog.element);
@@ -3711,7 +3846,7 @@ export default class PluginSnippets extends Plugin {
             const target = event.target as HTMLElement;
             const tagName = target.tagName.toLowerCase();
             const isDispatch = typeof event.detail === "string";
-            if (tagName === "input" && target === switchInput) {
+            if (tagName === "input" && target === snippetSwitchInput) {
                 // 切换代码片段的开关状态
                 if (this.realTimePreview && snippet.type === "css") {
                     previewHandler();
@@ -3847,14 +3982,14 @@ export default class PluginSnippets extends Plugin {
         const dialog = new Dialog({
             title,
             content: `
-                <div class="b3-dialog__content">
-                    <div class="ft__breakword">${text}</div>
-                </div>
-                <div class="b3-dialog__action">
-                    <button class="b3-button b3-button--cancel" data-type="cancel">${ cancelText ?? this.i18n.cancel }</button>
-                    <div class="fn__space"></div>
-                    <button class="b3-button ${ redButton ? "b3-button--remove" : "b3-button--text"}" data-type="confirm">${ confirmText ?? this.i18n.confirm}</button>
-                </div>
+<div class="b3-dialog__content">
+    <div class="ft__breakword">${text}</div>
+</div>
+<div class="b3-dialog__action">
+    <button class="b3-button b3-button--cancel" data-type="cancel">${ cancelText ?? this.i18n.cancel }</button>
+    <div class="fn__space"></div>
+    <button class="b3-button ${ redButton ? "b3-button--remove" : "b3-button--text"}" data-type="confirm">${ confirmText ?? this.i18n.confirm}</button>
+</div>
             `,
             width: this.isMobile ? "92vw" : "520px",
         });
@@ -4333,7 +4468,7 @@ export default class PluginSnippets extends Plugin {
      */
     private console = (() => {
         // 是否输出日志编号与调用栈
-        const enableLogNumberAndCallStack = true;
+        // const enableLogNumberAndCallStack = true;
         // 日志编号计数器，从 1 开始
         let logCounter = 1;
 
@@ -4346,67 +4481,45 @@ export default class PluginSnippets extends Plugin {
             return num;
         };
 
+        /**
+         * 通用日志输出方法，简化重复代码
+         * @param type 日志类型（log/warn/error）
+         * @param label 日志标签
+         * @param args 日志内容
+         */
+        const output = (type: "log" | "warn" | "error", label: string, args: any[]) => {
+            // if (enableLogNumberAndCallStack) {
+                const logNumber = getLogNumber();
+                console.groupCollapsed(`[${logNumber}] ${label}:`, ...args); // 使用 console.groupCollapsed 创建可折叠的日志组，保持源代码可点击性
+                console.trace("Call Stack:"); // 使用 console.trace 输出可点击的调用栈
+                console.groupEnd();
+            // } else {
+                // console[type](...args);
+            // }
+        };
+
         return {
             /**
              * 输出调试日志
              * @param args 日志内容
              */
             log: (...args: any[]) => {
-                if (this.consoleDebug) {
-                    if (enableLogNumberAndCallStack) {
-                        const logNumber = getLogNumber();
-                        
-                        // 使用 console.groupCollapsed 创建可折叠的日志组，保持源代码可点击性
-                        console.groupCollapsed(`[${logNumber}] Log:`, ...args);
-                        
-                        // 使用 console.trace 输出可点击的调用栈
-                        console.trace("Call Stack:");
-                        
-                        console.groupEnd();
-                    } else {
-                        console.log(...args);
-                    }
-                }
+                if (!this.consoleDebug) return;
+                output("log", "Log", args);
             },
             /**
              * 输出警告日志
              * @param args 日志内容
              */
             warn: (...args: any[]) => {
-                // 目前始终输出警告日志
-                if (enableLogNumberAndCallStack) {
-                    const logNumber = getLogNumber();
-                    
-                    // 使用 console.groupCollapsed 创建可折叠的日志组，保持源代码可点击性
-                    console.groupCollapsed(`[${logNumber}] Warning:`, ...args);
-                    
-                    // 使用 console.trace 输出可点击的调用栈
-                    console.trace("Call Stack:");
-                    
-                    console.groupEnd();
-                } else {
-                    console.warn(...args);
-                }
+                output("warn", "Warning", args);
             },
             /**
              * 输出错误日志
              * @param args 日志内容
              */
             error: (...args: any[]) => {
-                // 目前始终输出错误日志
-                if (enableLogNumberAndCallStack) {
-                    const logNumber = getLogNumber();
-                    
-                    // 使用 console.groupCollapsed 创建可折叠的日志组，保持源代码可点击性
-                    console.groupCollapsed(`[${logNumber}] Error:`, ...args);
-                    
-                    // 使用 console.trace 输出可点击的调用栈
-                    console.trace("Call Stack:");
-                    
-                    console.groupEnd();
-                } else {
-                    console.error(...args);
-                }
+                output("error", "Error", args);
             }
         };
     })();
@@ -6028,6 +6141,9 @@ export default class PluginSnippets extends Plugin {
             case 'snippet_toggle':
                 this.toggleSnippetSync(data);
                 break;
+            case 'snippet_toggle_publish':
+                this.toggleSinppetPublishSync(data);
+                break;
             case 'snippet_toggle_global':
                 this.globalToggleSnippetSync(data);
                 break;
@@ -6058,6 +6174,9 @@ export default class PluginSnippets extends Plugin {
      * @param force 是否强制发送（忽略其他窗口检查）
      */
     private broadcastMessage(type: string, data: any = {}, force: boolean = false) {
+        // TODO功能: 试试能不能支持发布服务，实时应用变更到发布服务窗口 https://github.com/TCOTC/snippets/issues/33
+        // 需要注意 disabledInPublish 的代码片段不能被广播到发布服务窗口。看看哪些消息需要禁止发送
+
         // 如果不是强制发送且不存在其他窗口，则跳过广播
         if (!force && this.otherWindowIds.size === 0) return;
 

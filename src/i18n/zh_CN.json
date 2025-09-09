@@ -34,6 +34,7 @@
   "snippetName": "标题",
   "snippetContent": "代码内容",
   "snippetEnabled": "开关状态",
+  "snippetDisabledInPublish": "发布服务开关状态",
   "snippetId": "ID",
   "snippetType": "类型",
   "cancelConfirmEditSnippet": "${x} 的修改未保存，确定要放弃修改代码片段${y}吗？",
@@ -99,6 +100,11 @@
   "showDeleteButtonDescription": "在管理菜单的代码片段列表中显示删除按钮，点击后会删除该代码片段",
   "showEditButton": "管理菜单显示编辑按钮",
   "showEditButtonDescription": "在管理菜单的代码片段列表中显示编辑按钮，点击后会打开代码片段编辑器",
+  "showPublishCheckbox": "管理菜单显示发布服务开关",
+  "showPublishCheckboxDescription": "在管理菜单的代码片段列表中显示发布服务开关，用于切换代码片段是否在发布服务中生效",
+  "showPublishCheckboxWithPublish": "发布服务开启时显示",
+  "showPublishCheckboxShowAlways": "始终显示",
+  "showPublishCheckboxHideAlways": "始终隐藏",
   "openNativeSnippets": "原生代码片段窗口",
   "openNativeSnippetsDescription": "点击打开思源原生的代码片段管理窗口",
   "openNativeSnippetsWindow": "打开窗口",
@@ -157,5 +163,5 @@
   "topBarPositionDescription": "在顶栏中显示代码片段管理器按钮的位置",
   "topBarPositionLeft": "左侧",
   "topBarPositionRight": "右侧",
-  "invalidJavaScriptCode": "无效的 JavaScript 代码"
+  "invalidJavaScriptCode": "JavaScript 代码无效，请检查代码内容"
 }

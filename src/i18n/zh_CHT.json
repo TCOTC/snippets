@@ -34,6 +34,7 @@
   "snippetName": "標題",
   "snippetContent": "程式碼內容",
   "snippetEnabled": "開關狀態",
+  "snippetDisabledInPublish": "發布服務開關狀態",
   "snippetId": "ID",
   "snippetType": "類型",
   "cancelConfirmEditSnippet": "${x} 的修改未儲存，確定要放棄修改代碼片段${y}嗎？",
@@ -99,6 +100,11 @@
   "showDeleteButtonDescription": "在管理選單的代碼片段清單中顯示刪除按鈕，點擊後會刪除該代碼片段",
   "showEditButton": "管理選單顯示編輯按鈕",
   "showEditButtonDescription": "在管理選單的代碼片段清單中顯示編輯按鈕，點擊後會開啟代碼片段編輯器",
+  "showPublishCheckbox": "管理選單顯示發布服務開關",
+  "showPublishCheckboxDescription": "在管理選單的代碼片段清單中顯示發布服務開關，用於切換代碼片段是否在發布服務中生效",
+  "showPublishCheckboxWithPublish": "發布服務開啟時顯示",
+  "showPublishCheckboxShowAlways": "始終顯示",
+  "showPublishCheckboxHideAlways": "始終隱藏",
   "openNativeSnippets": "原生代碼片段視窗",
   "openNativeSnippetsDescription": "點擊開啟思源原生的代碼片段管理視窗",
   "openNativeSnippetsWindow": "開啟視窗",
@@ -157,5 +163,5 @@
   "topBarPositionDescription": "在頂欄中顯示代碼片段管理器按鈕的位置",
   "topBarPositionLeft": "左側",
   "topBarPositionRight": "右側",
-  "invalidJavaScriptCode": "無效的 JavaScript 代碼"
+  "invalidJavaScriptCode": "JavaScript 代碼無效，請檢查代碼內容"
 }

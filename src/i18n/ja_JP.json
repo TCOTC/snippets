@@ -34,6 +34,7 @@
   "snippetName": "タイトル",
   "snippetContent": "コード内容",
   "snippetEnabled": "スイッチ状態",
+  "snippetDisabledInPublish": "公開サービススイッチ状態",
   "snippetId": "ID",
   "snippetType": "タイプ",
   "cancelConfirmEditSnippet": "${x}の変更が保存されていません。スニペット${y}の編集を放棄してもよろしいですか？",
@@ -99,6 +100,11 @@
   "showDeleteButtonDescription": "管理メニューのスニペット一覧に削除ボタンを表示します。クリックするとそのスニペットを削除します",
   "showEditButton": "管理メニューで編集ボタンを表示",
   "showEditButtonDescription": "管理メニューのスニペット一覧に編集ボタンを表示します。クリックするとスニペットエディターを開きます",
+  "showPublishCheckbox": "管理メニューで公開サービススイッチを表示",
+  "showPublishCheckboxDescription": "管理メニューのスニペット一覧に公開サービススイッチを表示します。スニペットが公開サービスで有効かどうかを切り替えるために使用されます",
+  "showPublishCheckboxWithPublish": "公開サービスが有効な時に表示",
+  "showPublishCheckboxShowAlways": "常に表示",
+  "showPublishCheckboxHideAlways": "常に非表示",
   "openNativeSnippets": "ネイティブスニペットウィンドウ",
   "openNativeSnippetsDescription": "思源のネイティブスニペット管理ウィンドウを開く",
   "openNativeSnippetsWindow": "ウィンドウを開く",
@@ -157,5 +163,5 @@
   "topBarPositionDescription": "トップバーに表示されるスニペットマネージャーボタンの位置",
   "topBarPositionLeft": "左側",
   "topBarPositionRight": "右側",
-  "invalidJavaScriptCode": "無効な JavaScript コード"
+  "invalidJavaScriptCode": "無効な JavaScript コードです。コードの内容を確認してください"
 }

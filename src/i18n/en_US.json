@@ -34,6 +34,7 @@
   "snippetName": "Title",
   "snippetContent": "Code content",
   "snippetEnabled": "Switch status",
+  "snippetDisabledInPublish": "Publish service switch status",
   "snippetId": "ID",
   "snippetType": "Type",
   "cancelConfirmEditSnippet": "${x} has unsaved modifications, are you sure you want to give up editing snippet${y}?",
@@ -99,6 +100,11 @@
   "showDeleteButtonDescription": "Show the Delete button in the management menu's snippet list. Clicking it deletes the snippet",
   "showEditButton": "Show Edit button in management menu",
   "showEditButtonDescription": "Show the Edit button in the management menu's snippet list. Clicking it opens the snippet editor",
+  "showPublishCheckbox": "Show publish service switch in management menu",
+  "showPublishCheckboxDescription": "Show the publish service switch in the management menu's snippet list, used to toggle whether snippets take effect in the publish service",
+  "showPublishCheckboxWithPublish": "Show when publish service is enabled",
+  "showPublishCheckboxShowAlways": "Always show",
+  "showPublishCheckboxHideAlways": "Always hide",
   "openNativeSnippets": "Native Snippets Window",
   "openNativeSnippetsDescription": "Click to open SiYuan's native snippets management window",
   "openNativeSnippetsWindow": "Open Window",
@@ -157,5 +163,5 @@
   "topBarPositionDescription": "The position of the snippet manager button in the top bar",
   "topBarPositionLeft": "Left",
   "topBarPositionRight": "Right",
-  "invalidJavaScriptCode": "Invalid JavaScript code"
+  "invalidJavaScriptCode": "Invalid JavaScript code, please check the code content"
 }

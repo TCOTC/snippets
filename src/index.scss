@@ -210,6 +210,10 @@
           top: -4px;
         }
       }
+
+      input.fn__none[data-type="publishSwitch"] + .fn__space {
+        display: none !important;
+      }
     }
   }
 }
@@ -243,6 +247,10 @@
     flex: 1; // 让容器占据剩余空间
     min-height: 0; // 允许容器收缩
     overflow: hidden; // 防止内容溢出
+
+    input.fn__none[data-type="publishSwitch"] + .fn__space {
+      display: none !important;
+    }
   }
 
   .b3-dialog__action {
