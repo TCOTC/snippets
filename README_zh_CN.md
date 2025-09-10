@@ -1,4 +1,4 @@
-> 🔔 v1.4.X 更新：支持跨窗口应用样式、CSS 代码片段跨窗口实时预览 [#23](https://github.com/TCOTC/snippets/issues/23)、代码片段编辑器添加右键菜单 [#22](https://github.com/TCOTC/snippets/issues/22)、增加代码片段的发布服务开关（思源 v3.2.2 之后可用）[#30](https://github.com/TCOTC/snippets/issues/30)
+> 🔔 v1.4 更新：支持跨窗口应用样式、CSS 代码片段跨窗口实时预览 [#23](https://github.com/TCOTC/snippets/issues/23)、代码片段编辑器添加右键菜单 [#22](https://github.com/TCOTC/snippets/issues/22)、增加代码片段的发布服务开关（思源 v3.3.2 之后可用）[#30](https://github.com/TCOTC/snippets/issues/30)
 
 [繁體中文](https://github.com/TCOTC/snippets/blob/main/README_zh_CHT.md) | [English](https://github.com/TCOTC/snippets/blob/main/README.md) | [日本語](https://github.com/TCOTC/snippets/blob/main/README_ja_JP.md)
 
@@ -47,25 +47,25 @@
 
 #### 插件更新日志
 
-##### v1.4.X
+##### v1.4
 
 - 支持跨窗口应用样式 [#23](https://github.com/TCOTC/snippets/issues/23)
 - 代码片段编辑器添加右键菜单 [#22](https://github.com/TCOTC/snippets/issues/22)
-- 增加代码片段的发布服务开关（思源 v3.2.2 之后可用）[#30](https://github.com/TCOTC/snippets/issues/30)
+- 增加代码片段的发布服务开关（思源 v3.3.2 之后可用）[#30](https://github.com/TCOTC/snippets/issues/30)
 
-##### v1.3.X
+##### v1.3
 
 - 管理菜单支持调整代码片段排序 [#17](https://github.com/TCOTC/snippets/issues/17)
 - 在代码编辑器中使用任何快捷键都不再触发思源原生操作 [#19](https://github.com/TCOTC/snippets/issues/19)
 - 保存无效的 JS 时弹出提示、避免代码中的 HTML 标签破坏 DOM 结构 [#21](https://github.com/TCOTC/snippets/issues/21)
 - 顶栏按钮支持配置在左侧或者右侧（需要思源版本 >= 3.3.0） [#11](https://github.com/TCOTC/snippets/issues/11)
 
-##### v1.2.0
+##### v1.2
 
 - 支持禁用“同时打开多个代码片段编辑器” [#15](https://github.com/TCOTC/snippets/issues/15)
 - 支持配置“点击代码片段选项的行为” [#16](https://github.com/TCOTC/snippets/issues/16)
 
-##### v1.1.0
+##### v1.1
 
 - 支持导出导入所有代码片段 [#7](https://github.com/TCOTC/snippets/issues/7)
 - 代码片段未命名时，菜单项标题显示代码片段的前 200 个字符 [#8](https://github.com/TCOTC/snippets/issues/8)

@@ -2895,13 +2895,14 @@ export default class PluginSnippets extends Plugin {
         void await this.saveSnippetsList(this.snippetsList);
 
         this.setMenuSnippetCount();
-        // 删除的代码片段一定需要移除元素，所以 updateSnippetElement() 传入 enabled === false 的参数
-        await this.updateSnippetElement(snippet, false);
+        this.removeSnippetElement(id, snippetType);
         this.applySnippetUIChange(snippet, false);
 
         // 广播代码片段数据更新到其他窗口
         this.broadcastMessage("snippet_delete", {
-            snippet: snippet,
+            snippetId: id,
+            snippetType: snippetType,
+            previewState: this.isPreviewingSnippet(id, snippetType),
         });
     }
 
@@ -2910,20 +2911,26 @@ export default class PluginSnippets extends Plugin {
      * @param data 消息数据
      */
     private async deleteSnippetSync(data: any) {
-        const { snippet } = data;
-        if (!snippet) {
+        const { snippetId, snippetType, previewState } = data;
+        if (!snippetId || !snippetType) {
             this.console.error("deleteSnippetSync: Snippet is missing:", data);
             return;
         }
-        this.console.log("deleteSnippetSync", snippet);
-
-        // 更新 this.snippetsList，删除该代码片段
-        this.snippetsList = this.snippetsList.filter((s: Snippet) => s.id !== snippet.id);
+        this.console.log("deleteSnippetSync", snippetId, snippetType);
 
         this.setMenuSnippetCount();
-        // 删除的代码片段一定需要移除元素，所以 updateSnippetElement() 传入 enabled === false 的参数
-        await this.updateSnippetElement(snippet, false);
-        this.applySnippetUIChange(snippet, false);
+
+        if (!previewState) {
+            // 广播窗口没有预览该代码片段的情况下，才移除元素
+            this.removeSnippetElement(snippetId, snippetType);
+        }
+        
+        const snippet = this.snippetsList.find((s: Snippet) => s.id === snippetId);
+        if (snippet) {
+            this.applySnippetUIChange(snippet, false);
+            // 更新 this.snippetsList，删除该代码片段
+            this.snippetsList = this.snippetsList.filter((s: Snippet) => s.id !== snippetId);
+        }
     }
 
     /**
@@ -3051,14 +3058,14 @@ export default class PluginSnippets extends Plugin {
             this.showErrorMessage(this.i18n.updateSnippetElementParamError);
             return;
         }
-        if (snippet.type === "css" && previewState === undefined && this.realTimePreview && document.querySelector(`.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id="${snippet.id}"]`)) {
+        if (previewState === undefined && this.isPreviewingSnippet(snippet.id, snippet.type)) {
             // 如果开启了实时预览，并且打开了对应的 CSS 代码片段对话框，则在菜单项上开关代码片段的操作需要忽略
             // 问题案例：全局禁用 CSS，预览一个 CSS 片段，启用片段，在菜单禁用片段会导致预览元素被移除
             //  这是因为从菜单关闭时没有 previewState 参数，此时需要通过是否有实时预览中的代码片段对话框来判断
             return;
         }
 
-        const elementId = `snippet${snippet.type === "css" ? "CSS" : "JS"}${snippet.id}`;
+        const elementId = `snippet${snippet.type.toUpperCase()}${snippet.id}`;
         const element = document.getElementById(elementId);
 
         // ?? 空值合并运算符，当左侧值为 null 或 undefined 时返回右侧值，此处优先使用 enabled 的值
@@ -3098,7 +3105,7 @@ export default class PluginSnippets extends Plugin {
             element?.remove();
         }
 
-        if (previewState === undefined && isEnabled && this.menu && snippet.type === this.snippetsType && !this.isSnippetsTypeEnabled(snippet.type)) {
+        if (previewState === undefined && isEnabled && this.menu && snippet.type === this.snippetsType && !isSnippetsTypeEnabled) {
             // 如果当前的操作是在非预览状态下、开启代码片段、开启了菜单、菜单上显示的是这个类型的代码片段、这个类型的代码片段是关闭状态 → 全局开关闪烁一下
             this.setSnippetsTypeSwitchBreathing();
         }
@@ -3130,6 +3137,30 @@ export default class PluginSnippets extends Plugin {
         // 调用原有的 updateSnippetElement 方法更新元素
         await this.updateSnippetElement(snippet, undefined, previewState);
         this.console.log("updateSnippetElementSync: updated snippet element for", snippet.id);
+    }
+
+    /**
+     * 移除代码片段元素
+     * @param snippetId 代码片段 ID
+     * @param snippetType 代码片段类型
+     */
+    private removeSnippetElement(snippetId: string, snippetType: string) {
+        if (!snippetId || !snippetType) return;
+        // 如果当前窗口正在预览代码片段，则不移除元素
+        if (this.isPreviewingSnippet(snippetId, snippetType)) return;
+
+        const elementId = `snippet${snippetType.toUpperCase()}${snippetId}`;
+        const element = document.getElementById(elementId);
+        element?.remove();
+    }
+
+    /**
+     * 处理移除代码片段元素同步
+     * @param data 同步数据，包含 snippetId 和 snippetType
+     */
+    private removeSnippetElementSync(data: { snippetId: string; snippetType: string }) {
+        const { snippetId, snippetType } = data;
+        this.removeSnippetElement(snippetId, snippetType);
     }
 
     /**
@@ -3620,20 +3651,33 @@ export default class PluginSnippets extends Plugin {
 
         // 取消编辑代码片段
         const cancelHandler = async () => {
-            const cancel = () => {
-                if (snippet.type === "css") {
-                    // 更新 CSS 代码片段元素，恢复为实际状态 https://github.com/TCOTC/snippets/issues/26
-                    const realSnippet = this.snippetsList.find((s: Snippet) => s.id === snippet.id);
-                    this.updateSnippetElement(realSnippet, undefined, false);
-
-                    // 发送广播消息，在其他窗口调用 this.updateSnippetElementSync() 更新 CSS 代码片段元素
-                    this.broadcastMessage("snippet_element_update", {
-                        snippet: realSnippet,
-                        previewState: false
-                    });
-                }
-                // 关闭 Dialog
+            const cancel = async () => {
+                // 需要先关闭 Dialog，因为后面的 this.removeSnippetElement 会根据是否打开了 Dialog 来判断代码片段是否正在预览
                 this.closeDialogByElement(dialog.element);
+
+                if (snippet.type === "css") {
+                    // 退出预览操作，新建的代码片段需要移除元素，已有的代码片段需要恢复原始元素 https://github.com/TCOTC/snippets/issues/26
+                    if (isNew) {
+                        this.removeSnippetElement(snippet.id, snippet.type);
+                        // 发送广播消息，在其他窗口调用 this.removeSnippetElementSync() 移除代码片段元素
+                        this.broadcastMessage("snippet_element_remove", {
+                            snippetId: snippet.id,
+                            snippetType: snippet.type
+                        });
+                    } else {
+                        let realSnippet: Snippet | undefined | false = this.snippetsList.find((s: Snippet) => s.id === snippet.id);
+                        if (!realSnippet) {
+                            realSnippet = await this.getSnippetById(snippet.id);
+                        }
+                        if (!realSnippet) return;
+                        this.updateSnippetElement(realSnippet, undefined, false);
+                        // 发送广播消息，在其他窗口调用 this.updateSnippetElementSync() 更新代码片段元素
+                        this.broadcastMessage("snippet_element_update", {
+                            snippet: realSnippet,
+                            previewState: false
+                        });
+                    }
+                }
             };
 
             // 获取 Dialog 的焦点元素
@@ -3644,6 +3688,13 @@ export default class PluginSnippets extends Plugin {
             const currentSnippet = await this.getSnippetById(snippet.id);
             if (currentSnippet === undefined) {
                 // 如果当前代码片段不存在，说明是在“取消新建代码片段”
+                // 问题案例：
+                //  1、打开代码编辑器
+                //  2、删除代码片段
+                //  3、关闭代码编辑器会弹窗确认
+                //  4、点击“放弃修改”之后没有正确关闭代码编辑器
+                //  原因是 isNew 的值没有更新
+                isNew = true;
                 // 如果没有填任何内容，则直接关闭 Dialog
                 if (nameElement.value.trim() === "" && codeMirrorView.state.doc.toString().trim() === "") {
                     cancel();
@@ -4338,6 +4389,16 @@ export default class PluginSnippets extends Plugin {
     private isSnippetsTypeEnabled(snippetType: string): boolean {
         return (window.siyuan.config.snippet.enabledCSS && snippetType === "css") ||
                (window.siyuan.config.snippet.enabledJS  && snippetType === "js" );
+    }
+
+    /**
+     * 判断是否正在预览代码片段
+     * @param snippetId 代码片段 ID
+     * @param snippetType 代码片段类型
+     * @returns 是否正在预览
+     */
+    private isPreviewingSnippet(snippetId: string, snippetType: string): boolean {
+        return snippetType === "css" && this.realTimePreview && !!document.querySelector(`.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id="${snippetId}"]`);
     }
 
     /**
@@ -6154,6 +6215,9 @@ export default class PluginSnippets extends Plugin {
                 break;
             case "snippet_element_update":
                 await this.updateSnippetElementSync(data);
+                break;
+            case "snippet_element_remove":
+                this.removeSnippetElementSync(data);
                 break;
             case "snippets_sort":
                 await this.snippetsSortSync();
