@@ -1675,6 +1675,9 @@ export default class PluginSnippets extends Plugin {
                         this.toggleSnippetPublish(snippet, !(target as HTMLInputElement).checked);
                     }
                 }
+            } else if (target.getAttribute("data-type") === "new") {
+                // 点击“添加第一个代码片段”按钮，新建代码片段
+                this.createSnippet();
             } else {
                 // 点击代码片段的菜单项
                 if (this.snippetOptionClickBehavior === 1) {
