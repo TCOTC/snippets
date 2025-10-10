@@ -2898,7 +2898,7 @@ export default class PluginSnippets extends Plugin {
         void await this.saveSnippetsList(this.snippetsList);
 
         this.setMenuSnippetCount();
-        this.removeSnippetElement(id, snippetType);
+        void this.removeSnippetElement(id, snippetType);
         this.applySnippetUIChange(snippet, false);
 
         // 广播代码片段数据更新到其他窗口
@@ -2925,7 +2925,7 @@ export default class PluginSnippets extends Plugin {
 
         if (!previewState) {
             // 广播窗口没有预览该代码片段的情况下，才移除元素
-            this.removeSnippetElement(snippetId, snippetType);
+            void this.removeSnippetElement(snippetId, snippetType);
         }
         
         const snippet = this.snippetsList.find((s: Snippet) => s.id === snippetId);
@@ -3147,13 +3147,18 @@ export default class PluginSnippets extends Plugin {
      * @param snippetId 代码片段 ID
      * @param snippetType 代码片段类型
      */
-    private removeSnippetElement(snippetId: string, snippetType: string) {
+    private async removeSnippetElement(snippetId: string, snippetType: string) {
         if (!snippetId || !snippetType) return;
         // 如果当前窗口正在预览代码片段，则不移除元素
         if (this.isPreviewingSnippet(snippetId, snippetType)) return;
 
         const elementId = `snippet${snippetType.toUpperCase()}${snippetId}`;
         const element = document.getElementById(elementId);
+        // 删除 JS 代码片段需要弹出消息提示：有旧代码 && 旧代码有效
+        if (snippetType === "js" && element && element.innerHTML && this.isValidJavaScriptCode(element.innerHTML)) {
+            this.showNotification("reloadUIAfterModifyJS", 4000);
+            await this.setReloadUIButtonBreathing();
+        }
         element?.remove();
     }
 
@@ -3163,7 +3168,7 @@ export default class PluginSnippets extends Plugin {
      */
     private removeSnippetElementSync(data: { snippetId: string; snippetType: string }) {
         const { snippetId, snippetType } = data;
-        this.removeSnippetElement(snippetId, snippetType);
+        void this.removeSnippetElement(snippetId, snippetType);
     }
 
     /**
@@ -3661,7 +3666,7 @@ export default class PluginSnippets extends Plugin {
                 if (snippet.type === "css") {
                     // 退出预览操作，新建的代码片段需要移除元素，已有的代码片段需要恢复原始元素 https://github.com/TCOTC/snippets/issues/26
                     if (isNew) {
-                        this.removeSnippetElement(snippet.id, snippet.type);
+                        void this.removeSnippetElement(snippet.id, snippet.type);
                         // 发送广播消息，在其他窗口调用 this.removeSnippetElementSync() 移除代码片段元素
                         this.broadcastMessage("snippet_element_remove", {
                             snippetId: snippet.id,
