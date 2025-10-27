@@ -163,5 +163,9 @@
   "topBarPositionDescription": "The position of the snippet manager button in the top bar",
   "topBarPositionLeft": "Left",
   "topBarPositionRight": "Right",
-  "invalidJavaScriptCode": "Invalid JavaScript code, please check the code content"
+  "invalidJavaScriptCode": "Invalid JavaScript code, please check the code content",
+  "defaultSnippetsType": "Default tab in management menu",
+  "defaultSnippetsTypeDescription": "The default code snippet type displayed when opening the management menu",
+  "defaultSnippetsTypeCSS": "CSS",
+  "defaultSnippetsTypeJS": "JS"
 }

@@ -465,6 +465,16 @@ export default class PluginSnippets extends Plugin {
                 ignore: !this.isVersionReach_3_3_2,
             },
             {
+                key: "defaultSnippetsType",
+                description: "defaultSnippetsTypeDescription",
+                type: "selectString",
+                defaultValue: "css",
+                options: [
+                    { value: "css", text: "defaultSnippetsTypeCSS" },
+                    { value: "js", text: "defaultSnippetsTypeJS" }
+                ],
+            },
+            {
                 key: "snippetOptionClickBehavior",
                 description: "snippetOptionClickBehaviorDescription",
                 type: "selectNumber",
@@ -2690,7 +2700,14 @@ export default class PluginSnippets extends Plugin {
     /**
      * 代码片段类型
      */
-    get snippetsType() { return window.siyuan.jcsm?.snippetsType ?? "css"; } // 顶栏菜单默认显示 CSS 代码片段
+    get snippetsType() { 
+        // 如果已经有值（用户切换过标签），使用该值，否则使用配置中的默认值
+        const type = window.siyuan.jcsm?.snippetsType ?? window.siyuan.jcsm?.defaultSnippetsType;
+        if (type !== "css" && type !== "js") {
+            return "css";
+        }
+        return type;
+    }
     set snippetsType(value: string) { window.siyuan.jcsm.snippetsType = value; }
 
     /**

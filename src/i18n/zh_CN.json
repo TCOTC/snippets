@@ -163,5 +163,9 @@
   "topBarPositionDescription": "在顶栏中显示代码片段管理器按钮的位置",
   "topBarPositionLeft": "左侧",
   "topBarPositionRight": "右侧",
-  "invalidJavaScriptCode": "JavaScript 代码无效，请检查代码内容"
+  "invalidJavaScriptCode": "JavaScript 代码无效，请检查代码内容",
+  "defaultSnippetsType": "管理菜单默认显示标签页",
+  "defaultSnippetsTypeDescription": "打开管理菜单时默认显示的代码片段类型",
+  "defaultSnippetsTypeCSS": "CSS",
+  "defaultSnippetsTypeJS": "JS"
 }

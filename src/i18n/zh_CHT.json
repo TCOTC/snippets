@@ -163,5 +163,9 @@
   "topBarPositionDescription": "在頂欄中顯示代碼片段管理器按鈕的位置",
   "topBarPositionLeft": "左側",
   "topBarPositionRight": "右側",
-  "invalidJavaScriptCode": "JavaScript 代碼無效，請檢查代碼內容"
+  "invalidJavaScriptCode": "JavaScript 代碼無效，請檢查代碼內容",
+  "defaultSnippetsType": "管理選單預設顯示標籤頁",
+  "defaultSnippetsTypeDescription": "開啟管理選單時預設顯示的代碼片段類型",
+  "defaultSnippetsTypeCSS": "CSS",
+  "defaultSnippetsTypeJS": "JS"
 }

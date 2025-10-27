@@ -163,5 +163,9 @@
   "topBarPositionDescription": "トップバーに表示されるスニペットマネージャーボタンの位置",
   "topBarPositionLeft": "左側",
   "topBarPositionRight": "右側",
-  "invalidJavaScriptCode": "無効な JavaScript コードです。コードの内容を確認してください"
+  "invalidJavaScriptCode": "無効な JavaScript コードです。コードの内容を確認してください",
+  "defaultSnippetsType": "管理メニューのデフォルトタブ",
+  "defaultSnippetsTypeDescription": "管理メニューを開いたときにデフォルトで表示されるコードスニペットタイプ",
+  "defaultSnippetsTypeCSS": "CSS",
+  "defaultSnippetsTypeJS": "JS"
 }
