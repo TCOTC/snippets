@@ -1,4 +1,6 @@
-> 🔔 v1.4 更新：支持跨窗口应用样式、CSS 代码片段跨窗口实时预览 [#23](https://github.com/TCOTC/snippets/issues/23)、代码片段编辑器添加右键菜单 [#22](https://github.com/TCOTC/snippets/issues/22)、增加代码片段的发布服务开关（思源 v3.3.2 之后可用）[#30](https://github.com/TCOTC/snippets/issues/30)
+> 🔔 v1.4 更新：支持跨窗口应用样式、CSS 代码片段跨窗口实时预览 [#23](https://github.com/TCOTC/snippets/issues/23)、代码片段编辑器添加右键菜单 [#22](https://github.com/TCOTC/snippets/issues/22)、增加代码片段的发布服务开关（思源 v3.3.2 之后可用）[#30](https://github.com/TCOTC/snippets/issues/30)、支持配置管理菜单默认显示标签页类型 [#34](https://github.com/TCOTC/snippets/issues/34)
+
+
 
 [繁體中文](https://github.com/TCOTC/snippets/blob/main/README_zh_CHT.md) | [English](https://github.com/TCOTC/snippets/blob/main/README.md) | [日本語](https://github.com/TCOTC/snippets/blob/main/README_ja_JP.md)
 
