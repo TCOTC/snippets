@@ -54,6 +54,7 @@
 - 支持跨窗口应用样式 [#23](https://github.com/TCOTC/snippets/issues/23)
 - 代码片段编辑器添加右键菜单 [#22](https://github.com/TCOTC/snippets/issues/22)
 - 增加代码片段的发布服务开关（思源 v3.3.2 之后可用）[#30](https://github.com/TCOTC/snippets/issues/30)
+- 支持配置管理菜单默认显示标签页类型 [#34](https://github.com/TCOTC/snippets/issues/34)
 
 ##### v1.3
 
