@@ -1117,7 +1117,7 @@ export default class PluginSnippets extends Plugin {
                     styleSheet.textContent = "body > div[data-key='dialog-setting'] { display: none; }";
                     document.head.appendChild(styleSheet);
 
-                    const settingDialog = openSetting(window.siyuan.ws.app); // https://github.com/siyuan-note/siyuan/blob/22923d3eac57b59061b65e04f37913e4ba48240a/app/src/window/index.ts#L49
+                    const settingDialog = openSetting(this.app); // 这里之前用的是 window.siyuan.ws.app https://github.com/siyuan-note/siyuan/blob/22923d3eac57b59061b65e04f37913e4ba48240a/app/src/window/index.ts#L49
                     const settingDialogElement = settingDialog.element;
                     // 点击外观选项卡
                     settingDialogElement.querySelector('.b3-tab-bar [data-name="appearance"]').dispatchEvent(new CustomEvent("click"));
@@ -1136,7 +1136,7 @@ export default class PluginSnippets extends Plugin {
                     event.stopPropagation();
                     this.menu?.close(); // 不关闭菜单的话对话框中的容器无法滚动
 
-                    const settingDialogElement = openSetting(window.siyuan.ws.app).element;
+                    const settingDialogElement = openSetting(this.app).element;
                     // 点击快捷键选项卡
                     settingDialogElement.querySelector('.b3-tab-bar [data-name="keymap"]').dispatchEvent(new CustomEvent("click"));
 
