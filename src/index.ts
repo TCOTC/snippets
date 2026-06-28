@@ -1,7 +1,6 @@
 import "./index.scss";
 import {FileState, ListenersArray, Snippet} from "./types";
 import {parse as acornParse} from "acorn";
-import {exportByMobile} from "./export";
 
 // 思源插件 API
 import {
@@ -14,6 +13,7 @@ import {
     Menu,
     openSetting,
     Plugin,
+    saveExportFile,
     Setting,
     showMessage
 } from "siyuan";
@@ -506,7 +506,6 @@ export default class PluginSnippets extends Plugin {
                         `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="exportSnippets"><svg><use xlink:href="#iconUpload"></use></svg>${this.i18n.export}</span>`
                     );
                 },
-                ignore: this.isMobile || this.isTouchDevice, // TODO功能: 等实现 https://github.com/siyuan-note/siyuan/issues/15484 之后，通过思源版本来判断是否在移动端忽略
             },
             {
                 key: "importSnippetsWithAppend",
@@ -5607,11 +5606,8 @@ export default class PluginSnippets extends Plugin {
                 });
             });
 
-            // 下载文件
-            exportByMobile(exportResponse.data.path.replace("temp/export/", "export/"));
-
-            // 显示成功消息
-            showMessage(this.displayName + ": " + this.i18n.exportSnippetsSuccess, 3000, "info");
+            // 下载文件，由 saveExportFile 统一处理各端导出与提示（桌面端弹出另存为对话框，移动端调用原生保存，浏览器端触发下载）
+            await saveExportFile(exportResponse.data.path.replace("temp/export/", "export/"));
         } catch (error) {
             this.console.error("exportSnippets: Failed to export snippets: ", error);
             this.showErrorMessage(this.i18n.exportSnippetsFailed + ": " + error.message);

@@ -125,4 +125,10 @@ declare module "siyuan" {
     }
 }
 
+// 补充 petal v1.1.2 尚未发布的 saveExportFile 声明，待 petal 发布新版后可移除
+// 参考：https://github.com/siyuan-note/petal/blob/main/siyuan.d.ts
+declare module "siyuan" {
+    export function saveExportFile(uri: string, msgId?: string): Promise<void>;
+}
+
 export { Snippet, SettingItem, ListenersArray, ElementListeners, ListenerItem, FileState };
