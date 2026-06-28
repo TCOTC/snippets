@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "This is a snippets plugin for SiYuan (https://b3log.org/siyuan)",
   "main": "index.js",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "lint": "eslint . --fix --cache",
     "dev": "webpack --mode development",

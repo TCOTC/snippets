@@ -1,0 +1,49 @@
+name: Release
+
+# 触发条件：推送 v 开头的 tag 时执行
+on:
+  push:
+    tags:
+      - 'v*'
+
+# 创建 Release 需要写权限
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Publish Prerelease
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        # 省略 version，自动读取 package.json 中的 packageManager 字段（pnpm@11.9.0）
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Create prerelease
+        uses: softprops/action-gh-release@v3
+        with:
+          # 标记为预发布版本
+          prerelease: true
+          # 以 tag 名作为 Release 标题
+          name: ${{ github.ref_name }}
+          # 自动生成基于 commit / PR 的发行说明
+          generate_release_notes: true
+          # 上传 webpack 打包出的思源插件安装包
+          files: package.zip
