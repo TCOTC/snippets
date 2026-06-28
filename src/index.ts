@@ -10,6 +10,7 @@ import {
     fetchPost,
     fetchSyncPost,
     getFrontend,
+    hideMessage,
     Menu,
     openSetting,
     Plugin,
@@ -19,7 +20,7 @@ import {
 // 未使用的：Custom、confirm、openTab、adaptHotkey、getBackend、Protyle、openWindow、IOperation、openMobileFileById、lockScreen、ICard、ICardData、exitSiYuan、getModelByDockType、getAllEditor、Files、platformUtils、openAttributePanel、saveLayout
 
 // 工具函数
-import {hideMessage, isPromiseFulfilled, isVersionReach} from "./utils";
+import {isPromiseFulfilled} from "./utils";
 
 // CodeMirror 6
 import {closeBrackets, closeBracketsKeymap} from "@codemirror/autocomplete"; // autocompletion, completionKeymap
@@ -99,81 +100,9 @@ export default class PluginSnippets extends Plugin {
     private topBarElement: HTMLElement;
 
     /**
-     * 是否达到 3.3.0 版本
-     */
-    private isVersionReach_3_3_0: boolean;
-
-    /**
-     * 是否达到 3.3.2 版本
-     */
-    private isVersionReach_3_3_2: boolean;
-
-    /**
-     * 启用插件（进行各种初始化）
+     * 启用插件
      */
     public async onload() {
-        this.isVersionReach_3_3_0 = isVersionReach("3.3.0");
-        if (!this.isVersionReach_3_3_0) {
-            // 初始化 window.siyuan.jcsm
-            window.siyuan.jcsm ??= {}; // ??= 逻辑空赋值运算符 https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing_assignment
-
-            const frontEnd = getFrontend();
-            this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
-
-            // 优先添加顶栏按钮 https://github.com/TCOTC/snippets/issues/6
-            this.topBarElement = this.addTopBar({
-                icon: "iconJcsm",
-                title: this.displayName,
-                position: "right",
-                callback: () => {
-                    this.openSnippetsManager();
-                }
-            });
-
-            // 顶栏按钮图标
-            this.addIcons(`
-                <symbol id="iconJcsm" viewBox="0 0 32 32">
-                    <path d="M23.498 9.332c-0.256 0.256-0.415 0.611-0.415 1.002s0.159 0.745 0.415 1.002l4.665 4.665-4.665 4.665c-0.256 0.256-0.415 0.61-0.415 1.002s0.159 0.745 0.415 1.002v0c0.256 0.256 0.61 0.415 1.002 0.415s0.745-0.159 1.002-0.415l5.667-5.667c0.256-0.256 0.415-0.611 0.415-1.002s-0.158-0.745-0.415-1.002l-5.667-5.667c-0.256-0.256-0.61-0.415-1.002-0.415s-0.745 0.159-1.002 0.415v0z"></path>
-                    <path d="M7.5 8.917c-0.391 0-0.745 0.159-1.002 0.415l-5.667 5.667c-0.256 0.256-0.415 0.611-0.415 1.002s0.158 0.745 0.415 1.002l5.667 5.667c0.256 0.256 0.611 0.415 1.002 0.415s0.745-0.159 1.002-0.415v0c0.256-0.256 0.415-0.61 0.415-1.002s-0.159-0.745-0.415-1.002l-4.665-4.665 4.665-4.665c0.256-0.256 0.415-0.611 0.415-1.002s-0.159-0.745-0.415-1.002v0c-0.256-0.256-0.61-0.415-1.002-0.415v0z"></path>
-                    <path d="M19.965 3.314c-0.127-0.041-0.273-0.065-0.424-0.065-0.632 0-1.167 0.413-1.35 0.985l-0.003 0.010-7.083 22.667c-0.041 0.127-0.065 0.273-0.065 0.424 0 0.632 0.413 1.167 0.985 1.35l0.010 0.003c0.127 0.041 0.273 0.065 0.424 0.065 0.632 0 1.167-0.413 1.35-0.985l0.003-0.010 7.083-22.667c0.041-0.127 0.065-0.273 0.065-0.424 0-0.632-0.413-1.167-0.985-1.35l-0.010-0.003z"></path>
-                </symbol>
-            `);
-
-            // 优化添加顶栏按钮的速度，延后设置顶栏按钮的 aria-label
-            const topBarKeymap = this.getCustomKeymapByCommand("openSnippetsManager");
-            const title = !this.isMobile && topBarKeymap ? this.displayName + " " + this.getHotkeyDisplayText(topBarKeymap) : this.displayName;
-            this.topBarElement.setAttribute("aria-label", title);
-
-            // 注册快捷键（都默认置空）
-            this.addCommand({
-                langKey: "openSnippetsManager", // 打开代码片段管理器
-                hotkey: "",
-                callback: () => {
-                    // 快捷键唤起菜单时，如果菜单已经打开，要先关闭再重新打开，所以这里直接执行就好，会自动关闭菜单再重开
-                    this.openSnippetsManager();
-                },
-            });
-            this.addCommand({
-                langKey: "reloadUI", // 重新加载界面
-                hotkey: "",
-                callback: () => {
-                    this.reloadUI();
-                },
-            });
-
-            this.isTouchDevice = ("ontouchstart" in window) && navigator.maxTouchPoints > 1;
-
-            // 最后初始化插件设置
-            await this.initSetting();
-            // 插件设置加载之后启动文件监听
-            if (this.fileWatchEnabled && this.fileWatchEnabled !== "disabled") {
-                this.startFileWatch();
-            }
-            // 插件设置加载之后暴露 ignoreNotice 方法到全局
-            window.siyuan.jcsm.disableNotification = this.disableNotification.bind(this);
-
-            console.log(this.displayName, this.i18n.pluginOnload);
-        }
     }
 
     /**
@@ -207,76 +136,71 @@ export default class PluginSnippets extends Plugin {
      * 布局加载完成
      */
     public async onLayoutReady() {
-        if (this.isVersionReach_3_3_0 === undefined) {
-            this.isVersionReach_3_3_0 = isVersionReach("3.3.0");
+        // 初始化 window.siyuan.jcsm
+        window.siyuan.jcsm ??= {}; // ??= 逻辑空赋值运算符 https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing_assignment
+
+        const frontEnd = getFrontend();
+        this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
+        this.isTouchDevice = ("ontouchstart" in window) && navigator.maxTouchPoints > 1;
+
+        // 优先初始化插件设置，因为顶栏按钮位置需要根据插件设置来决定
+        await this.initSetting();
+        // 插件设置加载之后启动文件监听
+        if (this.fileWatchEnabled && this.fileWatchEnabled !== "disabled") {
+            this.startFileWatch();
         }
-        if (this.isVersionReach_3_3_0) {
-            // 初始化 window.siyuan.jcsm
-            window.siyuan.jcsm ??= {}; // ??= 逻辑空赋值运算符 https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing_assignment
+        // 插件设置加载之后暴露 ignoreNotice 方法到全局
+        window.siyuan.jcsm.disableNotification = this.disableNotification.bind(this);
 
-            const frontEnd = getFrontend();
-            this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
-            this.isTouchDevice = ("ontouchstart" in window) && navigator.maxTouchPoints > 1;
+        // 顶栏按钮图标
+        this.addIcons(`
+            <symbol id="iconJcsm" viewBox="0 0 32 32">
+                <path d="M23.498 9.332c-0.256 0.256-0.415 0.611-0.415 1.002s0.159 0.745 0.415 1.002l4.665 4.665-4.665 4.665c-0.256 0.256-0.415 0.61-0.415 1.002s0.159 0.745 0.415 1.002v0c0.256 0.256 0.61 0.415 1.002 0.415s0.745-0.159 1.002-0.415l5.667-5.667c0.256-0.256 0.415-0.611 0.415-1.002s-0.158-0.745-0.415-1.002l-5.667-5.667c-0.256-0.256-0.61-0.415-1.002-0.415s-0.745 0.159-1.002 0.415v0z"></path>
+                <path d="M7.5 8.917c-0.391 0-0.745 0.159-1.002 0.415l-5.667 5.667c-0.256 0.256-0.415 0.611-0.415 1.002s0.158 0.745 0.415 1.002l5.667 5.667c0.256 0.256 0.611 0.415 1.002 0.415s0.745-0.159 1.002-0.415v0c0.256-0.256 0.415-0.61 0.415-1.002s-0.159-0.745-0.415-1.002l-4.665-4.665 4.665-4.665c0.256-0.256 0.415-0.611 0.415-1.002s-0.159-0.745-0.415-1.002v0c-0.256-0.256-0.61-0.415-1.002-0.415v0z"></path>
+                <path d="M19.965 3.314c-0.127-0.041-0.273-0.065-0.424-0.065-0.632 0-1.167 0.413-1.35 0.985l-0.003 0.010-7.083 22.667c-0.041 0.127-0.065 0.273-0.065 0.424 0 0.632 0.413 1.167 0.985 1.35l0.010 0.003c0.127 0.041 0.273 0.065 0.424 0.065 0.632 0 1.167-0.413 1.35-0.985l0.003-0.010 7.083-22.667c0.041-0.127 0.065-0.273 0.065-0.424 0-0.632-0.413-1.167-0.985-1.35l-0.010-0.003z"></path>
+            </symbol>
+        `);
 
-            // 优先初始化插件设置，因为顶栏按钮位置需要根据插件设置来决定
-            await this.initSetting();
-            // 插件设置加载之后启动文件监听
-            if (this.fileWatchEnabled && this.fileWatchEnabled !== "disabled") {
-                this.startFileWatch();
-            }
-            // 插件设置加载之后暴露 ignoreNotice 方法到全局
-            window.siyuan.jcsm.disableNotification = this.disableNotification.bind(this);
+        this.topBarInit().then();
 
-            // 顶栏按钮图标
-            this.addIcons(`
-                <symbol id="iconJcsm" viewBox="0 0 32 32">
-                    <path d="M23.498 9.332c-0.256 0.256-0.415 0.611-0.415 1.002s0.159 0.745 0.415 1.002l4.665 4.665-4.665 4.665c-0.256 0.256-0.415 0.61-0.415 1.002s0.159 0.745 0.415 1.002v0c0.256 0.256 0.61 0.415 1.002 0.415s0.745-0.159 1.002-0.415l5.667-5.667c0.256-0.256 0.415-0.611 0.415-1.002s-0.158-0.745-0.415-1.002l-5.667-5.667c-0.256-0.256-0.61-0.415-1.002-0.415s-0.745 0.159-1.002 0.415v0z"></path>
-                    <path d="M7.5 8.917c-0.391 0-0.745 0.159-1.002 0.415l-5.667 5.667c-0.256 0.256-0.415 0.611-0.415 1.002s0.158 0.745 0.415 1.002l5.667 5.667c0.256 0.256 0.611 0.415 1.002 0.415s0.745-0.159 1.002-0.415v0c0.256-0.256 0.415-0.61 0.415-1.002s-0.159-0.745-0.415-1.002l-4.665-4.665 4.665-4.665c0.256-0.256 0.415-0.611 0.415-1.002s-0.159-0.745-0.415-1.002v0c-0.256-0.256-0.61-0.415-1.002-0.415v0z"></path>
-                    <path d="M19.965 3.314c-0.127-0.041-0.273-0.065-0.424-0.065-0.632 0-1.167 0.413-1.35 0.985l-0.003 0.010-7.083 22.667c-0.041 0.127-0.065 0.273-0.065 0.424 0 0.632 0.413 1.167 0.985 1.35l0.010 0.003c0.127 0.041 0.273 0.065 0.424 0.065 0.632 0 1.167-0.413 1.35-0.985l0.003-0.010 7.083-22.667c0.041-0.127 0.065-0.273 0.065-0.424 0-0.632-0.413-1.167-0.985-1.35l-0.010-0.003z"></path>
-                </symbol>
-            `);
+        // 注册快捷键（都默认置空）
+        this.addCommand({
+            langKey: "openSnippetsManager", // 打开代码片段管理器
+            hotkey: "",
+            callback: () => {
+                // 快捷键唤起菜单时，如果菜单已经打开，要先关闭再重新打开，所以这里直接执行就好，会自动关闭菜单再重开
+                this.openSnippetsManager();
+            },
+        });
+        this.addCommand({
+            langKey: "reloadUI", // 重新加载界面
+            hotkey: "",
+            callback: () => {
+                this.reloadUI();
+            },
+        });
 
-            this.topBarInit().then();
+        console.log(this.displayName, this.i18n.pluginOnload);
 
-            // 注册快捷键（都默认置空）
-            this.addCommand({
-                langKey: "openSnippetsManager", // 打开代码片段管理器
-                hotkey: "",
-                callback: () => {
-                    // 快捷键唤起菜单时，如果菜单已经打开，要先关闭再重新打开，所以这里直接执行就好，会自动关闭菜单再重开
-                    this.openSnippetsManager();
-                },
-            });
-            this.addCommand({
-                langKey: "reloadUI", // 重新加载界面
-                hotkey: "",
-                callback: () => {
-                    this.reloadUI();
-                },
-            });
+        // 调试
+        // await new Promise(resolve => setTimeout(resolve, 10000));
 
-            console.log(this.displayName, this.i18n.pluginOnload);
-
-            // 调试
-            // await new Promise(resolve => setTimeout(resolve, 10000));
-
-            // TODO自定义页签: 添加自定义标签页
-            // this.custom = this.addTab({
-            //     type: TAB_TYPE,
-            //     init() {
-            //         this.element.innerHTML = `<div class="jcsm__custom-tab">${this.data.text}</div>`;
-            //     },
-            //     beforeDestroy() {
-            //         this.console.log("在销毁标签页之前:", TAB_TYPE);
-            //         // TODO自定义页签: 销毁标签页时，需要获取当前页签的数据然后处理（比如保存）
-            //     },
-            //     destroy() {
-            //         this.console.log("销毁标签页:", TAB_TYPE);
-            //     }
-            // });
-            // 获取已打开的所有自定义页签
-            // this.getOpenedTab();
-        }
+        // TODO自定义页签: 添加自定义标签页
+        // this.custom = this.addTab({
+        //     type: TAB_TYPE,
+        //     init() {
+        //         this.element.innerHTML = `<div class="jcsm__custom-tab">${this.data.text}</div>`;
+        //     },
+        //     beforeDestroy() {
+        //         this.console.log("在销毁标签页之前:", TAB_TYPE);
+        //         // TODO自定义页签: 销毁标签页时，需要获取当前页签的数据然后处理（比如保存）
+        //     },
+        //     destroy() {
+        //         this.console.log("销毁标签页:", TAB_TYPE);
+        //     }
+        // });
+        // 获取已打开的所有自定义页签
+        // this.getOpenedTab();
 
         // 初始化 Broadcast Channel 用于跨窗口通信（需要等插件设置加载完成）
         await this.initBroadcastChannel();
@@ -404,8 +328,6 @@ export default class PluginSnippets extends Plugin {
      */
     private async initConfigItems() {
         // 注意在这里面不能用 this.console 之类的方法，因为它们需要先加载完插件配置才能用
-        this.isVersionReach_3_3_2 = isVersionReach("3.3.2");
-
         this.configItems.push(
             {
                 key: "openNativeSnippets",
@@ -470,7 +392,6 @@ export default class PluginSnippets extends Plugin {
                     { value: 1, text: "showPublishCheckboxShowAlways" },
                     { value: 2, text: "showPublishCheckboxHideAlways" }
                 ],
-                ignore: !this.isVersionReach_3_3_2,
             },
             {
                 key: "defaultSnippetsType",
@@ -574,7 +495,7 @@ export default class PluginSnippets extends Plugin {
                     { value: "left", text: "topBarPositionLeft" },
                     { value: "right", text: "topBarPositionRight" }
                 ],
-                ignore: this.isMobile || !this.isVersionReach_3_3_0,
+                ignore: this.isMobile,
             },
             {
                 key: "exportSnippets",
@@ -961,7 +882,6 @@ export default class PluginSnippets extends Plugin {
                 }
                 break;
             case "topBarPosition":
-                if (!this.isVersionReach_3_3_0) return;
                 // 修改顶栏按钮位置后，移除并重新添加顶栏按钮、重新设置菜单位置
                 this.topBarElement?.remove();
                 await this.topBarInit();
@@ -2500,7 +2420,7 @@ export default class PluginSnippets extends Plugin {
      * 是否显示发布服务开关
      */
     private isShowPublishCheckbox() {
-        return this.isVersionReach_3_3_2 && (this.showPublishCheckbox === 0 ? window.siyuan.config.publish.enable === true : this.showPublishCheckbox === 1);
+        return this.showPublishCheckbox === 0 ? window.siyuan.config.publish.enable === true : this.showPublishCheckbox === 1;
     }
 
     /**
@@ -3065,15 +2985,6 @@ export default class PluginSnippets extends Plugin {
             return false;
         }
         const snippetsList = response.data.snippets as Snippet[];
-        if (!this.isVersionReach_3_3_2) {
-            snippetsList.forEach((snippet: Snippet) => {
-                if (snippet.disabledInPublish === undefined) {
-                    // v3.3.2 之后都有 disabledInPublish 属性，默认是 false
-                    // v3.3.2 之前都没有 disabledInPublish 属性，为了便于后续逻辑判断，需要默认设置为 false
-                    snippet.disabledInPublish = false;
-                }
-            });
-        }
         this.console.log("getSnippetsList", snippetsList);
         return response.data.snippets as Snippet[];
     }
