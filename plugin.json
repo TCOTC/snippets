@@ -2,7 +2,7 @@
   "name": "snippets",
   "author": "Jeffrey Chen",
   "url": "https://github.com/TCOTC/snippets",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "minAppVersion": "3.7.0-beta.1",
   "backends": ["all"],
   "frontends": ["all"],

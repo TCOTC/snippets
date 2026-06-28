@@ -5607,7 +5607,12 @@ export default class PluginSnippets extends Plugin {
             });
 
             // 下载文件，由 saveExportFile 统一处理各端导出与提示（桌面端弹出另存为对话框，移动端调用原生保存，浏览器端触发下载）
-            await saveExportFile(exportResponse.data.path.replace("temp/export/", "export/"));
+            // exportResources 返回相对于工作空间的路径 temp/export/<name>，需转换为 /export/<name> 形式的 URL 路径
+            // 以与思源内置导出 API 返回格式一致（见 kernel/model/export.go 中 exportSYZip 等的 "/export/" + url.PathEscape）
+            // 否则移动端原生 saveExportFile 会因缺少前导 "/" 无法定位文件，报“文件不存在或为空”
+            const exportPath: string = exportResponse.data.path;
+            const exportFileName = exportPath.substring(exportPath.lastIndexOf("/") + 1);
+            await saveExportFile("/export/" + encodeURIComponent(exportFileName));
         } catch (error) {
             this.console.error("exportSnippets: Failed to export snippets: ", error);
             this.showErrorMessage(this.i18n.exportSnippetsFailed + ": " + error.message);
