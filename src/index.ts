@@ -3959,6 +3959,11 @@ export default class PluginSnippets extends Plugin {
                     previewHandler();
                 }
             } else if (tagName === "button") {
+                // CodeMirror 搜索面板内的按钮由编辑器自身通过 onclick 处理，不能在捕获阶段拦截，
+                // 否则 stopPropagation 会阻止事件到达目标按钮，导致 onclick 不执行 https://github.com/TCOTC/snippets/issues/38
+                if (target.closest(".cm-search")) {
+                    return;
+                }
                 // 阻止冒泡，否则点击确认按钮会导致 menu 关闭
                 event.stopPropagation();
                 // 移除焦点，否则点击按钮后如果不关闭 Dialog 的话会一直显示 :focus 样式
