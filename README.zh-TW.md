@@ -1,4 +1,4 @@
-[简体中文](https://github.com/TCOTC/snippets/blob/main/README_zh_CN.md) | [English](https://github.com/TCOTC/snippets/blob/main/README.md) | [日本語](https://github.com/TCOTC/snippets/blob/main/README_ja_JP.md)
+[简体中文](https://github.com/TCOTC/snippets/blob/main/README.zh-CN.md) | [English](https://github.com/TCOTC/snippets/blob/main/README.md) | [日本語](https://github.com/TCOTC/snippets/blob/main/README.ja.md)
 
 #### 代碼片段管理選單
 

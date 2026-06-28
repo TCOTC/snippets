@@ -2,7 +2,7 @@
 
 
 
-[繁體中文](https://github.com/TCOTC/snippets/blob/main/README_zh_CHT.md) | [English](https://github.com/TCOTC/snippets/blob/main/README.md) | [日本語](https://github.com/TCOTC/snippets/blob/main/README_ja_JP.md)
+[繁體中文](https://github.com/TCOTC/snippets/blob/main/README.zh-TW.md) | [English](https://github.com/TCOTC/snippets/blob/main/README.md) | [日本語](https://github.com/TCOTC/snippets/blob/main/README.ja.md)
 
 #### 代码片段管理菜单
 
