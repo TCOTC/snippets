@@ -458,16 +458,11 @@ export class SnippetsDialog {
     }
 
     /**
-     * 打开代码片段删除对话框
-     * @param snippetName 代码片段名称
-     * @param confirm 确认回调
-     */
-    /**
      * 打开代码片段删除确认对话框
      * @param snippetName 代码片段名称
      * @param confirm 确认删除回调
      */
-    private openDeleteDialog(snippetName: string, confirm?: () => void) {
+    openDeleteDialog(snippetName: string, confirm?: () => void) {
         // TODO功能: 实现了代码片段回收站之后，增加一个“不再提示”按钮，点击之后修改配置项、弹出消息说明可以在插件设置中开关
         this.openConfirm(
             this.plugin.i18n.deleteConfirm,

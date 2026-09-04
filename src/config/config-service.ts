@@ -78,9 +78,11 @@ export class ConfigService {
 
     /**
      * 写入配置文件
+     * @returns saveData 的响应（内核 { code, msg }，供调用方判断写入是否成功）
      */
-    private async saveStoredConfig(content: any): Promise<void> {
-        await this.plugin.saveData(STORAGE_NAME, content);
+    private async saveStoredConfig(content: any): Promise<any> {
+        // 必须返回 saveData 的响应：saveFromDialog 依赖它判断 code 决定是否关闭对话框
+        return this.plugin.saveData(STORAGE_NAME, content);
     }
 
     /**

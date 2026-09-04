@@ -49,7 +49,7 @@ export function isValidJavaScriptCode(code: string): boolean {
                 expressionType === "Identifier" ||       // 标识符（Identifier）是变量名、函数名等标识。只是引用一个变量，没有做赋值、调用、声明等操作
                 expressionType === "MemberExpression" || // 成员表达式（MemberExpression）是访问对象属性的表达式，比如 obj.prop 或 arr[index]
                 expressionType === "ThisExpression" ||   // this 表达式，单独一行 this 无任何副作用
-                expressionType === "Super" ||
+                // expressionType === "Super" ||         // Super 仅在 class 方法体内合法，脚本顶层解析即抛错，此判断恒 false（TS2367），注释保留说明不可达
                 expressionType === "ArrayExpression" ||
                 expressionType === "ObjectExpression" ||
                 expressionType === "TemplateLiteral" ||
@@ -60,7 +60,7 @@ export function isValidJavaScriptCode(code: string): boolean {
                 expressionType === "BinaryExpression" ||
                 expressionType === "LogicalExpression" ||
                 expressionType === "ConditionalExpression" ||
-                // 立即执行函数是这个类型，需要排除 type === 'CallExpression' ||
+                // expressionType === "CallExpression" || // 调用（含 IIFE、console.log 等）是有效代码，排除会把有效代码误判为无效，注释保留说明不可排除
                 expressionType === "NewExpression" ||
                 expressionType === "SequenceExpression"
             ) {

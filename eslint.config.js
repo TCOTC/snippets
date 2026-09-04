@@ -67,5 +67,19 @@ module.exports = tseslint.config(
             "no-unused-vars": "off",
             "@typescript-eslint/no-require-imports": "off",
         },
+    },
+    {
+        // 测试基建（tests/）：Node 环境，与 src 同款风格开关
+        files: ["tests/**/*.ts"],
+        languageOptions: {
+            globals: {
+                ...globals.node,
+            },
+        },
+        rules: {
+            semi: ["error", "always"],
+            quotes: ["error", "double", {"avoidEscape": true}],
+            "@typescript-eslint/no-explicit-any": "off",
+        },
     }
 );
