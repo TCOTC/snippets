@@ -19,6 +19,8 @@
 ### 已完成提交（main，最新在上）
 | commit | 内容 |
 |---|---|
+| `fdbc2ef` | refactor: 编辑器生命周期管理（主题监听/更新/重建）外迁至 src/ui/editor-manager.ts |
+| `56f5073` | docs: 记录 setting_apply 退役收口 onDataChanged、schema/codemirror 拆分与最新思源基准原则 |
 | `98a84d6` | refactor: 退役 setting_apply 广播，配置跨窗口同步收口内核 onDataChanged |
 | `df4ff9c` | refactor: CodeMirror 编辑器工厂外迁至 src/ui/codemirror.ts |
 | `acb64cb` | refactor: configItems 类型与条目定义外迁至 src/config/schema.ts |
@@ -62,12 +64,15 @@
 | `dd296e9` | refactor: 抽取纯工具函数到 `utils.ts` |
 | `4f2773e` | refactor: 抽取 `isValidJavaScriptCode` 到 `domain/snippet.ts` |
 
-当前工作区：**干净**（98a84d6 已提交；阶段 3 收官，阶段 4 进行中：config 声明式已启——onApply 分发与三项按钮迁移、configItems 外迁 schema.ts、CodeMirror 工厂外迁 codemirror.ts、setting_apply 退役收口内核推送，见下方「下一步建议」）。
+当前工作区：**干净**（fdbc2ef 已提交；阶段 3 收官，阶段 4 进行中：onApply 分发与三项按钮迁移、configItems 外迁 schema.ts、CodeMirror 工厂外迁 codemirror.ts、编辑器生命周期管理外迁 editor-manager.ts、setting_apply 退役收口内核推送，见下方「下一步建议」）。
 
 ### 已建模块
 - `src/core/event-bus.ts`（类型化 pub/sub，`on/off/emit/clear`；注意：勿用字段名 `eventBus`，会与 siyuan `Plugin` 基类成员冲突，内部用 `internalEventBus`）
 - `src/services/storage.ts`（`getFile`/`putFile`/`renameFile`）
 - `src/services/sync.ts`（阶段 3：协议类型 + 传输 + 分发。协议：payload 接口 + `SnippetBroadcastBody`（消息体）→ `WithEnvelope` 分配式生成 `SnippetBroadcastMessage`（信封 + 消息体），`SnippetBusinessMessage` 为去掉窗口保活后的业务子集；含禁原文约束与 CSS 预览豁免注释。传输与分发：`BroadcastService` 统一管理 windowId/其他窗口在线集合/WebSocket 连接与自动重连/页面卸载通知，内部消化窗口保活三消息；`broadcast<T extends SnippetBroadcastBody>` 类型化发送（信封由服务保证附加）；业务消息按 type 查表分发到构造入参 `handlers: Partial<BroadcastHandlers>`（各键处理器直接拿到收窄后的 payload），未注册 type 仅告警；日志经 `BroadcastLogger` 注入）
+- `src/config/schema.ts`（阶段 4：`SnippetsConfigItem`/`SnippetsConfigOption` 类型与 `createSnippetsConfigItems(ctx)` 条目构建；ctx 为 `SnippetsConfigContext` 读取器函数（isMobile()/i18n()/menuItems()），箭头函数体内调用时才取值，保证运行态实时、规避 no-this-alias）
+- `src/ui/codemirror.ts`（阶段 4：纯编辑器工厂 `getEditorIndentUnit`/`createEditorExtensions`/`createCodeMirrorEditor`，参数化 indentUnitConfig/i18n；`SnippetsEditorI18n = Record<string, string>` 兼容插件 i18n 类型）
+- `src/ui/editor-manager.ts`（阶段 4：`EditorManager` 类——主题模式监听启停/检查（observer 挂 window.siyuan.jcsm）、已打开对话框编辑器更新 `updateAllEditorConfigs`/重建 `recreateEditor`；运行态经 `EditorManagerHost` 读取器注入；`onunload`/`uninstall` 的清理由 `stopThemeModeWatch()` 收敛，消除重复）
 - `src/utils.ts`（含 `isPromiseFulfilled`/`hideTooltip`/`showElementTooltip`/`isInputElementActive`/`htmlToElement`/`moveElementToTop`）
 - `src/domain/snippet.ts`（`isValidJavaScriptCode`/`isSnippetsTypeEnabled`）
 - `src/domain/snippet-store.ts`（`SnippetStore`：`remove`/`upsert`/`insertBefore`/`move`/`replaceAll`，单一写路径 + 统一发 `SNIPPETS_CHANGED`）
@@ -136,7 +141,7 @@
 ### 下一步建议（朝目标架构，拆可验证子批推进）
 1. 阶段 2（Store 收敛）已完成：`domain/snippet-store.ts` 的 `remove`/`upsert`/`insertBefore`/`move`/`replaceAll` 已承接全部本地结构写，计数统一由 `SNIPPETS_CHANGED` 事件驱动。
 2. 阶段 3（sync 收敛）**已完成（57313b1 收官）**：`services/sync.ts` 的 `BroadcastService`（连接/重连/窗口保活/类型化 `broadcast`/按 type 查表分发 `BroadcastHandlers`）统一承担传输与分发；`index.ts` 的 `handleBroadcastMessage` switch 与全部 7 个 `*Sync` 镜像已消灭——壳方法 3 个（`snippetsSortSync`/`updateSnippetElementSync`/`removeSnippetElementSync`）逻辑就地内联进注册键，有实质差异的镜像 5 个（`toggleSnippetSync`/`globalToggleSnippetSync`/`deleteSnippetSync`/`toggleSnippetPublishSync`/`saveSnippetSync`）分别并入 `toggleSnippet(snippet, enabled, origin)`/`globalToggleSnippet(snippetType, enabled, origin, remotePreviewingSnippetIds)`/`deleteSnippet(id, snippetType, origin, remotePreviewState)`/`toggleSnippetPublish(snippetId, enabled, origin)`/`saveSnippet(snippet, isCopy, origin, remoteCopySnippet?, remoteOldSnippet?)` 的 `origin: "local" | "remote"` 分支（toggleSnippetPublish 的 isPublish 判断依据已修复为 `window.siyuan.isPublish`，见上方「发布服务 isPublish 语义澄清」节）。统一模式：**本窗口操作 = 自拉/就地改 + 落库 + 广播；同内核其他前端实例 = 广播实例已落库，仅按自身状态同步 UI/元素，不落库、不广播**；注册键内联“来源解析”后调同方法传 `origin: "remote"`。配置类 `setting_apply` 已随思源 2a11f8ab 收口内核推送而退役（98a84d6，见上方「插件配置跨窗口同步收口」节）。
-3. 阶段 4（config 声明式 + 拆分瘦身）**进行中**：`applySetting` 改查 `configItems.onApply` 分发（三项按钮显隐已迁入，c276e04）；配置项类型与条目定义外迁 `src/config/schema.ts`（acb64cb）；CodeMirror 编辑器工厂外迁 `src/ui/codemirror.ts`（df4ff9c）。剩余：继续迁移 `applySetting` 大 switch 剩余 case 至 `onApply` 直至删除 switch；把设置装配/UI（`createSettingItem`/`loadConfig`/defineProperty/`openSetting`/`saveSetting`）下沉独立模块（建议 `src/config/config-service.ts` + `src/ui/setting-dialog.ts`）；其余 `index.ts` 大段按需外迁（生命周期/watch 管理、文件监听、导入导出等）持续瘦身。
+3. 阶段 4（config 声明式 + 拆分瘦身）**进行中**：`applySetting` 改查 `configItems.onApply` 分发（三项按钮显隐已迁入，c276e04）；配置项类型与条目定义外迁 `src/config/schema.ts`（acb64cb）；CodeMirror 编辑器工厂外迁 `src/ui/codemirror.ts`（df4ff9c）；编辑器生命周期管理（主题监听/更新/重建）外迁 `src/ui/editor-manager.ts`（fdbc2ef，`onload` 初始化 `this.editorManager` 并经读取器实时转发 console/editorIndentUnit/i18n）。剩余：继续迁移 `applySetting` 大 switch 剩余 case 至 `onApply` 直至删除 switch；把设置装配/UI（`createSettingItem`/`loadConfig`/defineProperty/`openSetting`/`saveSetting`）下沉独立模块（建议 `src/config/config-service.ts` + `src/ui/setting-dialog.ts`）；其余 `index.ts` 大段按需外迁（生命周期/watch 管理、文件监听、导入导出等）持续瘦身。
 4. 之后：UI 视图化（阶段 5）、jcsm 收敛（阶段 6，前置已启动：见上方「jcsm 现状」节）。
 
 ---
