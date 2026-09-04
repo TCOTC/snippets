@@ -45,9 +45,9 @@
 
 ##### v2.0
 
+- 支持使用 Prettier 格式化 CSS 和 JS 代码片段 [#3](https://github.com/TCOTC/snippets/issues/3)
 - 重构插件代码 [#28](https://github.com/TCOTC/snippets/issues/28)
 - 导入代码片段后立即应用并广播到其他窗口 [#31](https://github.com/TCOTC/snippets/issues/31)
-- 同步代码片段列表以适配数据同步 [#32](https://github.com/TCOTC/snippets/issues/32)
-- 适配发布服务 [#33](https://github.com/TCOTC/snippets/issues/33)
+- 改进代码片段数据状态同步 [#32](https://github.com/TCOTC/snippets/issues/32)
 - 取消关闭代码编辑器时补触发待定的 JS 代码片段自动重载 [#40](https://github.com/TCOTC/snippets/issues/40)
-- 适配思源新版 CSS 片段异常检查 [#43](https://github.com/TCOTC/snippets/issues/43)
+- 适配思源 v3.7.0 CSS 片段异常检查 [#43](https://github.com/TCOTC/snippets/issues/43)
