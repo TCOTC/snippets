@@ -4,7 +4,7 @@
 // 收集已打开的插件模态对话框。
 import {Constants, Dialog} from "siyuan";
 import {moveElementToTop} from "../utils";
-import {createCodeMirrorEditor} from "./codemirror";
+import {createCodeMirrorEditor} from "./editor-manager";
 import type {EditorView} from "@codemirror/view";
 import type PluginSnippets from "../index";
 import type {Snippet} from "../types";

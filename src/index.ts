@@ -1,8 +1,6 @@
 import "./index.scss";
 import {Snippet, SnippetType} from "./types";
 import {SnippetStore} from "./domain/snippet-store";
-import {createSnippetsConfigItems} from "./config/schema";
-import type {SnippetsConfigItem} from "./config/schema";
 import {ConfigService, STORAGE_NAME} from "./config/config-service";
 import {BroadcastService} from "./services/sync";
 import {FileWatchService} from "./services/file-watch";
@@ -23,7 +21,7 @@ import {
 // 工具函数
 import {isPromiseFulfilled} from "./utils";
 
-// CodeMirror 编辑器工厂见 src/ui/codemirror.ts，编辑器生命周期管理见 src/ui/editor-manager.ts，编辑对话框见 src/ui/snippets-dialog.ts
+// CodeMirror 编辑器工厂与生命周期管理见 src/ui/editor-manager.ts，编辑对话框见 src/ui/snippets-dialog.ts
 import {EditorManager} from "./ui/editor-manager";
 import {SettingDialog} from "./ui/setting-dialog";
 import {SnippetsDialog} from "./ui/snippets-dialog";
@@ -81,9 +79,10 @@ export default class PluginSnippets extends Plugin {
     configService!: ConfigService;
 
     /**
-     * 文件监听服务（文件夹代码片段监听见 src/services/file-watch.ts）
+     * 文件监听服务（文件夹代码片段监听见 src/services/file-watch.ts；
+     * ConfigService 构建配置项 ctx 时经本字段转发启停动作，故公开）
      */
-    private fileWatchService!: FileWatchService;
+    fileWatchService!: FileWatchService;
 
     /**
      * 导入导出服务（代码片段导出/导入见 src/services/import-export.ts；SettingDialog 直连访问，故公开）
@@ -296,7 +295,7 @@ export default class PluginSnippets extends Plugin {
 
     // ================================ 插件配置 ================================
     // 值来自配置文件 plugin-config.json（ConfigService.init 按 configItems 条目逐项覆盖）；
-    // 初始值仅占位（与 config/schema.ts 条目 defaultValue 一致），各 UI/服务模块直连读取，故公开。
+    // 初始值仅占位（与 config-service.ts 条目 defaultValue 一致），各 UI/服务模块直连读取，故公开。
 
     /** CSS 代码片段实时预览（须与 snippet.type === "css" 一起使用） */
     realTimePreview = true;
@@ -334,7 +333,7 @@ export default class PluginSnippets extends Plugin {
     /** 新建片段时的默认类型 */
     defaultSnippetsType: SnippetType = "css";
 
-    /** 编辑器缩进单位（CodeMirror 解析见 ui/codemirror.ts getEditorIndentUnit） */
+    /** 编辑器缩进单位（CodeMirror 解析见 ui/editor-manager.ts getEditorIndentUnit） */
     editorIndentUnit = "followSiyuan";
 
     /** 是否允许同时打开多个代码片段编辑器 */
@@ -354,37 +353,6 @@ export default class PluginSnippets extends Plugin {
 
     /** “修改 JS 后重新加载界面”通知开关（feedback.ts 按 i18n 键动态读取 *Notice 字段） */
     reloadUIAfterModifyJSNotice = true;
-
-    /**
-     * 配置项定义（类型定义与条目构建见 src/config/schema.ts；ConfigService 直连访问，故公开）
-     */
-    configItems: SnippetsConfigItem[] = [];
-
-    /**
-     * 初始化配置项（条目定义见 src/config/schema.ts，此处仅构建一次并挂到实例；ConfigService 直连调用，故公开）
-     * 注意在这里面不能用 this.console 之类的方法，因为它们需要先加载完插件配置才能用
-     */
-    async initConfigItems() {
-        if (this.configItems.length > 0) {
-            // 已构建过则直接复用（构建结果与运行态无关，运行态由读取器/动作函数实时转发）
-            return;
-        }
-        this.configItems = createSnippetsConfigItems({
-            isMobile: () => this.isMobile,
-            i18n: () => this.i18n,
-            menuItems: () => this.menuView.menuItems,
-            menuOpen: () => !!this.menuView.menu,
-            menuSnippetsItemsHtml: () => this.menuView.genMenuSnippetsItems(),
-            updateAllEditorConfigs: (reason) => this.editorManager.updateAllEditorConfigs(reason),
-            removeTopBarElement: () => this.menuView.removeTopBarElement(),
-            initTopBar: () => this.menuView.initTopBar(),
-            setMenuPosition: (isUpdate) => this.menuView.setMenuPosition(isUpdate),
-            startFileWatch: () => this.fileWatchService.start(),
-            stopFileWatch: () => this.fileWatchService.stop(),
-            handleFileWatchPathChange: () => void this.fileWatchService.handlePathChange(),
-            handleFileWatchIntervalChange: () => this.fileWatchService.handleIntervalChange(),
-        });
-    }
 
     /**
      * 打开插件设置窗口（装配与交互见 src/ui/setting-dialog.ts SettingDialog）
