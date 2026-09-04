@@ -3,28 +3,6 @@ import { ISiyuan } from "siyuan/types";
 // 允许副作用导入 SCSS 样式文件（由 webpack/css-loader 处理）
 declare module "*.scss";
 
-/**
- * 单个监听器类型
- */
-type ListenerItem = {
-    event: string;
-    fn: (event?: Event) => void;
-    options?: AddEventListenerOptions;
-};
-
-/**
- * 元素监听器类型
- */
-type ElementListeners = {
-    element: HTMLElement;
-    listeners: ListenerItem[];
-};
-
-/**
- * 监听器数组类型
- */
-type ListenersArray = Array<ElementListeners>;
-
 declare global {
     interface Window {
         siyuan: ISiyuan & {
@@ -33,21 +11,6 @@ declare global {
             config: NonNullable<ISiyuan["config"]>;
             menus: NonNullable<ISiyuan["menus"]>;
             languages: NonNullable<ISiyuan["languages"]>;
-        };
-        JSAndroid?: {
-            openExternal: (uri: string) => void;
-            exportByDefault: (uri: string) => void;
-        };
-        JSHarmony?: {
-            openExternal: (uri: string) => void;
-            exportByDefault: (uri: string) => void;
-        };
-        webkit?: {
-            messageHandlers?: {
-                openLink?: {
-                    postMessage: (uri: string) => void;
-                };
-            };
         };
     }
 }
@@ -95,6 +58,8 @@ declare module "siyuan" {
     interface Setting {
         items: SettingItem[];
 
+        // 上游 siyuan 类型 addItem 的 title 为必选，本插件设置项标题来自 i18n 键（类型上可能缺失），
+        // 此处覆盖为可选以匹配 createSettingItem 的返回类型
         addItem(options: {
             title?: string;
             direction?: "column" | "row";
@@ -105,7 +70,7 @@ declare module "siyuan" {
     }
 }
 
-// 拓展 Dialog 类
+// 拓展 Dialog 类（上游 siyuan 类型未含 id/destroyNative）
 declare module "siyuan" {
     interface Dialog {
         id: string;
@@ -113,10 +78,4 @@ declare module "siyuan" {
     }
 }
 
-// 补充 petal v1.1.2 尚未发布的 saveExportFile 声明，待 petal 发布新版后可移除
-// 参考：https://github.com/siyuan-note/petal/blob/main/siyuan.d.ts
-declare module "siyuan" {
-    export function saveExportFile(uri: string, msgId?: string): Promise<void>;
-}
-
-export { Snippet, SnippetType, SettingItem, ListenersArray, ElementListeners, ListenerItem, FileState };
+export { Snippet, SnippetType, SettingItem, FileState };
