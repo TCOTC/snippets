@@ -19,6 +19,14 @@
 ### 已完成提交（main，最新在上）
 | commit | 内容 |
 |---|---|
+| `add11ad` | refactor: SettingDialog 改直连插件实例，移除全部 Host 注入（onload 统一 new Xxx(this)） |
+| `93a9228` | refactor: ConfigService 改直连插件实例，移除 ConfigServiceHost 注入 |
+| `0da0878` | refactor: ImportExportService 改直连插件实例，移除 ImportExportHost 注入 |
+| `aa3a02f` | refactor: EditorManager 改直连插件实例，移除 EditorManagerHost 注入 |
+| `27644ef` | refactor: FeedbackService/ListenerRegistry 改直连插件实例，移除 Host 注入 |
+| `c667349` | refactor: FileWatchService 改直连插件实例，移除 FileWatchHost 注入 |
+| `1d68177` | refactor: SnippetsDialog 改直连插件实例，移除 SnippetsDialogHost 注入 |
+| `81f1f24` | docs: 记录顶栏菜单与全局键盘外迁 menu.ts（3981e9b/9c8f008） |
 | `9c8f008` | refactor: 全局键盘协调（globalKeyDownHandler 组）迁入 SnippetsMenu |
 | `3981e9b` | refactor: 顶栏菜单整体外迁至 src/ui/menu.ts（SnippetsMenu 直连插件实例） |
 | `2ba7dd5` | refactor: 移除对话框薄壳中转，调用点直连 snippetsDialog |
@@ -81,11 +89,11 @@
 
 当前工作区：**干净**（845fff0 已提交；阶段 3 收官，阶段 4 进行中：configItems 条目外迁 schema.ts 且全部 UI 副作用迁入 onApply（applySetting 大 switch 已删除，b16639e）、CodeMirror 工厂外迁 codemirror.ts、编辑器生命周期管理外迁 editor-manager.ts、设置对话框装配/交互外迁 setting-dialog.ts、配置装配/持久化/热应用外迁 config-service.ts、文件夹代码片段监听外迁 file-watch.ts、代码片段导入导出外迁 import-export.ts、通知/错误提示外迁 feedback.ts（移除本地日志文件写入，ff9ddea）、事件监听器统一簿记外迁 listener-registry.ts（a3d2553）、确认对话框与按元素关闭外迁 snippets-dialog.ts（77369e0）、**代码片段编辑对话框外迁 snippets-dialog.ts（845fff0，「对话框相关」分节整体闭环**，genSnippetEditDialog 无调用者直接删除，index 清 Dialog/createCodeMirrorEditor import）、setting_apply 退役收口内核推送，见下方「下一步建议」）。
 
-### 依赖注入收敛（2026-09-04 用户方向反馈，已落实于 snippet-manager 外迁）
+### 依赖注入收敛（2026-09-04 用户方向反馈，已全部落实）
 - 用户反馈：①**现有 Host 接口注入过多、不简洁**；②**index 内一层层纯转发的中转（薄壳）方法要去掉**。
-- **已落实（f8d7af2/738490a/2ba7dd5）**：新外迁模块 `SnippetManager` 直接持有 `PluginSnippets` 实例（`import type` 避免运行时循环），需要访问的插件成员 public 化（snippetStore/menu/menuItems/realTimePreview/newSnippetEnabled/snippetsDialog/syncService/console/showNotification/showErrorMessage/openSnippetEditDialog→现改 snippetsDialog.openEditDialog 等）；index 侧代码片段管理与 toggle 三件套、全部对话框类的**薄壳中转方法已删除**（createSnippet/saveSnippet/deleteSnippet/toggleSnippet/toggleSnippetPublish/globalToggleSnippet/getSnippetById/getSnippetsList/saveSnippetsList/updateSnippetElement/removeSnippetElement/openSnippetEditDialog/openSnippetDeleteDialog/openSnippetCancelDialog/openConfirmDialog/closeDialogByElement/getAllModalDialogElements），调用点直连 `snippetManager.*`/`snippetsDialog.*`；isPublish 迁入 manager（window.siyuan.isPublish??false 语义原样）。
-- **保留的高频门面**（非业务中转，调用点 30+，保留更简洁）：`showNotification`/`showErrorMessage`/`addListener`/`removeListener` 与实例属性访问器（isMobile/snippetsList/snippetsType/menu 等）留在插件类上，供内部调用与未来外迁 UI 类直连；`genNewSnippetId`/`isPreviewingSnippet` 纯逻辑下沉 `utils.ts`。
-- 旧模块（setting-dialog/config-service/file-watch/import-export/feedback/listener-registry）的 Host 注入形态仍存在，留待阶段 5 视图化时渐次收敛为直连/纯模块。
+- **已全部落实（1d68177 收官）**：**所有 Host/interface 注入形态已从代码库根除**——新外迁模块一律 `class Xxx(private readonly plugin: PluginSnippets)` + `import type PluginSnippets from "../index"`（类型导入，无运行时循环），插件实例 `new Xxx(this)` 直接注入；插件侧被直连成员 public 化。已转换：SnippetsMenu（3981e9b，含顶栏菜单整体与全局键盘协调 9c8f008）、SnippetManager、SnippetsDialog、FileWatchService、FeedbackService、ListenerRegistry、EditorManager、ImportExportService、ConfigService（存储键 STORAGE_NAME 转由 config-service 导出、index 改导入）、SettingDialog（app/configService/importExportService public 化）。index 的薄壳中转方法均已删除、调用点直连。schema.ts 的 ctx 读取器形态为构建时上下文，保留；snippetStore 的 get/set 小对象为 jcsm 转发，保留。
+- **保留的高频门面**（非业务中转，调用点 30+，保留更简洁）：`showNotification`/`showErrorMessage`/`addListener`/`removeListener` 与实例属性访问器（isMobile/snippetsList/snippetsType/isReloadUIRequired 等）留在插件类上，供内部与各 UI/服务类直连；`genNewSnippetId`/`isPreviewingSnippet` 纯逻辑下沉 `utils.ts`。
+- **index.ts 当前规模 ~800 行**（原 ~6200）：主体为生命周期/装配（onload 各服务一行 `new Xxx(this)`、onLayoutReady 含 sync 分发注册表）、initConfigItems ctx 装配、配置镜像 declare + 状态访问器（jcsm 读写）、syncService/console 等少量门面。各 Host 模块也已全部转为同一直连形态。
 
 ### 已建模块
 - `src/core/event-bus.ts`（类型化 pub/sub，`on/off/emit/clear`；注意：勿用字段名 `eventBus`，会与 siyuan `Plugin` 基类成员冲突，内部用 `internalEventBus`）
