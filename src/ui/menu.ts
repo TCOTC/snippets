@@ -1,10 +1,11 @@
 // 顶栏菜单 UI（原 index.ts「顶栏菜单」分节整体外迁，行为等价）
 // 职责：代码片段管理器顶栏菜单的打开/绘制/事件委托（含键盘）、CSS/JS 切换、搜索、呼吸动画、
-// 拖拽排序（鼠标/触摸）、菜单项生成与计数/选中/编辑按钮高亮、菜单位置、关闭回调（含自动重载界面联动）。
+// 拖拽排序（鼠标/触摸）、菜单项生成与计数/选中/编辑按钮高亮、菜单位置、关闭回调（含自动重载界面联动），
+// 以及菜单 + 对话框的全局键盘协调（Esc/Enter/方向键按 zIndex 与开合状态分发）。
 // 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
 // 经插件侧已 public 化的运行态/服务直连（manager/dialog/store/sync/console/i18n/镜像配置等）。
 import {Constants, Menu, platformUtils} from "siyuan";
-import {hideTooltip, htmlToElement, moveElementToTop, showElementTooltip} from "../utils";
+import {hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, showElementTooltip} from "../utils";
 import {isSnippetsTypeEnabled} from "../domain/snippet";
 import type PluginSnippets from "../index";
 import type {Snippet, SnippetType} from "../types";
@@ -157,7 +158,7 @@ export class SnippetsMenu {
         });
         // 监听按键操作，在选项上按回车时切换开关/特定交互、按 Delete 时删除代码片段、按 Tab 可以在各个可交互的元素上轮流切换
         // 处理太麻烦，先不做了，有其他人需要再说
-        this.plugin.addListener(document.documentElement, "keydown", this.plugin.globalKeyDownHandler);
+        this.plugin.addListener(document.documentElement, "keydown", this.globalKeyDownHandler);
         // 添加鼠标事件监听（用于桌面端拖拽排序）
         this.plugin.addListener(this.menu.element, "mousedown", (event: MouseEvent) => {
             this.menuMousedownHandler(event);
@@ -257,7 +258,7 @@ export class SnippetsMenu {
         // 移除事件监听
         this.plugin.removeListener(this.menu.element);
         this.menu = undefined as unknown as Menu;
-        this.plugin.destroyGlobalKeyDownHandler();
+        this.destroyGlobalKeyDownHandler();
 
         // 自动重新加载界面
         if (this.plugin.autoReloadUIAfterModifyJS && this.plugin.isReloadUIRequired && !document.querySelector(".b3-dialog--open[data-key='jcsm-snippet-dialog']")) {
@@ -1207,4 +1208,96 @@ export class SnippetsMenu {
         const editButton = this.menuItems?.querySelector(`.jcsm-snippet-item[data-id='${snippetId}'] button.jcsm-active[data-type='edit']`) as HTMLButtonElement;
         editButton?.classList.remove("jcsm-active");
     }
+
+    /**
+     * 是否存在打开的插件对话框和菜单
+     * @returns 是否存在
+     */
+    isDialogAndMenuOpen(): boolean {
+        return document.querySelectorAll(".b3-dialog--open[data-key^='jcsm-']").length > 0 || !!this.menu;
+    }
+
+    /**
+     * 全局键盘按下事件处理（菜单/对话框键盘协调，监听于 documentElement）
+     * @param event 键盘事件
+     */
+    globalKeyDownHandler = (event: KeyboardEvent) => {
+        // 获取所有打开的插件模态对话框，把按键操作发送给 DOM 最下方，也就是最顶层的对话框
+        // 无法判断是在操作哪个代码片段编辑对话框（非模态），所以此处忽略代码片段编辑对话框 jcsm-snippet-dialog 的操作
+        const dialogElements = this.plugin.snippetsDialog.getAllModalElements();
+        const dialogElement = dialogElements[dialogElements.length - 1];
+        if (dialogElement) {
+            // // 如果按 Esc 时焦点在输入框里，移除焦点
+            // if (event.key === "Escape" && isInputElementActive()) {
+            //     (document.activeElement as HTMLElement).blur();
+            //     return;
+            // }
+            // 阻止冒泡，避免触发原生监听器导致菜单关闭
+            event.stopPropagation();
+            // 触发 Dialog 的 click 事件，传递按键（参考原生方法：https://github.com/siyuan-note/siyuan/blob/c88f99646c4c1139bcfc551b4f24b7cbea151751/app/src/boot/globalEvent/keydown.ts#L1394-L1406 ）
+            dialogElement.dispatchEvent(new CustomEvent("click", {detail: event.key}));
+            return;
+        }
+
+        let handleMenu = true; // 是否处理菜单操作
+
+        // 如果按下的是 Esc 键，则根据菜单和其他插件对话框的 zIndex 来判断是否需要关闭菜单
+        if (event.key === "Escape") {
+            let maxZIndex = 0;
+            let maxZIndexElement: HTMLElement | null | undefined;
+            const snippetDialogElements = document.querySelectorAll("body > .b3-dialog--open[data-key='jcsm-snippet-dialog']");
+            snippetDialogElements.forEach((element: HTMLElement) => {
+                const zIndex = Number(element.style?.zIndex ?? 0);
+                if (zIndex > maxZIndex) {
+                    maxZIndex = zIndex;
+                    maxZIndexElement = element;
+                }
+            });
+
+            const menuZIndex = Number(this.menu?.element?.style?.zIndex ?? 0);
+            if (menuZIndex < maxZIndex) {
+                // 菜单的 zIndex 不是最高时就不关闭菜单
+                handleMenu = false;
+            }
+
+            // 把事件 dispatchEvent 到最高 zIndex 的 snippetDialogElement 上，让 Dialog 处理 Esc 键
+            if (!this.menu && maxZIndexElement) {
+                event.stopPropagation();
+                this.plugin.console.log("globalKeyDownHandler: Esc, dispatchEvent to maxZIndexElement", maxZIndexElement);
+                maxZIndexElement.dispatchEvent(new CustomEvent("click", {detail: event.key}));
+            }
+        }
+
+        // 菜单操作
+        if (this.menu && document.activeElement === document.body && handleMenu) {
+            // 阻止冒泡，避免：
+            // 1. 触发原生监听器导致实际上会操作菜单选项，因此无法在输入框中使用方向键移动光标
+            // 2. 按 Enter 之后默认会关闭整个菜单
+            // 打开插件设置时无法按 Alt+P 打开思源设置菜单，只要不是按 Enter 或方向键就放过事件冒泡
+            if (["Escape", "Enter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+                this.plugin.console.log("globalKeyDownHandler: Escape, Enter, ArrowUp, ArrowDown, ArrowLeft, ArrowRight", event.key);
+                event.stopPropagation();
+            }
+            // 如果当前在输入框中使用键盘，则不处理菜单按键事件
+            if (isInputElementActive()) return;
+
+            this.menu.element.dispatchEvent(new CustomEvent("click", {detail: event.key}));
+            return;
+        }
+
+        // 如果是在代码编辑器里使用快捷键，则阻止冒泡 https://github.com/TCOTC/snippets/issues/19
+        if (document.activeElement?.closest(".b3-dialog--open[data-key='jcsm-snippet-dialog']")) {
+            event.stopPropagation();
+        }
+    };
+
+    /**
+     * 移除全局键盘按下事件监听（菜单/对话框关闭后窗口内无 Dialog 和菜单时）
+     */
+    destroyGlobalKeyDownHandler = () => {
+        if (!this.isDialogAndMenuOpen()) {
+            // 窗口内没有打开的 Dialog 和菜单之后才移除事件监听
+            this.plugin.removeListener(document.documentElement, "keydown", this.globalKeyDownHandler);
+        }
+    };
 }

@@ -6,7 +6,7 @@ import type {SnippetsConfigItem} from "./config/schema";
 import {ConfigService} from "./config/config-service";
 import {BroadcastService} from "./services/sync";
 import {FileWatchService} from "./services/file-watch";
-import {isInputElementActive, genNewSnippetId} from "./utils";
+import {genNewSnippetId} from "./utils";
 import {EventBus} from "./core/event-bus";
 import {ImportExportService} from "./services/import-export";
 import {FeedbackService} from "./services/feedback";
@@ -188,7 +188,7 @@ export default class PluginSnippets extends Plugin {
             closeMenu: () => this.menuView.close(),
             exportSnippets: () => void this.importExportService.exportSnippetsToFile(),
             importSnippets: (overwrite) => void this.importExportService.importSnippets(overwrite),
-            globalKeyDownHandler: () => this.globalKeyDownHandler,
+            globalKeyDownHandler: () => this.menuView.globalKeyDownHandler,
         });
 
         // 初始化文件监听服务（运行态经读取器/动作实时转发：配置镜像属性在配置装配完成后才有，start/handle 调用时读取）
@@ -235,7 +235,7 @@ export default class PluginSnippets extends Plugin {
             logger: this.console,
             consoleDebug: () => this.consoleDebug,
             checkThemeWatch: () => this.editorManager.checkAndManageThemeWatch(),
-            isDialogOrMenuOpen: () => this.isDialogAndMenuOpen(),
+            isDialogOrMenuOpen: () => this.menuView.isDialogAndMenuOpen(),
         });
 
         // 初始化对话框管理器（代码片段编辑对话框/确认对话框/按元素关闭等；运行态经读取器/动作实时转发）
@@ -246,7 +246,7 @@ export default class PluginSnippets extends Plugin {
             addListener: (element, event, fn, options) => this.addListener(element, event, fn, options),
             removeListener: (element, event, fn, options) => this.removeListener(element, event, fn, options),
             removeSnippetEditButtonActive: (snippetId) => this.menuView.removeSnippetEditButtonActive(snippetId),
-            destroyGlobalKeyDownHandler: () => this.destroyGlobalKeyDownHandler(),
+            destroyGlobalKeyDownHandler: () => this.menuView.destroyGlobalKeyDownHandler(),
             checkThemeWatch: (isOpen) => this.editorManager.checkAndManageThemeWatch(isOpen),
             isShowPublishCheckbox: () => this.menuView.isShowPublishCheckbox(),
             realTimePreview: () => this.realTimePreview,
@@ -852,98 +852,8 @@ export default class PluginSnippets extends Plugin {
         };
     })();
 
-    /**
-     * 全局键盘按下事件处理（菜单/对话框键盘协调；SnippetsMenu 监听于 documentElement，故公开）
-     * @param event 键盘事件
-     */
-    globalKeyDownHandler = (event: KeyboardEvent) => {
-        // 获取所有打开的插件模态对话框，把按键操作发送给 DOM 最下方，也就是最顶层的对话框
-        // 无法判断是在操作哪个代码片段编辑对话框（非模态），所以此处忽略代码片段编辑对话框 jcsm-snippet-dialog 的操作
-        const dialogElements = this.snippetsDialog.getAllModalElements();
-        const dialogElement = dialogElements[dialogElements.length - 1];
-        if (dialogElement) {
-            // // 如果按 Esc 时焦点在输入框里，移除焦点
-            // if (event.key === "Escape" && this.isInputElementActive()) {
-            //     (document.activeElement as HTMLElement).blur();
-            //     return;
-            // }
-            // 阻止冒泡，避免触发原生监听器导致菜单关闭
-            event.stopPropagation();
-            // 触发 Dialog 的 click 事件，传递按键（参考原生方法：https://github.com/siyuan-note/siyuan/blob/c88f99646c4c1139bcfc551b4f24b7cbea151751/app/src/boot/globalEvent/keydown.ts#L1394-L1406 ）
-            dialogElement.dispatchEvent(new CustomEvent("click", {detail: event.key}));
-            return;
-        }
-
-        let handleMenu = true; // 是否处理菜单操作
-
-        // 如果按下的是 Esc 键，则根据菜单和其他插件对话框的 zIndex 来判断是否需要关闭菜单
-        if (event.key === "Escape") {
-            let maxZIndex = 0;
-            let maxZIndexElement: HTMLElement | null | undefined;
-            const snippetDialogElements = document.querySelectorAll("body > .b3-dialog--open[data-key='jcsm-snippet-dialog']");
-            snippetDialogElements.forEach((element: HTMLElement) => {
-                const zIndex = Number(element.style?.zIndex ?? 0);
-                if (zIndex > maxZIndex) {
-                    maxZIndex = zIndex;
-                    maxZIndexElement = element;
-                }
-            });
-
-            const menuZIndex = Number(this.menuView.menu?.element?.style?.zIndex ?? 0);
-            if (menuZIndex < maxZIndex) {
-                // 菜单的 zIndex 不是最高时就不关闭菜单
-                handleMenu = false;
-            }
-
-            // 把事件 dispatchEvent 到最高 zIndex 的 snippetDialogElement 上，让 Dialog 处理 Esc 键
-            if (!this.menuView.menu && maxZIndexElement) {
-                event.stopPropagation();
-                this.console.log("globalKeyDownHandler: Esc, dispatchEvent to maxZIndexElement", maxZIndexElement);
-                maxZIndexElement.dispatchEvent(new CustomEvent("click", {detail: event.key}));
-            }
-        }
-
-        // 菜单操作
-        if (this.menuView.menu && document.activeElement === document.body && handleMenu) {
-            // 阻止冒泡，避免：
-            // 1. 触发原生监听器导致实际上会操作菜单选项，因此无法在输入框中使用方向键移动光标
-            // 2. 按 Enter 之后默认会关闭整个菜单
-            // 打开插件设置时无法按 Alt+P 打开思源设置菜单，只要不是按 Enter 或方向键就放过事件冒泡
-            if (["Escape", "Enter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
-                this.console.log("globalKeyDownHandler: Escape, Enter, ArrowUp, ArrowDown, ArrowLeft, ArrowRight", event.key);
-                event.stopPropagation();
-            }
-            // 如果当前在输入框中使用键盘，则不处理菜单按键事件
-            if (isInputElementActive()) return;
-
-            this.menuView.menu.element.dispatchEvent(new CustomEvent("click", {detail: event.key}));
-            return;
-        }
-
-        // 如果是在代码编辑器里使用快捷键，则阻止冒泡 https://github.com/TCOTC/snippets/issues/19
-        if (document.activeElement?.closest(".b3-dialog--open[data-key='jcsm-snippet-dialog']")) {
-            event.stopPropagation();
-        }
-    };
-
-    /**
-     * 移除全局键盘按下事件监听（SnippetsMenu/对话框关闭时调用，故公开）
-     */
-    destroyGlobalKeyDownHandler = () => {
-        if (!this.isDialogAndMenuOpen()) {
-            // 窗口内没有打开的 Dialog 和菜单之后才移除事件监听
-            this.removeListener(document.documentElement, "keydown", this.globalKeyDownHandler);
-        }
-    };
-
-    /**
-     * 是否存在打开的插件对话框和菜单
-     * @returns 是否存在
-     */
-    private isDialogAndMenuOpen(): boolean {
-        return document.querySelectorAll(".b3-dialog--open[data-key^='jcsm-']").length > 0 || !!this.menuView.menu;
-    }
-
+    // 全局键盘按下/移除事件监听与开合判断（globalKeyDownHandler/destroyGlobalKeyDownHandler/isDialogAndMenuOpen）
+    // 已随菜单一并外迁至 src/ui/menu.ts SnippetsMenu
 
     // ================================ 事件监听管理 ================================
 
