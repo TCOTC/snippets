@@ -2,59 +2,30 @@
 // 职责：配置读取与版本校验 → 写入 window.siyuan.jcsm 镜像并挂到插件实例（defineProperty）→
 // 构建 Setting 项；对话框保存（saveFromDialog）；配置热应用（applyConfig，onDataChanged 同源）；
 // 通知禁用持久化（disableNotification）。
-// 存储键名与插件生命周期数据方法（loadData/saveData/removeData）由宿主转发，本模块不感知具体键名。
-import {Setting} from "siyuan";
+// 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
+// 配置文件读写经插件生命周期方法（loadData/saveData/removeData）与本模块自持的存储键名。
+import {hideMessage, Setting} from "siyuan";
 import {htmlToElement, isPromiseFulfilled} from "../utils";
+import type PluginSnippets from "../index";
 import type {SnippetsConfigItem} from "./schema";
 import type {SettingItem} from "../types";
 
-/**
- * 配置服务所需的插件运行态（读取器/动作函数形式，调用时才取值或执行）
- */
-export interface ConfigServiceHost {
-    /** 插件日志器 */
-    logger: {
-        log(...args: any[]): void;
-        warn(...args: any[]): void;
-        error(...args: any[]): void;
-    };
-    /** 读取：配置结构版本号 */
-    version: () => number;
-    /** 读取：插件 i18n 文案 */
-    i18n: () => any;
-    /** 读取：已构建的配置项定义 */
-    configItems: () => SnippetsConfigItem[];
-    /** 动作：幂等构建配置项定义（构建上下文依赖插件运行态，留在插件实例侧） */
-    ensureConfigItems: () => Promise<void>;
-    /** 读取：配置属性的挂载目标（插件实例，动态 getter/setter 挂到其上） */
-    definePropertiesTarget: () => object;
-    /** 动作：拉取最新配置文件并返回其内容（无文件时与插件 data 语义一致） */
-    loadConfig: () => Promise<any>;
-    /** 动作：删除配置文件（版本异常时） */
-    removeConfig: () => Promise<void>;
-    /** 动作：写入配置文件 */
-    saveConfig: (content: any) => Promise<void>;
-    /** 动作：弹出错误消息 */
-    showErrorMessage: (message: string, timeout?: number, id?: string) => void;
-    /** 动作：关闭并销毁对话框（保存成功后调用） */
-    closeDialog: (dialogElement: HTMLElement) => void;
-    /** 动作：移除指定通知消息 */
-    hideNotice: (messageI18nKey: string) => void;
-}
+const PLUGIN_NAME = "snippets";                    // 插件名（通知消息 id 前缀用）
+export const STORAGE_NAME = "plugin-config.json";  // 配置文件名（index 侧 removeData 亦使用）
 
 /**
  * 配置服务（原 index.ts 中对应私有方法外迁，行为等价）
  */
 export class ConfigService {
-    private readonly host: ConfigServiceHost;
+    private readonly plugin: PluginSnippets;
 
     /**
      * 插件设置对象（仅 init 通过版本校验后创建并填充；失败时保持未初始化）
      */
     private settingInstance: Setting | undefined;
 
-    constructor(host: ConfigServiceHost) {
-        this.host = host;
+    constructor(plugin: PluginSnippets) {
+        this.plugin = plugin;
     }
 
     /**
@@ -62,6 +33,28 @@ export class ConfigService {
      */
     get setting(): Setting | undefined {
         return this.settingInstance;
+    }
+
+    /**
+     * 拉取最新配置文件并返回其内容（loadData 同步插件 data，无文件时为空串）
+     */
+    private async loadStoredConfig(): Promise<any> {
+        await this.plugin.loadData(STORAGE_NAME);
+        return this.plugin.data[STORAGE_NAME];
+    }
+
+    /**
+     * 删除配置文件（版本异常时调用）
+     */
+    private async removeStoredConfig(): Promise<void> {
+        await this.plugin.removeData(STORAGE_NAME);
+    }
+
+    /**
+     * 写入配置文件
+     */
+    private async saveStoredConfig(content: any): Promise<void> {
+        await this.plugin.saveData(STORAGE_NAME, content);
     }
 
     /**
@@ -82,7 +75,7 @@ export class ConfigService {
      * 应用单个配置项的 UI 副作用（查 configItems 对应条目的 onApply）
      */
     private async apply(key: string, newValue: any) {
-        const configItem = this.host.configItems().find(item => item.key === key);
+        const configItem = this.plugin.configItems.find(item => item.key === key);
         if (configItem?.onApply) {
             await configItem.onApply(newValue);
         }
@@ -94,19 +87,19 @@ export class ConfigService {
      */
     public async init() {
         // TODO测试: 需要测试会不会在同步完成之前加载数据，然后同步修改数据之后插件没有重载。如果有这种情况的话提 issue、试试把 loadData() 和 this.setting 相关的逻辑放在 onLayoutReady 中有没有问题
-        const config = await this.host.loadConfig();
+        const config = await this.loadStoredConfig();
         // 配置不存在时 config === ""
         if (config !== "") {
             // 版本处理
             if (!config.version || typeof config.version !== "number" || isNaN(config.version)) {
                 // 判断 config.version 是否不存在或不是数字
                 // 配置文件异常，移除配置文件、弹出错误消息
-                await this.host.removeConfig();
-                this.host.showErrorMessage(this.host.i18n().loadConfigError);
-            } else if (config.version > this.host.version()) {
+                await this.removeStoredConfig();
+                this.plugin.showErrorMessage(this.plugin.i18n.loadConfigError);
+            } else if (config.version > this.plugin.version) {
                 // 当前配置文件是更高版本的，与当前版本不兼容，弹出消息提示用户升级插件（可以不升级）
                 // 如果用户不升级插件，还保存了设置，则直接覆盖掉高版本配置，这样也没有问题，因为高版本加载的时候又会自动调整配置结构
-                this.host.showErrorMessage(this.host.i18n().loadConfigIncompatible, 15000);
+                this.plugin.showErrorMessage(this.plugin.i18n.loadConfigIncompatible, 15000);
                 return;
             }
             // else if (config.version < this.version) {
@@ -118,15 +111,15 @@ export class ConfigService {
         }
 
         // 读取配置或者设置默认值
-        await this.host.ensureConfigItems();
-        this.host.configItems().forEach(item => {
+        await this.plugin.initConfigItems();
+        this.plugin.configItems.forEach(item => {
             // 使用全局变量存储配置
             this.writeValue(item.key, config[item.key] ?? item.defaultValue);
         });
 
         // 为每个配置项在插件实例上动态生成 getter/setter（代理到全局镜像）
-        const target = this.host.definePropertiesTarget();
-        this.host.configItems().forEach(item => {
+        const target = this.plugin;
+        this.plugin.configItems.forEach(item => {
             Object.defineProperty(target, item.key, {
                 get: () => this.readValue(item.key) ?? item.defaultValue,
                 set: (value: any) => this.writeValue(item.key, value),
@@ -138,7 +131,7 @@ export class ConfigService {
         this.settingInstance = new Setting({});
 
         // 插件设置窗口中的各个配置项
-        this.host.configItems().forEach(item => {
+        this.plugin.configItems.forEach(item => {
             if (item.ignore) return;
             this.settingInstance!.addItem(this.createSettingItem(item));
         });
@@ -149,7 +142,7 @@ export class ConfigService {
      * @param dialogElement 对话框元素
      */
     public saveFromDialog(dialogElement: HTMLElement) {
-        this.host.configItems().forEach(async item => {
+        this.plugin.configItems.forEach(async item => {
             let newValue;
             let element: HTMLInputElement | HTMLSelectElement | null = null;
 
@@ -193,12 +186,12 @@ export class ConfigService {
         if (!isPromiseFulfilled(saveResponse)) {
             // 写入失败
             const response = saveResponse as any;
-            this.host.showErrorMessage(this.host.i18n().saveConfigFailed + " [" + response?.code + ": " + response?.msg + "]", 20000, "error");
+            this.plugin.showErrorMessage(this.plugin.i18n.saveConfigFailed + " [" + response?.code + ": " + response?.msg + "]", 20000, "error");
             return;
         }
 
         // 移除设置对话框
-        this.host.closeDialog(dialogElement);
+        this.plugin.snippetsDialog.closeByElement(dialogElement);
     }
 
     /**
@@ -210,7 +203,7 @@ export class ConfigService {
             return;
         }
         // 逐个配置项与当前值比较，有变化时写入并触发对应 UI 更新
-        this.host.configItems().forEach(item => {
+        this.plugin.configItems.forEach(item => {
             if (config.hasOwnProperty(item.key)) {
                 const newValue = config[item.key];
                 if (this.readValue(item.key) !== newValue) {
@@ -226,7 +219,7 @@ export class ConfigService {
      */
     public async reloadFromStorage() {
         // 重新读取配置：loadData 会从内核拉取最新文件并更新插件 data
-        const config = await this.host.loadConfig();
+        const config = await this.loadStoredConfig();
         this.applyConfig(config);
     }
 
@@ -236,21 +229,21 @@ export class ConfigService {
      */
     public disableNotification(messageI18nKey: string) {
         // 移除消息提示
-        this.host.hideNotice(messageI18nKey);
+        hideMessage(PLUGIN_NAME + "-" + messageI18nKey);
 
         // 通知的配置键名
         const noticeConfigKey = messageI18nKey + "Notice";
 
         // 检查通知键是否存在于配置项中
-        const configItem = this.host.configItems().find(item => item.key === noticeConfigKey);
+        const configItem = this.plugin.configItems.find(item => item.key === noticeConfigKey);
         if (!configItem) {
-            this.host.logger.warn(`ignoreNotice: Notification config item "${noticeConfigKey}" not found`);
+            this.plugin.console.warn(`ignoreNotice: Notification config item "${noticeConfigKey}" not found`);
             return;
         }
 
         // 检查是否为布尔类型的通知配置
         if (configItem.type !== "boolean") {
-            this.host.logger.warn(`ignoreNotice: Notification config item "${noticeConfigKey}" is not boolean type`);
+            this.plugin.console.warn(`ignoreNotice: Notification config item "${noticeConfigKey}" is not boolean type`);
             return;
         }
 
@@ -260,7 +253,7 @@ export class ConfigService {
         // 保存设置到配置文件
         void this.persistConfig();
 
-        this.host.logger.log(`ignoreNotice: Notification "${noticeConfigKey}" has been disabled and settings saved`);
+        this.plugin.console.log(`ignoreNotice: Notification "${noticeConfigKey}" has been disabled and settings saved`);
     }
 
     /**
@@ -268,11 +261,11 @@ export class ConfigService {
      * @returns saveData 的返回（调用方用 isPromiseFulfilled 判断是否成功）
      */
     private persistConfig(): any {
-        const config: any = { version: this.host.version() };
-        this.host.configItems().forEach(item => {
+        const config: any = { version: this.plugin.version };
+        this.plugin.configItems.forEach(item => {
             config[item.key] = this.readValue(item.key);
         });
-        return this.host.saveConfig(config);
+        return this.saveStoredConfig(config);
     }
 
     /**
@@ -287,8 +280,8 @@ export class ConfigService {
         }
 
         return {
-            title: (this.host.i18n() as any)[item.key],
-            description: item.description ? (this.host.i18n() as any)[item.description] : undefined,
+            title: (this.plugin.i18n as any)[item.key],
+            description: item.description ? (this.plugin.i18n as any)[item.description] : undefined,
             direction: item.direction,
             createActionElement: () => {
                 if (item.type === "boolean") {
@@ -301,7 +294,7 @@ export class ConfigService {
                     const optionsHtml = item.options.map(option => {
                         // 由于 HTML 的 value 属性最终都会被转为字符串，这里直接用字符串比较即可
                         const isSelected = String(currentValue) === String(option.value);
-                        return `<option value="${option.value}"${isSelected ? " selected" : ""}>${(this.host.i18n() as any)[option.text]}</option>`;
+                        return `<option value="${option.value}"${isSelected ? " selected" : ""}>${(this.plugin.i18n as any)[option.text]}</option>`;
                     }).join("");
 
                     return htmlToElement(

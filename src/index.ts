@@ -3,7 +3,7 @@ import {Snippet, SnippetType} from "./types";
 import {SNIPPETS_CHANGED, SnippetStore} from "./domain/snippet-store";
 import {createSnippetsConfigItems} from "./config/schema";
 import type {SnippetsConfigItem} from "./config/schema";
-import {ConfigService} from "./config/config-service";
+import {ConfigService, STORAGE_NAME} from "./config/config-service";
 import {BroadcastService} from "./services/sync";
 import {FileWatchService} from "./services/file-watch";
 import {EventBus} from "./core/event-bus";
@@ -17,7 +17,6 @@ import {SnippetsMenu} from "./ui/menu";
 import {
     fetchPost,
     getFrontend,
-    hideMessage,
     platformUtils,
     Plugin,
     Setting
@@ -34,7 +33,6 @@ import {SettingDialog} from "./ui/setting-dialog";
 import {SnippetsDialog} from "./ui/snippets-dialog";
 
 const PLUGIN_NAME = "snippets";                    // 插件名
-const STORAGE_NAME = "plugin-config.json";         // 配置文件名
 // const TAB_TYPE = "custom-tab"; // 自定义标签页
 
 // noinspection JSUnusedGlobalSymbols
@@ -147,28 +145,8 @@ export default class PluginSnippets extends Plugin {
         // 初始化编辑器对话框生命周期管理器（直连本实例，editorIndentUnit 等调用时读取）
         this.editorManager = new EditorManager(this);
 
-        // 初始化配置服务（配置装配/持久化/热应用；存储键名与生命周期数据方法在此转发，运行态均延迟到调用时取值）
-        this.configService = new ConfigService({
-            logger: this.console,
-            version: () => this.version,
-            i18n: () => this.i18n,
-            configItems: () => this.configItems,
-            ensureConfigItems: () => this.initConfigItems(),
-            definePropertiesTarget: () => this,
-            loadConfig: async () => {
-                await this.loadData(STORAGE_NAME);
-                return this.data[STORAGE_NAME];
-            },
-            removeConfig: async () => {
-                await this.removeData(STORAGE_NAME);
-            },
-            saveConfig: async (content) => {
-                await this.saveData(STORAGE_NAME, content);
-            },
-            showErrorMessage: (message, timeout, id) => this.showErrorMessage(message, timeout, id),
-            closeDialog: (dialogElement) => this.snippetsDialog.closeByElement(dialogElement),
-            hideNotice: (messageI18nKey) => hideMessage(PLUGIN_NAME + "-" + messageI18nKey),
-        });
+        // 初始化配置服务（直连本实例；配置读写经本模块自持存储键名与插件生命周期数据方法）
+        this.configService = new ConfigService(this);
 
         // 初始化设置对话框管理器（运行态经读取器/动作实时转发：设置项列表等需在配置装配完成后才有，openSetting 打开时才会读取）
         this.settingDialog = new SettingDialog({
@@ -485,9 +463,9 @@ export default class PluginSnippets extends Plugin {
     public setting!: Setting;
 
     /**
-     * 配置文件版本（配置结构有变化时升级）
+     * 配置文件版本（配置结构有变化时升级；ConfigService 直连访问，故公开）
      */
-    private version = 1;
+    version = 1;
 
     /**
      * CSS 代码片段实时预览（必须与 snippet.type === "css" 一起使用）
@@ -505,15 +483,15 @@ export default class PluginSnippets extends Plugin {
     consoleDebug!: boolean;
 
     /**
-     * 配置项定义（类型定义与条目构建见 src/config/schema.ts）
+     * 配置项定义（类型定义与条目构建见 src/config/schema.ts；ConfigService 直连访问，故公开）
      */
-    private configItems: SnippetsConfigItem[] = [];
+    configItems: SnippetsConfigItem[] = [];
 
     /**
-     * 初始化配置项（条目定义见 src/config/schema.ts，此处仅构建一次并挂到实例）
+     * 初始化配置项（条目定义见 src/config/schema.ts，此处仅构建一次并挂到实例；ConfigService 直连调用，故公开）
      * 注意在这里面不能用 this.console 之类的方法，因为它们需要先加载完插件配置才能用
      */
-    private async initConfigItems() {
+    async initConfigItems() {
         if (this.configItems.length > 0) {
             // 已构建过则直接复用（构建结果与运行态无关，运行态由读取器/动作函数实时转发）
             return;
