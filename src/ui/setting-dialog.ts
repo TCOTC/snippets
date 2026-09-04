@@ -2,6 +2,7 @@
 // 职责：插件自己的设置对话框（打开/保存/导入导出入口/键盘与滚轮拦截/原生设置跳转），
 // 参考原生代码 app/src/plugin/Setting.ts Setting.open 方法。
 import {Constants, Dialog, openSetting} from "siyuan";
+import {attachDialogObject} from "../utils";
 import type PluginSnippets from "../index";
 
 // 思源 3.7.0+ 的 openSetting 支持第二个参数 tab 用于指定初始选项卡
@@ -41,7 +42,8 @@ export class SettingDialog {
             width: this.plugin.isMobile ? "92vw" : "768px",
             height: "80vh",
         });
-        (dialog.element as any).dialogObject = dialog;
+        // 将 Dialog 实例挂到元素上，供 closeByElement 按元素关闭时取回（见 utils.attachDialogObject）
+        attachDialogObject(dialog.element, dialog);
 
         dialog.element.setAttribute("data-key", "jcsm-setting-dialog");
         dialog.element.setAttribute("data-modal", "true");  // 标记为模态对话框

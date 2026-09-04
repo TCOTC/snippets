@@ -169,11 +169,8 @@ export class MenuDragSort {
             return false;
         }
 
-        // 获取最新代码片段列表
-        const snippetsList = await this.plugin.snippetManager.getSnippetsList();
-        if (snippetsList) {
-            this.plugin.snippetsList = snippetsList;
-        } else {
+        // 获取最新代码片段列表（失败时中止排序，getSnippetsList 已弹错误提示）
+        if (!(await this.plugin.snippetManager.refreshSnippetsList())) {
             return false;
         }
 

@@ -6,7 +6,7 @@
 // 配置值存于插件 config 对象（SnippetsConfig 字段默认值为事实源，见 config.ts；init 从磁盘合并、写配置即落盘）；
 // 配置文件读写经插件生命周期方法（loadData/saveData/removeData）与本模块自持的存储键名。
 import {hideMessage, Setting} from "siyuan";
-import {htmlToElement} from "../utils";
+import {htmlToElement, PLUGIN_NAME, settleWriteResponse, SNIPPET_DIALOG_SELECTOR} from "../utils";
 import type PluginSnippets from "../index";
 import type {SettingItem} from "../types";
 
@@ -34,7 +34,6 @@ export interface SnippetsConfigItem {
 }
 
 
-const PLUGIN_NAME = "snippets";                    // 插件名（通知消息 id 前缀用）
 export const STORAGE_NAME = "plugin-config.json";  // 配置文件名（index 侧 removeData 亦使用）
 
 /**
@@ -189,16 +188,11 @@ export class ConfigService {
         });
 
         // 等待写入完成后再决定是否关闭对话框：
-        // saveData 在只读模式/插件已销毁等场景会 reject，内核返回的业务响应 code 非 0 也视为写入失败
-        let saveResponse: any;
-        try {
-            saveResponse = await this.persistConfig();
-        } catch (e) {
-            saveResponse = e;
-        }
-        if (saveResponse?.code !== 0) {
+        // 写 API 失败（只读模式/插件已销毁等场景 reject）已归一为 { code: 非 0 }（见 settleWriteResponse）
+        const saveResponse = await settleWriteResponse(this.persistConfig());
+        if (saveResponse.code !== 0) {
             // 写入失败：提示并保持对话框打开，用户可重试或取消
-            this.plugin.showErrorMessage(this.plugin.i18n.saveConfigFailed + " [" + saveResponse?.code + ": " + saveResponse?.msg + "]", 20000, "error");
+            this.plugin.showErrorMessage(this.plugin.i18n.saveConfigFailed + " [" + saveResponse.code + ": " + saveResponse.msg + "]", 20000, "error");
             return;
         }
 
@@ -371,7 +365,7 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         // 修改 realTimePreview 之后，显示/隐藏已打开 CSS 编辑对话框中的手动预览按钮
         // （启用实时预览时由输入事件驱动预览，手动按钮隐藏；禁用后恢复手动按钮）
         onApply: (newValue) => {
-            const cssDialogs = document.querySelectorAll(".b3-dialog--open[data-key='jcsm-snippet-dialog'][data-snippet-type='css']");
+            const cssDialogs = document.querySelectorAll(`${SNIPPET_DIALOG_SELECTOR}[data-snippet-type="css"]`);
             if (newValue === true) {
                 cssDialogs.forEach(cssDialog => {
                     const previewButton = cssDialog.querySelector("button[data-action='preview']") as HTMLButtonElement;
@@ -461,7 +455,7 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         // （显示条件与菜单项生成时一致：跟随发布服务开关或总是显示）
         onApply: (newValue) => {
             const show = newValue === 0 ? window.siyuan.config!.publish.enable === true : newValue === 1;
-            const publishSwitchInputs = document.querySelectorAll(".jcsm-snippets-container .jcsm-snippet-item input[data-type='publishSwitch'], .b3-dialog--open[data-key='jcsm-snippet-dialog'] input[data-type='publishSwitch']");
+            const publishSwitchInputs = document.querySelectorAll(`.jcsm-snippets-container .jcsm-snippet-item input[data-type='publishSwitch'], ${SNIPPET_DIALOG_SELECTOR} input[data-type='publishSwitch']`);
             if (show) {
                 publishSwitchInputs.forEach(input => {
                     input.classList.remove("fn__none");

@@ -2,9 +2,8 @@
 // 职责：showNotification（仅弹出设置中存在的通知，含"不再提示"按钮）；showErrorMessage（错误提示）。
 // 通知开关等配置存于插件 config 对象对应字段（含 *Notice 通知开关，键与 configItems 条目一致）。
 import {showMessage} from "siyuan";
+import {PLUGIN_NAME} from "../utils";
 import type PluginSnippets from "../index";
-
-const PLUGIN_NAME = "snippets";                    // 插件名（通知消息 id 前缀用）
 
 /**
  * 通知/错误提示服务

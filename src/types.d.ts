@@ -67,11 +67,12 @@ declare module "siyuan" {
     }
 }
 
-// 拓展 Dialog 类（上游 siyuan 类型未含 id/destroyNative）
+// 拓展 Dialog 类（上游 siyuan 类型未含 id/destroyNative/destroyCallback）
 declare module "siyuan" {
     interface Dialog {
         id: string;
         destroyNative: () => void;
+        destroyCallback?: (options?: any) => void;
     }
 }
 

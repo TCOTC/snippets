@@ -1,6 +1,64 @@
 // 工具函数与思源文件 API 封装（无状态函数；原 storage.ts 已并入本模块）
 import {fetchPost} from "siyuan";
+import type {Dialog} from "siyuan";
 import type {Snippet} from "./types";
+
+/**
+ * 插件名（通知消息 id / 快捷键键名前缀用，全库单源定义）
+ */
+export const PLUGIN_NAME = "snippets";
+
+/** 代码片段编辑对话框的 data-key 值（元素标记 setAttribute 与 dataset.key 判定共用） */
+export const SNIPPET_DIALOG_DATA_KEY = "jcsm-snippet-dialog";
+
+/** 打开的代码片段编辑对话框基选择器（按片段 ID / 类型 / 是否存在 data-snippet-id 的变体基于它拼接） */
+export const SNIPPET_DIALOG_SELECTOR = `.b3-dialog--open[data-key="${SNIPPET_DIALOG_DATA_KEY}"]`;
+
+/**
+ * 等待写操作 Promise 并归一化失败态（参考内核响应 { code, msg } 同形）
+ * 写 API（saveData/removeData/持久化等）在只读模式/插件已销毁等场景会 reject；
+ * 此处统一捕获 reject 并归一为 { code: 非 0, msg }，调用方只需检查 code 是否为 0。
+ * @param promise 写操作 Promise（resolve 内核响应，reject 错误对象/响应）
+ * @returns 归一化响应：成功为原响应（code 为 0）；失败为 { code: 非 0, msg }
+ */
+export const settleWriteResponse = async (promise: Promise<any>): Promise<{ code: number; msg: string }> => {
+    try {
+        return await promise;
+    } catch (error: any) {
+        // 与内核响应同形，便于统一按 code !== 0 判断；错误对象无 code 时记为 -1
+        return { code: error?.code ?? -1, msg: error?.msg ?? error?.message ?? String(error) };
+    }
+};
+
+/**
+ * 将 Dialog 实例挂到其元素上（原生 Dialog 未提供按元素取实例；
+ * 挂载后 closeByElement 可按元素取回以覆写 destroy/读取 id 等）
+ * @param element 对话框元素（dialog.element）
+ * @param dialog Dialog 实例
+ */
+export const attachDialogObject = (element: HTMLElement, dialog: Dialog) => {
+    (element as HTMLElement & { dialogObject?: Dialog }).dialogObject = dialog;
+};
+
+/**
+ * 取回挂在对话框元素上的 Dialog 实例（见 attachDialogObject）
+ * @param element 对话框元素
+ * @returns Dialog 实例（未挂载时为 undefined）
+ */
+export const getDialogObject = (element: HTMLElement): Dialog | undefined =>
+    (element as HTMLElement & { dialogObject?: Dialog }).dialogObject;
+
+/**
+ * 生成代码片段开关 input 的 HTML（菜单项与编辑对话框共用同一模板，仅 class 前缀差异）
+ * @param type 开关类型：snippetSwitch（启用）/ publishSwitch（发布服务中显示）
+ * @param checked 是否勾选（publishSwitch 为 !disabledInPublish）
+ * @param extraClass 附加在 b3-switch 前的 class（菜单项带 "jcsm-switch "，编辑对话框不带）
+ * @param ariaLabel publishSwitch 的无障碍标签（snippetSwitch 无）
+ * @param hidden 是否隐藏（publishSwitch 随“显示发布开关”配置，snippetSwitch 恒显示）
+ * @returns 开关 input 的 HTML
+ */
+export const genSnippetSwitchHtml = (type: "snippetSwitch" | "publishSwitch", checked: boolean, extraClass: string, ariaLabel: string | undefined = undefined, hidden = false): string =>
+    `<input data-type="${type}" class="${extraClass}b3-switch fn__flex-center${type === "publishSwitch" ? " ariaLabel" : ""}${hidden ? " fn__none" : ""}"${type === "publishSwitch" ? ` aria-label="${ariaLabel}" data-position="north"` : ""} type="checkbox"${checked ? " checked" : ""}>`;
 
 /**
  * 隐藏 tooltip（参考原生代码 app/src/dialog/tooltip.ts ）
@@ -51,7 +109,7 @@ export const moveElementToTop = (element: HTMLElement) => {
 
     let maxZIndex = 0;
     // 查找所有打开的代码片段编辑对话框和菜单，如果 zIndex 不是最大的才增加
-    const allElements = document.querySelectorAll(".b3-dialog--open[data-key='jcsm-snippet-dialog'], #commonMenu[data-name='PluginSnippets']");
+    const allElements = document.querySelectorAll(`${SNIPPET_DIALOG_SELECTOR}, #commonMenu[data-name='PluginSnippets']`);
     allElements.forEach((el: HTMLElement) => {
         const zIndex = Number(el.style.zIndex);
         if (zIndex > maxZIndex) {
@@ -80,26 +138,32 @@ export const genNewSnippetId = (snippetsList: Snippet[]): string => {
 // ================================ 文件 API 封装（原 src/services/storage.ts） ================================
 
 /**
+ * fetchPost 回调形式转 Promise（统一封装：resolve 内核响应对象，错误提示由调用方按 code 处理）
+ * @param url 请求地址
+ * @param body 请求体（对象或 FormData；无请求体时可省略）
+ * @returns Promise<any> 内核响应
+ */
+export const fetchPostPromise = (url: string, body?: any): Promise<any> =>
+    new Promise((resolve) => {
+        fetchPost(url, body, (response: any) => resolve(response));
+    });
+
+/**
  * 读取文件（原生代码 app/src/plugin/Plugin.ts getFile 方法）
  * @param path 文件路径
  * @returns Promise<any> 返回原始响应，由调用方处理 code/msg/data
  */
-export const getFile = (path: string): Promise<any> => {
+export const getFile = (path: string): Promise<any> =>
     // 解决 400 parses request failed 问题，fetchPost 需要传递对象而不是 JSON 字符串
-    return new Promise((resolve) => {
-        fetchPost("/api/file/getFile", { path }, (response: any) => {
-            resolve(response);
-        });
-    });
-};
+    fetchPostPromise("/api/file/getFile", { path });
 
 /**
  * 写入文件，返回 Promise
  * @param path 文件路径
- * @param content 文件内容
+ * @param content 文件内容（字符串文本或已构造的 File，zip 等二进制上传直接传 File）
  * @returns Promise<any>
  */
-export const putFile = (path: string, content: string): Promise<any> => {
+export const putFile = (path: string, content: string | File): Promise<any> => {
     if (!path || !content) {
         return Promise.reject({ code: 400, msg: "path or content is empty" });
     }
@@ -107,13 +171,11 @@ export const putFile = (path: string, content: string): Promise<any> => {
     const formData = new FormData();
     formData.append("path", path);
     formData.append("isDir", "false");
-    formData.append("file", new File([content], path.split("/").pop() ?? "", { type: "text/plain" }));
+    formData.append("file", typeof content === "string"
+        ? new File([content], path.split("/").pop() ?? "", { type: "text/plain" })
+        : content);
 
-    return new Promise((resolve) => {
-        fetchPost("/api/file/putFile", formData, (response: any) => {
-            resolve(response);
-        });
-    });
+    return fetchPostPromise("/api/file/putFile", formData);
 };
 
 /**
@@ -122,13 +184,8 @@ export const putFile = (path: string, content: string): Promise<any> => {
  * @param newPath 新文件路径（相对工作空间）
  * @returns Promise<any> 返回原始响应，由调用方处理 code/msg
  */
-export const renameFile = (path: string, newPath: string): Promise<any> => {
-    return new Promise((resolve) => {
-        fetchPost("/api/file/renameFile", { path, newPath }, (response: any) => {
-            resolve(response);
-        });
-    });
-};
+export const renameFile = (path: string, newPath: string): Promise<any> =>
+    fetchPostPromise("/api/file/renameFile", { path, newPath });
 
 /**
  * 判断是否正在预览代码片段（开启了 CSS 实时预览且打开了对应的编辑对话框）
@@ -138,4 +195,4 @@ export const renameFile = (path: string, newPath: string): Promise<any> => {
  * @returns 是否正在预览
  */
 export const isPreviewingSnippet = (snippetId: string, snippetType: string, realTimePreview: boolean): boolean =>
-    snippetType === "css" && realTimePreview && !!document.querySelector(`.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id="${snippetId}"]`);
+    snippetType === "css" && realTimePreview && !!document.querySelector(`${SNIPPET_DIALOG_SELECTOR}[data-snippet-id="${snippetId}"]`);

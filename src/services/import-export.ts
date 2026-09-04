@@ -1,9 +1,8 @@
 // 代码片段导入导出
 // 职责：导出全部代码片段为 JSON（经 /api/export/exportResources 导出 zip 并去随机前缀后 saveExportFile 下载）；
 // 从本地文件（json/zip）导入——zip 上传解压后递归定位 json；校验、ID 去重、覆盖前备份、整表替换写库。
-import {fetchPost, saveExportFile, showMessage} from "siyuan";
-import {genNewSnippetId} from "../utils";
-import {getFile, putFile, renameFile} from "../utils";
+import {saveExportFile, showMessage} from "siyuan";
+import {fetchPostPromise, genNewSnippetId, getFile, putFile, renameFile} from "../utils";
 import type PluginSnippets from "../index";
 import type {Snippet} from "../types";
 
@@ -47,19 +46,15 @@ export class ImportExportService {
             const fileName = `${this.plugin.i18n.snippet} ${timestamp}.json`;
 
             // 调用 API 导出代码片段文件
-            const exportResponse = await new Promise<any>((resolve) => {
-                fetchPost("/api/export/exportResources", {
-                    paths: ["data/snippets/conf.json"],
-                    name: fileName
-                }, (response: any) => {
-                    if (response.code !== 0) {
-                        this.plugin.console.error("exportSnippets: Failed to export resources", response);
-                        this.plugin.showErrorMessage(`Export failed: ${response.msg}`);
-                        return;
-                    }
-                    resolve(response);
-                });
+            const exportResponse = await fetchPostPromise("/api/export/exportResources", {
+                paths: ["data/snippets/conf.json"],
+                name: fileName
             });
+            if (exportResponse.code !== 0) {
+                this.plugin.console.error("exportSnippets: Failed to export resources", exportResponse);
+                this.plugin.showErrorMessage(`Export failed: ${exportResponse.msg}`);
+                return;
+            }
 
             // exportResources 会在物理文件名前加随机 exportID（形如 temp/export/<hex>-代码片段 xx.json.zip）用于隔离临时导出目录。
             // 这里重命名为不含前缀的干净文件名，方便用户分享；zip 内部结构不变，不影响新旧版本导入兼容。
@@ -116,22 +111,20 @@ export class ImportExportService {
                         const zipPath = `${basePath}.zip`;
                         const unzipDir = `${basePath}/`;
 
-                        // 上传 zip 文件
-                        const uploadResp = await this.putBinaryFile(zipPath, file);
+                        // 上传 zip 文件（putFile 内容参数支持 File，无需额外二进制分支）
+                        const uploadResp = await putFile(zipPath, file);
                         if (!uploadResp || uploadResp.code !== 0) {
                             throw new Error(`${this.plugin.i18n.uploadImportFileFailed} [${uploadResp?.code}: ${uploadResp?.msg}]`);
                         }
 
                         // 解压 zip 文件
-                        const unzipResp = await new Promise<any>((resolve) => {
-                            fetchPost("/api/archive/unzip", { path: unzipDir, zipPath }, (resp: any) => resolve(resp));
-                        });
+                        const unzipResp = await fetchPostPromise("/api/archive/unzip", { path: unzipDir, zipPath });
                         if (!unzipResp || unzipResp.code !== 0) {
                             throw new Error(`${this.plugin.i18n.unzipFailed} [${unzipResp?.code}: ${unzipResp?.msg}]`);
                         }
 
                         // 在解压目录查找 json 文件（可能还多一层文件夹）
-                        const jsonFilePath = await this.findJsonFilePathInDir(unzipDir);
+                        const jsonFilePath = await this.findJsonFileRecursive(unzipDir);
                         if (!jsonFilePath) {
                             throw new Error(this.plugin.i18n.noValidJsonFileFound);
                         }
@@ -369,31 +362,12 @@ export class ImportExportService {
         });
     }
 
-    // 上传二进制文件（用于 zip）
-    private putBinaryFile(path: string, file: File): Promise<any> {
-        if (!path || !file) {
-            return Promise.reject({ code: 400, msg: "path or file is empty" });
-        }
-        const formData = new FormData();
-        formData.append("path", path);
-        formData.append("isDir", "false");
-        formData.append("file", file);
-        return new Promise((resolve) => {
-            fetchPost("/api/file/putFile", formData, (response: any) => resolve(response));
-        });
-    }
-
-    // 在解压目录中查找 json 文件，递归查找所有子文件夹
-    private async findJsonFilePathInDir(dir: string): Promise<string | null> {
-        return this.findJsonFileRecursive(dir);
-    }
-
-    // 递归查找 JSON 文件的辅助方法
+    /**
+     * 递归查找 JSON 文件的辅助方法
+     */
     private async findJsonFileRecursive(dir: string): Promise<string | null> {
         // 读取目录内容
-        const listResp = await new Promise<any>((resolve) => {
-            fetchPost("/api/file/readDir", { path: dir }, (resp: any) => resolve(resp));
-        });
+        const listResp = await fetchPostPromise("/api/file/readDir", { path: dir });
         if (!listResp || listResp.code !== 0) {
             this.plugin.console.error("findJsonFileRecursive: readDir failed", listResp);
             return null;

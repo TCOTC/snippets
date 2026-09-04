@@ -3,13 +3,11 @@
 // 菜单项生成与计数/选中/编辑按钮高亮、菜单位置、关闭回调（含自动重载界面联动）、拖拽排序（见 menu-drag-sort.ts）、
 // 以及菜单 + 对话框的全局键盘协调（Esc/Enter/方向键按 zIndex 与开合状态分发）。
 import {Menu, platformUtils} from "siyuan";
-import {hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, showElementTooltip} from "../utils";
-import {filterSnippetsByKeyword, isSnippetsTypeEnabled, sortSnippets} from "../domain/snippet";
+import {genSnippetSwitchHtml, hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, PLUGIN_NAME, showElementTooltip, SNIPPET_DIALOG_SELECTOR} from "../utils";
+import {filterSnippetsByKeyword, isSnippetsTypeEnabled, snippetTitle, sortSnippets} from "../domain/snippet";
 import {MenuDragSort} from "./menu-drag-sort";
 import type PluginSnippets from "../index";
 import type {Snippet, SnippetType} from "../types";
-
-const PLUGIN_NAME = "snippets";                    // 插件名
 
 /**
  * 顶栏菜单管理器
@@ -133,13 +131,9 @@ export class SnippetsMenu {
             return;
         }
 
-        // 获取代码片段列表
+        // 获取代码片段列表（失败时关闭菜单，getSnippetsList 已弹错误提示）
         this.plugin.console.log("openMenu: 获取代码片段列表");
-        const snippetsList = await this.plugin.snippetManager.getSnippetsList();
-        if (snippetsList) {
-            this.plugin.snippetsList = snippetsList;
-        } else {
-            // 获取代码片段列表失败时，关闭菜单
+        if (!(await this.plugin.snippetManager.refreshSnippetsList())) {
             this.menu.close();
             return;
         }
@@ -333,10 +327,8 @@ export class SnippetsMenu {
         this.menu = undefined as unknown as Menu;
         this.destroyGlobalKeyDownHandler();
 
-        // 自动重新加载界面（无打开的编辑对话框时才重载）
-        if (this.plugin.config.autoReloadUIAfterModifyJS && this.plugin.isReloadUIRequired && !this.plugin.editorManager.hasEditorDialogsOpen()) {
-            this.plugin.postReloadUI();
-        }
+        // 自动重新加载界面（无打开的编辑对话框时才重载，判断见 EditorManager.maybeAutoReloadUI）
+        this.plugin.editorManager.maybeAutoReloadUI();
     }
 
     /**
@@ -641,24 +633,32 @@ export class SnippetsMenu {
 
         const isTouch = this.plugin.isMobile || this.isTouchDevice;
         const showPublishCheckbox = this.isShowPublishCheckbox();
+
+        // 删除/复制/编辑三个操作按钮（同构模板数据驱动生成，显隐随对应配置项）
+        const actionButtons = [
+            { type: "delete", icon: "iconTrashcan", show: this.plugin.config.showDeleteButton },
+            { type: "duplicate", icon: "iconCopy", show: this.plugin.config.showDuplicateButton },
+            { type: "edit", icon: "iconEdit", show: this.plugin.config.showEditButton },
+        ];
+        const itemButtonsHtml = actionButtons
+            .map(button => `<button class="block__icon block__icon--show fn__flex-center${isTouch ? " jcsm-touch" : ""}${button.show ? "" : " fn__none"}" data-type="${button.type}"><svg><use xlink:href="#${button.icon}"></use></svg></button>`)
+            .join("\n    ");
         let snippetsHtml = "";
 
         snippetsList.forEach((snippet: Snippet) => {
             // 创建临时的 DOM 元素来安全地设置代码片段名称 https://github.com/TCOTC/snippets/issues/21
             const safeSnippetName = document.createElement("span");
-            safeSnippetName.textContent = snippet.name || snippet.content.slice(0, 200);
+            safeSnippetName.textContent = snippetTitle(snippet);
 
             snippetsHtml += `
 <div class="jcsm-snippet-item b3-menu__item" data-type="${snippet.type}" data-id="${snippet.id}">
     <span class="jcsm-snippet-name fn__flex-1" placeholder="${this.plugin.i18n.emptySnippet}">${safeSnippetName.innerHTML}</span>
     <span class="fn__space"></span>
-    <button class="block__icon block__icon--show fn__flex-center${ isTouch ? " jcsm-touch" : ""}${this.plugin.config.showDeleteButton    ? "" : " fn__none"}" data-type="delete"><svg><use xlink:href="#iconTrashcan"></use></svg></button>
-    <button class="block__icon block__icon--show fn__flex-center${ isTouch ? " jcsm-touch" : ""}${this.plugin.config.showDuplicateButton ? "" : " fn__none"}" data-type="duplicate"><svg><use xlink:href="#iconCopy"></use></svg></button>
-    <button class="block__icon block__icon--show fn__flex-center${ isTouch ? " jcsm-touch" : ""}${this.plugin.config.showEditButton      ? "" : " fn__none"}" data-type="edit"><svg><use xlink:href="#iconEdit"></use></svg></button>
+    ${itemButtonsHtml}
     <span class="fn__space"></span>
-    <input data-type="publishSwitch" class="jcsm-switch b3-switch fn__flex-center ariaLabel${ showPublishCheckbox ? "" : " fn__none"}" aria-label="${this.plugin.i18n.snippetDisabledInPublish}" data-position="north" type="checkbox"${snippet.disabledInPublish ? "" : " checked"}>
+    ${genSnippetSwitchHtml("publishSwitch", !snippet.disabledInPublish, "jcsm-switch ", this.plugin.i18n.snippetDisabledInPublish, !showPublishCheckbox)}
     <span class="fn__space"></span>
-    <input data-type="snippetSwitch" class="jcsm-switch b3-switch fn__flex-center" type="checkbox"${snippet.enabled ? " checked" : ""}>
+    ${genSnippetSwitchHtml("snippetSwitch", snippet.enabled, "jcsm-switch ")}
 </div>
             `;
         });
@@ -731,6 +731,18 @@ export class SnippetsMenu {
     }
 
     /**
+     * 提示需要重新加载界面（JS 代码片段变更无法立即生效）：弹出通知并让重载按钮呼吸
+     * 调用点：SnippetManager 更新/移除 JS 注入元素、FileWatchService 移除 JS 监听文件（各自先判断
+     * "有旧 JS 且有效"，再调用本方法）。
+     * @param timeout 通知显示时长（毫秒）
+     */
+    async promptJSReloadRequired(timeout: number) {
+        this.plugin.showNotification("reloadUIAfterModifyJS", timeout);
+        // 高亮菜单上的重新加载界面按钮
+        await this.setReloadUIButtonBreathing();
+    }
+
+    /**
      * 设置重新加载界面按钮呼吸动画（JS 修改后提示，供 SnippetManager/文件监听等调用）
      */
     async setReloadUIButtonBreathing() {
@@ -768,7 +780,7 @@ export class SnippetsMenu {
      * 设置所有打开了代码片段编辑对话框的菜单项编辑按钮高亮
      */
     private setAllSnippetsEditButtonActive() {
-        const dialogs = document.querySelectorAll(".b3-dialog--open[data-key=\"jcsm-snippet-dialog\"]");
+        const dialogs = document.querySelectorAll(SNIPPET_DIALOG_SELECTOR);
         dialogs.forEach((dialog: HTMLElement) => {
             this.setSnippetEditButtonActive(dialog.dataset.snippetId!);
         });
@@ -832,7 +844,7 @@ export class SnippetsMenu {
         if (event.key === "Escape") {
             let maxZIndex = 0;
             let maxZIndexElement: HTMLElement | null | undefined;
-            const snippetDialogElements = document.querySelectorAll("body > .b3-dialog--open[data-key='jcsm-snippet-dialog']");
+            const snippetDialogElements = document.querySelectorAll(`body > ${SNIPPET_DIALOG_SELECTOR}`);
             snippetDialogElements.forEach((element: HTMLElement) => {
                 const zIndex = Number(element.style?.zIndex ?? 0);
                 if (zIndex > maxZIndex) {
@@ -873,7 +885,7 @@ export class SnippetsMenu {
         }
 
         // 如果是在代码编辑器里使用快捷键，则阻止冒泡 https://github.com/TCOTC/snippets/issues/19
-        if (document.activeElement?.closest(".b3-dialog--open[data-key='jcsm-snippet-dialog']")) {
+        if (document.activeElement?.closest(SNIPPET_DIALOG_SELECTOR)) {
             event.stopPropagation();
         }
     };

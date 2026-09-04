@@ -3,6 +3,7 @@ import {Snippet, SnippetType} from "./types";
 import {SnippetStore} from "./domain/snippet-store";
 import {SnippetsConfig} from "./config/config";
 import {ConfigService, STORAGE_NAME} from "./config/config-service";
+import {settleWriteResponse} from "./utils";
 import {BroadcastService} from "./services/sync";
 import {FileWatchService} from "./services/file-watch";
 import {ImportExportService} from "./services/import-export";
@@ -307,16 +308,11 @@ export default class PluginSnippets extends Plugin {
      * 思源卸载流程先执行 onunload 再执行本方法，因此这里只保留卸载专属逻辑：删除配置文件。
      */
     public async uninstall() {
-        // 移除配置文件：removeData 在只读模式/插件已销毁等场景会 reject，内核返回的业务响应 code 非 0 也视为失败
-        let removeResponse: any;
-        try {
-            removeResponse = await this.removeData(STORAGE_NAME);
-        } catch (e) {
-            removeResponse = e;
-        }
-        if (removeResponse?.code !== 0) {
+        // 移除配置文件：removeData 在只读模式/插件已销毁等场景会 reject，归一为 { code: 非 0 } 后统一判定
+        const removeResponse = await settleWriteResponse(this.removeData(STORAGE_NAME));
+        if (removeResponse.code !== 0) {
             // 写入失败
-            this.showErrorMessage(this.i18n.removeConfigFailed + " [" + removeResponse?.code + ": " + removeResponse?.msg + "]", 20000, "error");
+            this.showErrorMessage(this.i18n.removeConfigFailed + " [" + removeResponse.code + ": " + removeResponse.msg + "]", 20000, "error");
             return;
         }
 

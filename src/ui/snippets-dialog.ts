@@ -3,9 +3,8 @@
 // 通用确认对话框、按元素关闭对话框（含 CodeMirror 编辑器销毁、监听器移除与 destroyCallback/超时兜底）、
 // 收集已打开的插件模态对话框。
 import {Constants, Dialog} from "siyuan";
-import {moveElementToTop} from "../utils";
-import {createCodeMirrorEditor} from "./editor-manager";
-import type {EditorView} from "@codemirror/view";
+import {attachDialogObject, genSnippetSwitchHtml, getDialogObject, moveElementToTop, SNIPPET_DIALOG_DATA_KEY, SNIPPET_DIALOG_SELECTOR} from "../utils";
+import {createCodeMirrorEditor, getEditorView} from "./editor-manager";
 import type PluginSnippets from "../index";
 import type {Snippet} from "../types";
 
@@ -40,9 +39,9 @@ export class SnippetsDialog {
                 <svg><use xlink:href="#iconTrashcan"></use></svg>
             </button>
             <div class="fn__space"></div>
-            <input data-type="publishSwitch" class="b3-switch fn__flex-center ariaLabel${ showPublishCheckbox ? "" : " fn__none"}" aria-label="${this.plugin.i18n.snippetDisabledInPublish}" data-position="north" type="checkbox"${snippet.disabledInPublish ? "" : " checked"}>
+            ${genSnippetSwitchHtml("publishSwitch", !snippet.disabledInPublish, "", this.plugin.i18n.snippetDisabledInPublish, !showPublishCheckbox)}
             <div class="fn__space"></div>
-            <input data-type="snippetSwitch" class="b3-switch fn__flex-center" type="checkbox"${snippet.enabled ? " checked" : ""}>
+            ${genSnippetSwitchHtml("snippetSwitch", snippet.enabled, "")}
         </div>
         <div class="fn__hr"></div>
         <div class="jcsm-dialog-content"></div>
@@ -89,7 +88,7 @@ export class SnippetsDialog {
         this.plugin.menuView.setSnippetEditButtonActive(snippet.id);
 
         // 如果已经有打开的对应 snippetId 的 Dialog，则仅激活它，不重复创建
-        const existedDialog = document.querySelector(`.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id="${snippet.id}"]`) as HTMLDivElement;
+        const existedDialog = document.querySelector(`${SNIPPET_DIALOG_SELECTOR}[data-snippet-id="${snippet.id}"]`) as HTMLDivElement;
         if (existedDialog) {
             moveElementToTop(existedDialog);
             return true;
@@ -102,10 +101,11 @@ export class SnippetsDialog {
             height: "80vh",
             hideCloseIcon: this.plugin.isMobile,
         });
-        (dialog.element as any).dialogObject = dialog;
+        // 将 Dialog 实例挂到元素上，供 closeByElement 按元素关闭时取回（见 utils.attachDialogObject）
+        attachDialogObject(dialog.element, dialog);
 
         // 设置 Dialog 属性
-        dialog.element.setAttribute("data-key", "jcsm-snippet-dialog");
+        dialog.element.setAttribute("data-key", SNIPPET_DIALOG_DATA_KEY);
         dialog.element.setAttribute("data-snippet-id", snippet.id);
         dialog.element.setAttribute("data-snippet-type", snippet.type);
 
@@ -269,10 +269,8 @@ export class SnippetsDialog {
             this.closeByElement(dialog.element);
             // 需要等待 saveSnippet 完成之后才能确认 isReloadUIRequired 的状态
             await this.plugin.snippetManager.saveSnippet(snippet);
-            // 自动重新加载界面（无打开的编辑对话框时才重载）
-            if (this.plugin.config.autoReloadUIAfterModifyJS && this.plugin.isReloadUIRequired && !this.plugin.editorManager.hasEditorDialogsOpen()) {
-                this.plugin.postReloadUI();
-            }
+            // 自动重新加载界面（无打开的编辑对话框时才重载，判断见 EditorManager.maybeAutoReloadUI）
+            this.plugin.editorManager.maybeAutoReloadUI();
         };
 
         // 原生的 dialog.destroy() 方法会导致菜单直接被关闭，这里覆盖掉，改成调用 cancelHandler()
@@ -550,7 +548,8 @@ export class SnippetsDialog {
             `,
             width: this.plugin.isMobile ? "92vw" : "520px",
         });
-        (dialog.element as any).dialogObject = dialog;
+        // 将 Dialog 实例挂到元素上，供 closeByElement 按元素关闭时取回（见 utils.attachDialogObject）
+        attachDialogObject(dialog.element, dialog);
 
         dialog.element.setAttribute("data-key", dataKey ?? "dialog-confirm"); // Constants.DIALOG_CONFIRM
         dialog.element.setAttribute("data-modal", "true");  // 标记为模态对话框
@@ -621,7 +620,7 @@ export class SnippetsDialog {
         // TODO: 方案2：获取界面上所有打开的代码片段编辑对话框（包括相关内联样式），重载界面之后恢复对话框的位置、大小、内容...
 
         // 获取所有打开的代码片段编辑对话框
-        const dialogs = document.querySelectorAll(".b3-dialog--open[data-key='jcsm-snippet-dialog']");
+        const dialogs = document.querySelectorAll(SNIPPET_DIALOG_SELECTOR);
         // 判断是否存在未保存的变更
         let needConfirm = false;
         for (let i = 0; i < dialogs.length; i++) {
@@ -633,8 +632,8 @@ export class SnippetsDialog {
             const title = titleElement?.value || "";
             // 从编辑器获取代码
             const editorElement = dialog.querySelector(".cm-editor") as HTMLElement;
-            const editorView = (editorElement as any).cmView as EditorView;
-            const code = editorView.state.doc.toString() || "";
+            const editorView = getEditorView(editorElement);
+            const code = editorView?.state.doc.toString() || "";
             if (
                 (snippet && (title !== snippet.name || code !== snippet.content)) // 已存在的代码片段，判断标题或内容是否有变更
                 || (!snippet && (title !== "" || code !== ""))                    // 新建代码片段，判断是否有内容
@@ -669,12 +668,12 @@ export class SnippetsDialog {
         this.plugin.console.log("closeDialogByElement: dialogElement:", dialogElement);
 
         // 如果是代码片段编辑对话框
-        if (dialogElement.dataset.key === "jcsm-snippet-dialog") {
-            // 销毁 CodeMirror 编辑器
-            const editorElement = dialogElement.querySelector(".jcsm-dialog-content .cm-editor");
-            if (editorElement && (editorElement as any).cmView && (editorElement as any).cmView.destroy) {
+        if (dialogElement.dataset.key === SNIPPET_DIALOG_DATA_KEY) {
+            // 销毁 CodeMirror 编辑器（实例经 createCodeMirrorEditor 挂载，见 utils.getEditorView）
+            const editorView = getEditorView(dialogElement.querySelector(".jcsm-dialog-content .cm-editor"));
+            if (editorView) {
                 this.plugin.console.log("closeDialogByElement: destroying CodeMirror editor");
-                (editorElement as any).cmView.destroy();
+                editorView.destroy();
             }
             // 移除菜单项编辑按钮的背景色
             this.plugin.menuView.removeSnippetEditButtonActive(dialogElement.dataset.snippetId!);
@@ -691,19 +690,22 @@ export class SnippetsDialog {
         };
 
         let isDestroyed = false;
-        const dialogObject = (dialogElement as any).dialogObject;
-        const destroyCallback = dialogObject.destroyCallback || undefined;
-        if (dialogObject) {
-            dialogObject.destroyCallback = () => {
-                isDestroyed = true;
-                // 调用原有的 destroyCallback
-                destroyCallback?.();
-                destroyEventHandler();
-            };
-            // 修改 zIndex 以避免 menu 被移除 https://github.com/siyuan-note/siyuan/blob/ffad6048fdd677c78b6649d94315d3702391beb2/app/src/dialog/index.ts#L91-L95
-            (dialogElement.querySelector(".b3-dialog") as HTMLElement).style.zIndex = ((parseInt(window.siyuan.menus.menu.element.style.zIndex) || 0) + 1).toString();
-            dialogObject.destroyNative();
+        const dialogObject = getDialogObject(dialogElement);
+        if (!dialogObject) {
+            // 所有 Dialog 均经 attachDialogObject 挂载，此处仅防御性返回，避免后续空引用
+            this.plugin.console.error("closeDialogByElement: dialogObject not found");
+            return;
         }
+        const destroyCallback = dialogObject.destroyCallback || undefined;
+        dialogObject.destroyCallback = () => {
+            isDestroyed = true;
+            // 调用原有的 destroyCallback
+            destroyCallback?.();
+            destroyEventHandler();
+        };
+        // 修改 zIndex 以避免 menu 被移除 https://github.com/siyuan-note/siyuan/blob/ffad6048fdd677c78b6649d94315d3702391beb2/app/src/dialog/index.ts#L91-L95
+        (dialogElement.querySelector(".b3-dialog") as HTMLElement).style.zIndex = ((parseInt(window.siyuan.menus.menu.element.style.zIndex) || 0) + 1).toString();
+        dialogObject.destroyNative();
 
         // 基本是原生 dialog.destroy() 的逻辑，但移除了不必要的操作
         const customDestroy = (options?: any) => {

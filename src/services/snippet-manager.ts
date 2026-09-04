@@ -3,8 +3,8 @@
 // 运行态经插件实例访问；纯工具逻辑（ID 生成/预览判断）在 ../utils，纯领域判断在 ../domain。
 import {fetchPost, fetchSyncPost} from "siyuan";
 import type PluginSnippets from "../index";
-import {isSnippetsTypeEnabled, isValidJavaScriptCode} from "../domain/snippet";
-import {genNewSnippetId, isPreviewingSnippet} from "../utils";
+import {deepClone, isSnippetsTypeEnabled, isValidJavaScriptCode, snippetTitle} from "../domain/snippet";
+import {genNewSnippetId, isPreviewingSnippet, SNIPPET_DIALOG_SELECTOR} from "../utils";
 import type {Snippet, SnippetType} from "../types";
 import type {BroadcastHandlers} from "./sync";
 
@@ -99,13 +99,8 @@ export class SnippetManager {
         let hasChanges = false;
         let copySnippet: Snippet | undefined = undefined;
         if (isCopy) {
-            // 使用结构化克隆深拷贝 snippet 对象，避免副本和原对象引用同一内存
-            if (typeof structuredClone === "function") {
-                copySnippet = structuredClone(snippet);
-            } else {
-                // 不支持 structuredClone 则回退到 JSON 方法
-                copySnippet = JSON.parse(JSON.stringify(snippet)) as Snippet;
-            }
+            // 深拷贝 snippet 对象，避免副本和原对象引用同一内存
+            copySnippet = deepClone(snippet);
             // 生成新的代码片段
             copySnippet.id = genNewSnippetId(this.plugin.snippetsList);
             copySnippet.name = snippet.name + ` (${this.plugin.i18n.duplicate} ${new Date().toLocaleString()})`;
@@ -243,7 +238,7 @@ export class SnippetManager {
      */
     applySnippetUIChange(snippet: Snippet, isAddOrUpdate: boolean, copySnippet?: Snippet) {
         const snippetMenuItem = this.plugin.menuView.menuItems?.querySelector(`.jcsm-snippet-item[data-id="${snippet.id}"]`) as HTMLElement;
-        const dialog = document.querySelector(`.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id="${snippet.id}"]`) as HTMLDivElement;
+        const dialog = document.querySelector(`${SNIPPET_DIALOG_SELECTOR}[data-snippet-id="${snippet.id}"]`) as HTMLDivElement;
         let deleteButton, confirmButton;
         if (dialog && !copySnippet) {
             // 创建代码片段副本时不需要更新原始代码片段的 Dialog 的按钮
@@ -263,7 +258,7 @@ export class SnippetManager {
                     } else {
                         // 更新菜单项
                         const nameElement = snippetMenuItem.querySelector(".jcsm-snippet-name") as HTMLElement;
-                        if (nameElement) nameElement.textContent = snippet.name || snippet.content.slice(0, 200);
+                        if (nameElement) nameElement.textContent = snippetTitle(snippet);
                         const publishSwitchElement = snippetMenuItem.querySelector("input[data-type='publishSwitch']") as HTMLInputElement;
                         if (publishSwitchElement) publishSwitchElement.checked = !snippet.disabledInPublish;
                         const snippetSwitchElement = snippetMenuItem.querySelector("input[data-type='snippetSwitch']") as HTMLInputElement;
@@ -290,18 +285,27 @@ export class SnippetManager {
     }
 
     /**
+     * 刷新代码片段列表缓存（自拉权威列表并写入 plugin.snippetsList）
+     * 拉取失败时返回 false（getSnippetsList 已弹错误提示），缓存保持原值。
+     * @returns 是否刷新成功
+     */
+    async refreshSnippetsList(): Promise<boolean> {
+        const snippetsList = await this.getSnippetsList();
+        if (!snippetsList) return false;
+        this.plugin.snippetsList = snippetsList;
+        return true;
+    }
+
+    /**
      * 根据 ID 获取代码片段（副作用是更新插件 snippetsList）
      * @param id 代码片段 ID
      * @returns 代码片段 | false
      */
     async getSnippetById(id: string): Promise<Snippet | false | undefined> {
-        const snippetsList = await this.getSnippetsList();
-        if (snippetsList) {
-            this.plugin.snippetsList = snippetsList;
-            return this.plugin.snippetsList.find((snippet: Snippet) => snippet.id === id);
-        } else {
+        if (!(await this.refreshSnippetsList())) {
             return false;
         }
+        return this.plugin.snippetsList.find((snippet: Snippet) => snippet.id === id);
     }
 
     /**
@@ -409,10 +413,8 @@ export class SnippetManager {
         // 3. 禁用：有旧代码 && 旧代码有效 && 没有新代码
         // 以上合并为：有旧代码 && 旧代码有效 → 本质上是旧 JS 被修改/删除/禁用时无法立即生效
         if (snippet.type === "js" && element && element.innerHTML && isValidJavaScriptCode(element.innerHTML)) {
-            // JS 代码片段元素更新需要弹出消息提示
-            this.plugin.showNotification("reloadUIAfterModifyJS", 4000);
-            // 高亮菜单上的重新加载界面按钮
-            await this.plugin.menuView.setReloadUIButtonBreathing();
+            // JS 代码片段元素更新需要弹出消息提示（通知 + 呼吸，见 SnippetsMenu.promptJSReloadRequired）
+            await this.plugin.menuView.promptJSReloadRequired(4000);
         }
     }
 
@@ -428,10 +430,9 @@ export class SnippetManager {
 
         const elementId = `snippet${snippetType.toUpperCase()}${snippetId}`;
         const element = document.getElementById(elementId);
-        // 删除 JS 代码片段需要弹出消息提示：有旧代码 && 旧代码有效
+        // 删除 JS 代码片段需要弹出消息提示：有旧代码 && 旧代码有效（通知 + 呼吸，见 SnippetsMenu.promptJSReloadRequired）
         if (snippetType === "js" && element && element.innerHTML && isValidJavaScriptCode(element.innerHTML)) {
-            this.plugin.showNotification("reloadUIAfterModifyJS", 4000);
-            await this.plugin.menuView.setReloadUIButtonBreathing();
+            await this.plugin.menuView.promptJSReloadRequired(4000);
         }
         element?.remove();
     }
@@ -466,7 +467,7 @@ export class SnippetManager {
         void this.saveSnippetsList(this.plugin.snippetsList);
         void this.updateSnippetElement(snippet);
 
-        if (snippet.type === "css" && this.plugin.config.realTimePreview && document.querySelector(`.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id="${snippet.id}"]`)) {
+        if (snippet.type === "css" && this.plugin.config.realTimePreview && document.querySelector(`${SNIPPET_DIALOG_SELECTOR}[data-snippet-id="${snippet.id}"]`)) {
             // 如果开启了实时预览，并且打开了对应的 CSS 代码片段对话框，则在菜单项上开关代码片段的操作需要忽略，不广播开关状态变更到其他窗口
             return;
         }
@@ -593,10 +594,7 @@ export class SnippetManager {
         if (origin === "remote") {
             // 如果接受广播的窗口没有打开过菜单，可能不存在 snippetsList，需要获取
             if (!this.plugin.snippetsList || this.plugin.snippetsList.length === 0) {
-                const snippetsList = await this.getSnippetsList();
-                if (snippetsList) {
-                    this.plugin.snippetsList = snippetsList;
-                } else {
+                if (!(await this.refreshSnippetsList())) {
                     this.plugin.console.error("globalToggleSnippet: Can not get snippetsList");
                     return;
                 }
@@ -637,7 +635,7 @@ export class SnippetManager {
         let previewingSnippetIds: string[] = [];
         if (this.plugin.config.realTimePreview) {
             // 收集正在实时预览的代码片段 ID
-            previewingSnippetIds = Array.from(document.querySelectorAll('.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id]')).map(item => item.getAttribute("data-snippet-id") as string);
+            previewingSnippetIds = Array.from(document.querySelectorAll(`${SNIPPET_DIALOG_SELECTOR}[data-snippet-id]`)).map(item => item.getAttribute("data-snippet-id") as string);
         }
 
         // 广播全局开关状态变更到其他窗口
@@ -722,11 +720,8 @@ export class SnippetManager {
             snippet_element_remove: ({snippetId, snippetType}) => this.removeSnippetElement(snippetId, snippetType),
             snippets_sort: async () => {
                 this.plugin.console.log("snippetsSortSync");
-                // 重新加载代码片段列表（读取权威态语义）并刷新菜单；失败时保持现状（getSnippetsList 已弹错误提示），
-                // 避免把 false 写进 snippetsList 导致后续对列表的数组操作崩溃
-                const snippetsList = await this.getSnippetsList();
-                if (!snippetsList) return;
-                this.plugin.snippetsList = snippetsList;
+                // 重新加载代码片段列表（读取权威态语义）并刷新菜单；失败时保持现状（getSnippetsList 已弹错误提示）
+                if (!(await this.refreshSnippetsList())) return;
                 this.plugin.menuView.menuItems && this.plugin.menuView.initSnippetsContainer();
             },
         };

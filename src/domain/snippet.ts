@@ -2,6 +2,27 @@ import {parse as acornParse} from "acorn";
 import type {Snippet, SnippetType} from "../types";
 
 /**
+ * 深拷贝（优先使用 structuredClone，不支持时回退 JSON 序列化）
+ * @param value 原值
+ * @returns 深拷贝副本
+ */
+export function deepClone<T>(value: T): T {
+    if (typeof structuredClone === "function") {
+        return structuredClone(value);
+    }
+    return JSON.parse(JSON.stringify(value)) as T;
+}
+
+/**
+ * 代码片段显示标题（名称为空时回退内容前 200 字符）
+ * @param snippet 代码片段
+ * @returns 显示标题
+ */
+export function snippetTitle(snippet: Snippet): string {
+    return snippet.name || snippet.content.slice(0, 200);
+}
+
+/**
  * 简单判断内容是否为有效的 JavaScript 代码
  * @param code 代码
  * @returns 是否为有效的 JavaScript 代码
@@ -74,11 +95,7 @@ export function sortSnippets(snippetsList: Snippet[], sortType: string): Snippet
     let sortedList: Snippet[] = snippetsList;
     if (sortType !== "fixedSort" && sortType !== "customSort") {
         // 深拷贝，避免排序影响原数据
-        if (typeof structuredClone === "function") {
-            sortedList = structuredClone(snippetsList);
-        } else {
-            sortedList = JSON.parse(JSON.stringify(snippetsList)) as Snippet[];
-        }
+        sortedList = deepClone(snippetsList);
         switch (sortType) {
             case "enabledASC":
                 sortedList.sort((a, b) => Number(b.enabled) - Number(a.enabled));
@@ -133,7 +150,7 @@ export function filterSnippetsByKeyword(snippetsList: Snippet[], snippetSearchTy
             switch (snippetSearchType) {
                 case 1:
                     // 按标题筛选
-                    return (snippet.name || snippet.content.slice(0, 200)).toLowerCase().includes(normalizedText);
+                    return snippetTitle(snippet).toLowerCase().includes(normalizedText);
                 case 2:
                     // 按代码内容筛选
                     return snippet.content.toLowerCase().includes(normalizedText);

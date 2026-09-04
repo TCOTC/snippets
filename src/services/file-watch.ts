@@ -2,10 +2,8 @@
 // 职责：监听 data 下指定文件夹中的 .css/.js 文件——初始加载、周期轮询差异、增删改应用/移除注入元素、
 // 路径/间隔/开关变化处理；JS 文件移除时按 autoReloadUIAfterModifyJS 提示并可自动重载界面。
 // 开关/路径/间隔/自动重载等配置收敛在插件 config 对象（src/config/config.ts），经 plugin.config 读取。
-import {fetchPost} from "siyuan";
 import {isValidJavaScriptCode} from "../domain/snippet";
-import {genNewSnippetId} from "../utils";
-import {getFile} from "../utils";
+import {fetchPostPromise, genNewSnippetId, getFile} from "../utils";
 import type PluginSnippets from "../index";
 import type {FileState} from "../types";
 
@@ -249,14 +247,11 @@ export class FileWatchService {
             element.remove();
         });
 
-        // 如果有 JS 文件被移除，弹出提示
+        // 如果有 JS 文件被移除，弹出提示（通知 + 呼吸 + 自动重载，见 SnippetsMenu.promptJSReloadRequired）
         if (hasJSRemoved) {
-            this.plugin.showNotification("reloadUIAfterModifyJS", 4000);
-            void this.plugin.menuView.setReloadUIButtonBreathing();
+            void this.plugin.menuView.promptJSReloadRequired(4000);
             // 自动重新加载界面（与 removeFileWatchElement 方法保持一致；无打开的编辑对话框时才重载）
-            if (this.plugin.config.autoReloadUIAfterModifyJS && this.plugin.isReloadUIRequired && !this.plugin.editorManager.hasEditorDialogsOpen()) {
-                this.plugin.postReloadUI();
-            }
+            this.plugin.editorManager.maybeAutoReloadUI();
         }
 
         this.plugin.console.log("removeAllFileWatchElements: Removed file watch elements:", watchElements.length);
@@ -324,11 +319,7 @@ export class FileWatchService {
      */
     private async getFolderFiles(folderPath: string): Promise<string[]> {
         try {
-            const response = await new Promise<any>((resolve) => {
-                fetchPost("/api/file/readDir", { path: folderPath }, (response: any) => {
-                    resolve(response);
-                });
-            });
+            const response = await fetchPostPromise("/api/file/readDir", { path: folderPath });
 
             if (response.code !== 0) {
                 throw new Error(response.msg || this.plugin.i18n.readFolderFailed);
@@ -604,14 +595,10 @@ export class FileWatchService {
             const fileExtension = fileName.split(".").pop()?.toLowerCase();
 
             if (fileExtension === "js" && existingElement.textContent && isValidJavaScriptCode(existingElement.textContent)) {
-                // JS 代码片段元素被移除需要弹出消息提示
-                this.plugin.showNotification("reloadUIAfterModifyJS", 2000);
-                // 高亮菜单上的重新加载界面按钮
-                await this.plugin.menuView.setReloadUIButtonBreathing();
+                // JS 代码片段元素被移除需要弹出消息提示（通知 + 呼吸，见 SnippetsMenu.promptJSReloadRequired）
+                await this.plugin.menuView.promptJSReloadRequired(2000);
                 // 自动重新加载界面（无打开的编辑对话框时才重载）
-                if (this.plugin.config.autoReloadUIAfterModifyJS && this.plugin.isReloadUIRequired && !this.plugin.editorManager.hasEditorDialogsOpen()) {
-                    this.plugin.postReloadUI();
-                }
+                this.plugin.editorManager.maybeAutoReloadUI();
                 this.plugin.console.log("removeFileWatchElement: JS file removed, UI reload required", filePath);
             } else {
                 this.plugin.console.log("removeFileWatchElement: Removed file watch element", filePath);

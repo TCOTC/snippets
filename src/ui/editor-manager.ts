@@ -35,6 +35,7 @@ import {
     rectangularSelection
 } from "@codemirror/view";
 import type PluginSnippets from "../index";
+import {SNIPPET_DIALOG_SELECTOR} from "../utils";
 
 /**
  * 编辑器扩展所需的插件 i18n 文案（取 codeSnippetJS/codeSnippetCSS 等键）
@@ -170,11 +171,19 @@ export function createCodeMirrorEditor(container: HTMLElement, content: string, 
         parent: container
     });
 
-    // 将编辑器实例存储到 DOM 元素上，以便后续主题切换时能够找到
-    (view.dom as any).cmView = view;
+    // 将编辑器实例存储到 DOM 元素上，以便后续主题切换/按元素关闭时取回（见 getEditorView）
+    Object.assign(view.dom, { cmView: view });
 
     return view;
 }
+
+/**
+ * 取回挂在 .cm-editor 元素上的 CodeMirror 实例（createCodeMirrorEditor 创建时经 Object.assign 挂载）
+ * @param element .cm-editor 元素（可能为 null）
+ * @returns 编辑器视图（未挂载时为 undefined）
+ */
+export const getEditorView = (element: Element | null): EditorView | undefined =>
+    (element as (Element & { cmView?: EditorView }) | null)?.cmView;
 
 
 /**
@@ -255,7 +264,18 @@ export class EditorManager {
      * @returns 是否存在打开的编辑器对话框
      */
     hasEditorDialogsOpen(): boolean {
-        return document.querySelectorAll('.b3-dialog--open[data-key="jcsm-snippet-dialog"]').length > 0;
+        return document.querySelectorAll(SNIPPET_DIALOG_SELECTOR).length > 0;
+    }
+
+    /**
+     * 自动重新加载界面（JS 代码片段变更后重载才能生效）
+     * 需同时满足：配置开启自动重载 && 已标记需要重载（isReloadUIRequired）&& 无打开的编辑对话框（避免丢失未保存内容）。
+     * 调用点：菜单关闭回调、编辑对话框保存、文件监听 JS 移除（file-watch removeAll/removeFileWatchElement）。
+     */
+    maybeAutoReloadUI() {
+        if (this.plugin.config.autoReloadUIAfterModifyJS && this.plugin.isReloadUIRequired && !this.hasEditorDialogsOpen()) {
+            this.plugin.postReloadUI();
+        }
     }
 
     /**
@@ -283,7 +303,7 @@ export class EditorManager {
      */
     updateAllEditorConfigs(reason = "config") {
         // 获取所有打开的代码片段编辑对话框
-        const snippetDialogs = document.querySelectorAll('.b3-dialog--open[data-key="jcsm-snippet-dialog"]');
+        const snippetDialogs = document.querySelectorAll(SNIPPET_DIALOG_SELECTOR);
         snippetDialogs.forEach((dialogElement) => {
             const contentContainer = dialogElement.querySelector(".jcsm-dialog-content") as HTMLElement;
             if (!contentContainer) return;
@@ -293,7 +313,7 @@ export class EditorManager {
             if (!existingEditorElement) return;
 
             // 获取当前编辑器实例 - 通过 DOM 元素查找对应的 EditorView
-            const editorView = (existingEditorElement as any).cmView as EditorView;
+            const editorView = getEditorView(existingEditorElement);
             if (!editorView) {
                 this.plugin.console.warn("updateAllEditorConfigs: editorView not found, recreating editor:", reason);
                 this.recreateEditor(dialogElement, contentContainer);
