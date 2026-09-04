@@ -308,8 +308,8 @@ export class SnippetsMenu {
         this.menu = undefined as unknown as Menu;
         this.destroyGlobalKeyDownHandler();
 
-        // 自动重新加载界面
-        if (this.plugin.autoReloadUIAfterModifyJS && this.plugin.isReloadUIRequired && !document.querySelector(".b3-dialog--open[data-key='jcsm-snippet-dialog']")) {
+        // 自动重新加载界面（无打开的编辑对话框时才重载）
+        if (this.plugin.autoReloadUIAfterModifyJS && this.plugin.isReloadUIRequired && !this.plugin.editorManager.hasEditorDialogsOpen()) {
             this.plugin.postReloadUI();
         }
     }

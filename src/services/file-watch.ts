@@ -254,8 +254,8 @@ export class FileWatchService {
         if (hasJSRemoved) {
             this.plugin.showNotification("reloadUIAfterModifyJS", 4000);
             void this.plugin.menuView.setReloadUIButtonBreathing();
-            // 自动重新加载界面（与 removeFileWatchElement 方法保持一致）
-            if (this.plugin.autoReloadUIAfterModifyJS && this.plugin.isReloadUIRequired && !document.querySelector(".b3-dialog--open[data-key='jcsm-snippet-dialog']")) {
+            // 自动重新加载界面（与 removeFileWatchElement 方法保持一致；无打开的编辑对话框时才重载）
+            if (this.plugin.autoReloadUIAfterModifyJS && this.plugin.isReloadUIRequired && !this.plugin.editorManager.hasEditorDialogsOpen()) {
                 this.plugin.postReloadUI();
             }
         }
@@ -609,8 +609,8 @@ export class FileWatchService {
                 this.plugin.showNotification("reloadUIAfterModifyJS", 2000);
                 // 高亮菜单上的重新加载界面按钮
                 await this.plugin.menuView.setReloadUIButtonBreathing();
-                // 自动重新加载界面
-                if (this.plugin.autoReloadUIAfterModifyJS && this.plugin.isReloadUIRequired && !document.querySelector(".b3-dialog--open[data-key='jcsm-snippet-dialog']")) {
+                // 自动重新加载界面（无打开的编辑对话框时才重载）
+                if (this.plugin.autoReloadUIAfterModifyJS && this.plugin.isReloadUIRequired && !this.plugin.editorManager.hasEditorDialogsOpen()) {
                     this.plugin.postReloadUI();
                 }
                 this.plugin.console.log("removeFileWatchElement: JS file removed, UI reload required", filePath);
