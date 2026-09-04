@@ -1,4 +1,4 @@
-// CodeMirror 6（编辑器扩展/视图创建；原 index.ts 编辑器段外迁，阶段 4：拆分文件）
+// CodeMirror 6（编辑器扩展/视图创建；原 index.ts 编辑器段外迁）
 import {closeBrackets, closeBracketsKeymap} from "@codemirror/autocomplete"; // autocompletion, completionKeymap
 import {defaultKeymap, history, historyKeymap, indentWithTab} from "@codemirror/commands";
 import {javascript} from "@codemirror/lang-javascript";

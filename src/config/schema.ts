@@ -9,10 +9,10 @@ export interface SnippetsConfigOption {
 }
 
 /**
- * 构建配置项时所需的插件运行态上下文（阶段 4：配置项定义自 index.ts 外迁至此）
- * 以读取器函数形式提供，由调用方用箭头函数闭包捕获插件实例（避免 no-this-alias）；
+ * 构建配置项时所需的插件运行态上下文
+ * 以读取器/动作函数形式提供，由调用方用箭头函数闭包捕获插件实例（避免 no-this-alias）；
  * 注意：条目构建时的静态属性值（ignore/description 等）在构建时刻调用读取器求值；
- * 条目内箭头函数体（createActionElement/onApply）中的读取器则在函数被调用时才执行，
+ * 条目内箭头函数体（createActionElement/onApply）中的读取器/动作则在函数被调用时才执行，
  * 因此菜单容器等运行态引用能拿到实时值，不会停留在构建时刻的快照。
  */
 export interface SnippetsConfigContext {
@@ -22,10 +22,29 @@ export interface SnippetsConfigContext {
     readonly i18n: () => any;
     /** 读取：顶栏菜单列表容器（可能尚未打开） */
     readonly menuItems: () => HTMLElement | undefined;
+    /** 读取：顶栏菜单是否打开（菜单关闭后 menuItems 仍引用已脱离文档的节点，不可据此判断） */
+    readonly menuOpen: () => boolean;
+    /** 读取：按当前排序规则生成的代码片段列表 HTML（用于菜单项重渲染） */
+    readonly menuSnippetsItemsHtml: () => string;
+    /** 动作：更新所有已打开的编辑器对话框中的编辑器配置 */
+    readonly updateAllEditorConfigs: (reason: string) => void;
+    /** 动作：移除顶栏按钮 */
+    readonly removeTopBarElement: () => void;
+    /** 动作：重建顶栏按钮（含快捷键提示标题） */
+    readonly initTopBar: () => Promise<void>;
+    /** 动作：定位或更新已打开顶栏菜单的位置 */
+    readonly setMenuPosition: (isUpdate?: boolean) => void;
+    /** 动作：启动/停止文件监听 */
+    readonly startFileWatch: () => void;
+    readonly stopFileWatch: () => void;
+    /** 动作：文件监听路径变更后的重载处理（内部会按当前监听模式判断是否可执行） */
+    readonly handleFileWatchPathChange: () => void;
+    /** 动作：文件监听间隔变更后的定时器重置 */
+    readonly handleFileWatchIntervalChange: () => void;
 }
 
 /**
- * 配置项定义（阶段 4：configItems 元素的类型定义）
+ * 配置项定义（configItems 元素的类型定义）
  */
 export interface SnippetsConfigItem {
     key: string;
@@ -36,14 +55,14 @@ export interface SnippetsConfigItem {
     createActionElement?: () => HTMLElement;
     options?: SnippetsConfigOption[];
     ignore?: boolean;
-    /** 应用该配置项时的 UI 副作用（阶段 4：逐步从 applySetting 大 switch 迁入，全部迁完后删除 switch） */
+    /** 应用该配置项时的 UI 副作用（原 applySetting 中对应的 switch case 迁入此处声明） */
     onApply?: (newValue: any) => void | Promise<void>;
 }
 
 /**
- * 构建全部配置项（阶段 4：原 index.ts 中 initConfigItems 的内联数组外迁）
+ * 构建全部配置项（原 index.ts 中 initConfigItems 的内联数组外迁）
  * 与旧实现的求值时机保持一致：ignore/description 等属性值在构建时刻求值，
- * 箭头函数体内的 ctx 读取器（i18n/menuItems）在调用时才执行（由调用方以箭头函数实时转发）。
+ * 箭头函数体内的 ctx 读取器/动作在调用时才执行（由调用方以箭头函数实时转发到插件实例）。
  * @param ctx 配置项构建上下文（见 SnippetsConfigContext）
  * @returns 配置项数组
  */
@@ -71,6 +90,28 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
         description: "realTimePreviewDescription",
         type: "boolean",
         defaultValue: true,
+        // 修改 realTimePreview 之后，显示/隐藏已打开 CSS 编辑对话框中的手动预览按钮
+        // （启用实时预览时由输入事件驱动预览，手动按钮隐藏；禁用后恢复手动按钮）
+        onApply: (newValue) => {
+            const cssDialogs = document.querySelectorAll(".b3-dialog--open[data-key='jcsm-snippet-dialog'][data-snippet-type='css']");
+            if (newValue === true) {
+                cssDialogs.forEach(cssDialog => {
+                    const previewButton = cssDialog.querySelector("button[data-action='preview']") as HTMLButtonElement;
+                    if (previewButton) {
+                        previewButton.classList.add("fn__none");
+                    }
+                    // 已打开的 CSS 对话框立即按实时预览刷新一次（keydown 监听器按 detail 识别该请求）
+                    cssDialog.dispatchEvent(new CustomEvent("keydown", {detail: "realTimePreview"}));
+                });
+            } else {
+                cssDialogs.forEach(cssDialog => {
+                    const previewButton = cssDialog.querySelector("button[data-action='preview']") as HTMLButtonElement;
+                    if (previewButton) {
+                        previewButton.classList.remove("fn__none");
+                    }
+                });
+            }
+        },
     },
     {
         key: "autoReloadUIAfterModifyJS",
@@ -144,6 +185,21 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
             { value: 1, text: "showPublishCheckboxShowAlways" },
             { value: 2, text: "showPublishCheckboxHideAlways" }
         ],
+        // 修改 showPublishCheckbox 之后，显示/隐藏菜单与代码片段编辑对话框中的发布开关
+        // （显示条件与菜单项生成时一致：跟随发布服务开关或总是显示）
+        onApply: (newValue) => {
+            const show = newValue === 0 ? window.siyuan.config!.publish.enable === true : newValue === 1;
+            const publishSwitchInputs = document.querySelectorAll(".jcsm-snippets-container .jcsm-snippet-item input[data-type='publishSwitch'], .b3-dialog--open[data-key='jcsm-snippet-dialog'] input[data-type='publishSwitch']");
+            if (show) {
+                publishSwitchInputs.forEach(input => {
+                    input.classList.remove("fn__none");
+                });
+            } else {
+                publishSwitchInputs.forEach(input => {
+                    input.classList.add("fn__none");
+                });
+            }
+        },
     },
     {
         key: "defaultSnippetsType",
@@ -183,6 +239,17 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
             { value: "createdASC", text: "createdASC" },           // 创建时间升序
             { value: "createdDESC", text: "createdDESC" }          // 创建时间降序
         ],
+        // 修改 snippetSortType 之后，按新排序重新生成菜单中的片段项（仅菜单已打开时需要）
+        onApply: () => {
+            if (!ctx.menuOpen()) return;
+            const snippetsContainer = ctx.menuItems()?.querySelector(".jcsm-snippets-container");
+            if (!snippetsContainer) return;
+            const snippetsItems = ctx.menuSnippetsItemsHtml();
+            snippetsContainer.querySelectorAll(".jcsm-snippet-item:is([data-type='js'], [data-type='css'])").forEach(item => {
+                item.remove();
+            });
+            snippetsContainer.insertAdjacentHTML("afterbegin", snippetsItems);
+        },
     },
     {
         key: "snippetSearchType",
@@ -195,6 +262,24 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
             { value: 2, text: "snippetSearchTypeContent" },
             { value: 3, text: "snippetSearchTypeNameAndContent" }
         ],
+        // 修改 snippetSearchType 之后，显示/隐藏菜单中的搜索按钮与搜索输入框
+        onApply: (newValue) => {
+            if (newValue === 0) {
+                const searchButton = ctx.menuItems()?.querySelector(".jcsm-top-container button[data-type='search']") as HTMLButtonElement;
+                if (searchButton) {
+                    searchButton.classList.add("fn__none");
+                    searchButton.classList.remove("jcsm-active");
+                }
+                const searchInput = ctx.menuItems()?.querySelector("input[data-action='search']") as HTMLInputElement;
+                if (searchInput) {
+                    searchInput.classList.add("fn__none");
+                    searchInput.value = "";
+                    searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+                }
+            } else {
+                ctx.menuItems()?.querySelector(".jcsm-top-container button[data-type='search']")?.classList.remove("fn__none");
+            }
+        },
     },
     {
         key: "editorIndentUnit",
@@ -214,6 +299,8 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
             { value: "space7", text: "editorIndentUnitSpace7" },
             { value: "space8", text: "editorIndentUnitSpace8" }
         ],
+        // 修改编辑器缩进单位后，更新所有已打开的编辑器
+        onApply: () => ctx.updateAllEditorConfigs("indent unit"),
     },
     {
         key: "fileWatchEnabled",
@@ -225,18 +312,30 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
             { value: "enabled", text: "fileWatchModeEnabled" },
             { value: "loadOnly", text: "fileWatchModeLoadOnly" }
         ],
+        // 修改 fileWatchEnabled 之后，按新模式启动或停止文件监听
+        onApply: (newValue) => {
+            if (newValue === "disabled") {
+                ctx.stopFileWatch();
+            } else {
+                ctx.startFileWatch();
+            }
+        },
     },
     {
         key: "fileWatchPath",
         description: "fileWatchPathDescription",
         type: "string",
         defaultValue: "data/snippets",
+        // 修改 fileWatchPath 之后，重载监听文件（方法内部会按当前监听模式判断是否可执行）
+        onApply: () => ctx.handleFileWatchPathChange(),
     },
     {
         key: "fileWatchInterval",
         description: "fileWatchIntervalDescription",
         type: "number",
         defaultValue: 5,
+        // 修改 fileWatchInterval 之后，按新间隔重置监听定时器
+        onApply: () => ctx.handleFileWatchIntervalChange(),
     },
     {
         key: "topBarPosition",
@@ -248,6 +347,14 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
             { value: "right", text: "topBarPositionRight" }
         ],
         ignore: ctx.isMobile(),
+        // 修改 topBarPosition 之后，移除并重建顶栏按钮；菜单已打开时按新位置重排
+        onApply: async () => {
+            ctx.removeTopBarElement();
+            await ctx.initTopBar();
+            if (ctx.menuOpen()) {
+                ctx.setMenuPosition(true);
+            }
+        },
     },
     {
         key: "exportSnippets",

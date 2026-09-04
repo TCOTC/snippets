@@ -1,4 +1,4 @@
-// 代码片段编辑对话框的编辑器生命周期管理（原 index.ts 外迁，阶段 4：拆分文件）
+// 代码片段编辑对话框的编辑器生命周期管理（原 index.ts 外迁）
 // 职责：主题模式监听（对话框打开时启停）、已打开编辑器随主题/配置更新、编辑器重建。
 // 运行态依赖（logger/editorIndentUnit/i18n）经 EditorManagerHost 注入，由插件实例实时转发。
 import {EditorState} from "@codemirror/state";

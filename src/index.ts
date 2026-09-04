@@ -427,18 +427,28 @@ export default class PluginSnippets extends Plugin {
     private configItems: SnippetsConfigItem[] = [];
 
     /**
-     * 初始化配置项（阶段 4：条目定义已外迁至 src/config/schema.ts，此处仅构建一次并挂到实例）
+     * 初始化配置项（条目定义见 src/config/schema.ts，此处仅构建一次并挂到实例）
      * 注意在这里面不能用 this.console 之类的方法，因为它们需要先加载完插件配置才能用
      */
     private async initConfigItems() {
         if (this.configItems.length > 0) {
-            // 已构建过则直接复用（构建结果与运行态无关，运行态由读取器函数实时转发）
+            // 已构建过则直接复用（构建结果与运行态无关，运行态由读取器/动作函数实时转发）
             return;
         }
         this.configItems = createSnippetsConfigItems({
             isMobile: () => this.isMobile,
             i18n: () => this.i18n,
             menuItems: () => this.menuItems,
+            menuOpen: () => !!this.menu,
+            menuSnippetsItemsHtml: () => this.genMenuSnippetsItems(),
+            updateAllEditorConfigs: (reason) => this.editorManager.updateAllEditorConfigs(reason),
+            removeTopBarElement: () => this.topBarElement?.remove(),
+            initTopBar: () => this.topBarInit(),
+            setMenuPosition: (isUpdate) => this.setMenuPosition(isUpdate),
+            startFileWatch: () => this.startFileWatch(),
+            stopFileWatch: () => this.stopFileWatch(),
+            handleFileWatchPathChange: () => void this.handleFileWatchPathChange(),
+            handleFileWatchIntervalChange: () => this.handleFileWatchIntervalChange(),
         });
     }
 
@@ -641,124 +651,12 @@ export default class PluginSnippets extends Plugin {
 
     /**
      * 应用设置
+     * 配置项的 UI 副作用声明在 configItems 对应条目的 onApply 上（定义见 src/config/schema.ts），此处仅查表分发
      */
     private async applySetting(key: string, newValue: any) {
-        // 配置项的 UI 副作用已声明在 configItems 的 onApply 上（阶段 4），此处优先查表分发；
-        // 尚未迁移的 key 仍走下方 switch 兜底，全部迁移完成后删除 switch
         const configItem = this.configItems.find(item => item.key === key);
         if (configItem?.onApply) {
             await configItem.onApply(newValue);
-            return;
-        }
-
-        switch (key) {
-            // boolean
-            case "realTimePreview": {
-                const cssDialogs = document.querySelectorAll(".b3-dialog--open[data-key=\"jcsm-snippet-dialog\"][data-snippet-type=\"css\"]");
-                // 修改 realTimePreview 设置之后查询所有对话框按钮修改预览按钮的 fn__none
-                if (newValue === true) {
-                    cssDialogs.forEach(cssDialog => {
-                        const previewButton = cssDialog.querySelector("button[data-action='preview']") as HTMLButtonElement;
-                        if (previewButton) {
-                            previewButton.classList.add("fn__none");
-                        }
-                        // 启用 realTimePreview 设置之后，查询所有 CSS 代码片段编辑对话框触发一次 input 事件（不需要冒泡），由 input 事件监听器触发一次预览
-                        // cssDialog.dispatchEvent(new CustomEvent("input", {detail: "realTimePreview"}));
-                        cssDialog.dispatchEvent(new CustomEvent("keydown", {detail: "realTimePreview"}));
-                    });
-                } else {
-                    cssDialogs.forEach(cssDialog => {
-                        const previewButton = cssDialog.querySelector("button[data-action='preview']") as HTMLButtonElement;
-                        if (previewButton) {
-                            previewButton.classList.remove("fn__none");
-                        }
-                    });
-                }
-                break;
-            }
-
-            // selectString || selectNumber
-            case "showPublishCheckbox": {
-                // 修改菜单、代码片段编辑对话框
-                const publishSwitchInputs = document.querySelectorAll(".jcsm-snippets-container .jcsm-snippet-item input[data-type='publishSwitch'], .b3-dialog--open[data-key='jcsm-snippet-dialog'] input[data-type='publishSwitch']");
-                if (this.isShowPublishCheckbox()) {
-                    publishSwitchInputs.forEach(input => {
-                        input.classList.remove("fn__none");
-                    });
-                } else {
-                    publishSwitchInputs.forEach(input => {
-                        input.classList.add("fn__none");
-                    });
-                }
-                break;
-            }
-            case "snippetSearchType": {
-                // 修改代码片段搜索类型后，隐藏或显示搜索按钮（和搜索输入框）
-                if (newValue === 0) {
-                    const searchButton = this.menuItems?.querySelector(".jcsm-top-container button[data-type='search']") as HTMLButtonElement;
-                    if (searchButton) {
-                        searchButton.classList.add("fn__none");
-                        searchButton.classList.remove("jcsm-active");
-                    }
-                    const searchInput = this.menuItems?.querySelector("input[data-action='search']") as HTMLInputElement;
-                    if (searchInput) {
-                        searchInput.classList.add("fn__none");
-                        searchInput.value = "";
-                        searchInput.dispatchEvent(new Event("input", { bubbles: true }));
-                    }
-                } else {
-                    this.menuItems?.querySelector(".jcsm-top-container button[data-type='search']")?.classList.remove("fn__none");
-                }
-                break;
-            }
-            case "editorIndentUnit":
-                // 修改编辑器缩进单位后，更新所有打开的编辑器
-                this.editorManager.updateAllEditorConfigs("indent unit");
-                break;
-            case "fileWatchEnabled":
-                // 处理文件监听模式改变
-                this.handleFileWatchModeChange();
-                break;
-            case "snippetSortType":
-                // 修改代码片段排序方式后，重新生成菜单项
-                if (this.menu) {
-                    const snippetsContainer = this.menu.element.querySelector(".jcsm-snippets-container");
-                    if (snippetsContainer) {
-                        const snippetsItems = this.genMenuSnippetsItems();
-                        snippetsContainer.querySelectorAll(".jcsm-snippet-item:is([data-type='js'], [data-type='css'])").forEach(item => {
-                            item.remove();
-                        });
-                        snippetsContainer.insertAdjacentHTML("afterbegin", snippetsItems);
-                    }
-                }
-                break;
-            case "topBarPosition":
-                // 修改顶栏按钮位置后，移除并重新添加顶栏按钮、重新设置菜单位置
-                this.topBarElement?.remove();
-                await this.topBarInit();
-                if (this.menu) {
-                    this.setMenuPosition(true);
-                }
-                break;
-
-            // string
-            case "fileWatchPath":
-                // 处理文件监听路径改变
-                if (this.fileWatchEnabled !== "disabled") {
-                    // 如果文件监听已启用，重新加载文件以应用新路径
-                    void this.handleFileWatchPathChange();
-                }
-                break;
-
-            // number
-            case "fileWatchInterval":
-                // 处理文件监听间隔改变
-                this.handleFileWatchIntervalChange();
-                break;
-
-            default:
-                this.console.log("applySetting: Unknown key:", key);
-                break;
         }
     }
 
@@ -4759,17 +4657,6 @@ export default class PluginSnippets extends Plugin {
             }
 
             existingElement.remove();
-        }
-    }
-
-    /**
-     * 处理文件监听模式变化
-     */
-    private handleFileWatchModeChange() {
-        if (this.fileWatchEnabled === "disabled") {
-            this.stopFileWatch();
-        } else {
-            this.startFileWatch();
         }
     }
 
