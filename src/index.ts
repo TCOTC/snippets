@@ -442,6 +442,8 @@ export default class PluginSnippets extends Plugin {
         createActionElement?: () => HTMLElement;
         options?: Array<{ value: string | number; text: string }>;
         ignore?: boolean;
+        /** 应用该配置项时的 UI 副作用（阶段 4：逐步从 applySetting 大 switch 迁入，全部迁完后删除 switch） */
+        onApply?: (newValue: any) => void | Promise<void>;
     }> = [];
 
     /**
@@ -490,18 +492,51 @@ export default class PluginSnippets extends Plugin {
                 description: "showDuplicateButtonDescription",
                 type: "boolean",
                 defaultValue: false,
+                // 修改 showDuplicateButton 之后，查询所有菜单项修改创建副本按钮的 fn__none
+                onApply: (newValue) => {
+                    const duplicateButtons = this.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='duplicate']") as NodeListOf<HTMLButtonElement>;
+                    duplicateButtons.forEach(duplicateButton => {
+                        if (newValue) {
+                            duplicateButton.classList.remove("fn__none");
+                        } else {
+                            duplicateButton.classList.add("fn__none");
+                        }
+                    });
+                },
             },
             {
                 key: "showDeleteButton",
                 description: "showDeleteButtonDescription",
                 type: "boolean",
                 defaultValue: true,
+                // 修改 showDeleteButton 之后，查询所有菜单项修改删除按钮的 fn__none
+                onApply: (newValue) => {
+                    const deleteButtons = this.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='delete']") as NodeListOf<HTMLButtonElement>;
+                    deleteButtons.forEach(deleteButton => {
+                        if (newValue) {
+                            deleteButton.classList.remove("fn__none");
+                        } else {
+                            deleteButton.classList.add("fn__none");
+                        }
+                    });
+                },
             },
             {
                 key: "showEditButton",
                 description: "showEditButtonDescription",
                 type: "boolean",
                 defaultValue: true,
+                // 修改 showEditButton 之后，查询所有菜单项修改编辑按钮的 fn__none
+                onApply: (newValue) => {
+                    const editButtons = this.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='edit']") as NodeListOf<HTMLButtonElement>;
+                    editButtons.forEach(editButton => {
+                        if (newValue) {
+                            editButton.classList.remove("fn__none");
+                        } else {
+                            editButton.classList.add("fn__none");
+                        }
+                    });
+                },
             },
             {
                 key: "showPublishCheckbox",
@@ -886,6 +921,14 @@ export default class PluginSnippets extends Plugin {
      * 应用设置
      */
     private async applySetting(key: string, newValue: any) {
+        // 配置项的 UI 副作用已声明在 configItems 的 onApply 上（阶段 4），此处优先查表分发；
+        // 尚未迁移的 key 仍走下方 switch 兜底，全部迁移完成后删除 switch
+        const configItem = this.configItems.find(item => item.key === key);
+        if (configItem?.onApply) {
+            await configItem.onApply(newValue);
+            return;
+        }
+
         switch (key) {
             // boolean
             case "realTimePreview": {
@@ -909,42 +952,6 @@ export default class PluginSnippets extends Plugin {
                         }
                     });
                 }
-                break;
-            }
-            case "showDuplicateButton": {
-                // 修改 showDuplicateButton 之后，查询所有菜单项修改创建副本按钮的 fn__none
-                const duplicateButtons = this.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='duplicate']") as NodeListOf<HTMLButtonElement>;
-                duplicateButtons.forEach(duplicateButton => {
-                    if (newValue) {
-                        duplicateButton.classList.remove("fn__none");
-                    } else {
-                        duplicateButton.classList.add("fn__none");
-                    }
-                });
-                break;
-            }
-            case "showDeleteButton": {
-                // 修改 showDeleteButton 之后，查询所有菜单项修改删除按钮的 fn__none
-                const deleteButtons = this.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='delete']") as NodeListOf<HTMLButtonElement>;
-                deleteButtons.forEach(deleteButton => {
-                    if (newValue) {
-                        deleteButton.classList.remove("fn__none");
-                    } else {
-                        deleteButton.classList.add("fn__none");
-                    }
-                });
-                break;
-            }
-            case "showEditButton": {
-                // 修改 showEditButton 之后，查询所有菜单项修改编辑按钮的 fn__none
-                const editButtons = this.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='edit']") as NodeListOf<HTMLButtonElement>;
-                editButtons.forEach(editButton => {
-                    if (newValue) {
-                        editButton.classList.remove("fn__none");
-                    } else {
-                        editButton.classList.add("fn__none");
-                    }
-                });
                 break;
             }
 
