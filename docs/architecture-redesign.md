@@ -19,6 +19,7 @@
 ### 已完成提交（main，最新在上）
 | commit | 内容 |
 |---|---|
+| `b415de3` | refactor: 配置装配/持久化/热应用外迁至 src/config/config-service.ts |
 | `abaf6a1` | refactor: 设置对话框装配与交互外迁至 src/ui/setting-dialog.ts |
 | `b16639e` | refactor: applySetting 大 switch 全部迁入 configItems.onApply 后删除 |
 | `fdbc2ef` | refactor: 编辑器生命周期管理（主题监听/更新/重建）外迁至 src/ui/editor-manager.ts |
@@ -66,7 +67,7 @@
 | `dd296e9` | refactor: 抽取纯工具函数到 `utils.ts` |
 | `4f2773e` | refactor: 抽取 `isValidJavaScriptCode` 到 `domain/snippet.ts` |
 
-当前工作区：**干净**（abaf6a1 已提交；阶段 3 收官，阶段 4 进行中：configItems 条目外迁 schema.ts 且全部 UI 副作用迁入 onApply（applySetting 大 switch 已删除，b16639e）、CodeMirror 工厂外迁 codemirror.ts、编辑器生命周期管理外迁 editor-manager.ts、设置对话框装配/交互外迁 setting-dialog.ts、setting_apply 退役收口内核推送，见下方「下一步建议」）。
+当前工作区：**干净**（b415de3 已提交；阶段 3 收官，阶段 4 进行中：configItems 条目外迁 schema.ts 且全部 UI 副作用迁入 onApply（applySetting 大 switch 已删除，b16639e）、CodeMirror 工厂外迁 codemirror.ts、编辑器生命周期管理外迁 editor-manager.ts、设置对话框装配/交互外迁 setting-dialog.ts、配置装配/持久化/热应用外迁 config-service.ts、setting_apply 退役收口内核推送，见下方「下一步建议」）。
 
 ### 已建模块
 - `src/core/event-bus.ts`（类型化 pub/sub，`on/off/emit/clear`；注意：勿用字段名 `eventBus`，会与 siyuan `Plugin` 基类成员冲突，内部用 `internalEventBus`）
@@ -76,6 +77,7 @@
 - `src/ui/codemirror.ts`（阶段 4：纯编辑器工厂 `getEditorIndentUnit`/`createEditorExtensions`/`createCodeMirrorEditor`，参数化 indentUnitConfig/i18n；`SnippetsEditorI18n = Record<string, string>` 兼容插件 i18n 类型）
 - `src/ui/editor-manager.ts`（阶段 4：`EditorManager` 类——主题模式监听启停/检查（observer 挂 window.siyuan.jcsm）、已打开对话框编辑器更新 `updateAllEditorConfigs`/重建 `recreateEditor`；运行态经 `EditorManagerHost` 读取器注入；`onunload`/`uninstall` 的清理由 `stopThemeModeWatch()` 收敛，消除重复）
 - `src/ui/setting-dialog.ts`（阶段 4：`SettingDialog` 类 + `SettingDialogHost` 读取器/动作注入——原 `openSetting` 方法整体外迁（对话框装配/设置项渲染/点击与全局按键/滚轮/touchmove 监听/原生设置跳转两段异步重试）；`openSettingTab` 辅助与 `SETTING_TAB_MOUNT_MAX_RETRIES` 常量随迁为模块级；index.ts 侧 `openSetting` 收口为 `this.settingDialog.open()` 委托）
+- `src/config/config-service.ts`（阶段 4：`ConfigService` 类 + `ConfigServiceHost` 注入——原 `initSetting`+`loadConfig`（读取/版本校验/写默认值/defineProperty 挂实例属性/装配 Setting）收编为 `init()`，`saveSetting` 收编为 `saveFromDialog()`，`applyConfig`/`onDataChanged` 方法体收编为 `applyConfig`/`reloadFromStorage()`，`disableNotification` 随迁；私有收口 `persistConfig`/`createSettingItem`（含 isPromiseFulfilled 语义原样保留）；存储键名与生命周期数据方法由 index 闭包转发，service 不感知具体键；index.ts 侧 `onDataChanged` 收口为 `configService.reloadFromStorage()`，`onLayoutReady` 改 `configService.init()` 后 `setting = configService.setting!`）
 - `src/utils.ts`（含 `isPromiseFulfilled`/`hideTooltip`/`showElementTooltip`/`isInputElementActive`/`htmlToElement`/`moveElementToTop`）
 - `src/domain/snippet.ts`（`isValidJavaScriptCode`/`isSnippetsTypeEnabled`）
 - `src/domain/snippet-store.ts`（`SnippetStore`：`remove`/`upsert`/`insertBefore`/`move`/`replaceAll`，单一写路径 + 统一发 `SNIPPETS_CHANGED`）
@@ -144,7 +146,7 @@
 ### 下一步建议（朝目标架构，拆可验证子批推进）
 1. 阶段 2（Store 收敛）已完成：`domain/snippet-store.ts` 的 `remove`/`upsert`/`insertBefore`/`move`/`replaceAll` 已承接全部本地结构写，计数统一由 `SNIPPETS_CHANGED` 事件驱动。
 2. 阶段 3（sync 收敛）**已完成（57313b1 收官）**：`services/sync.ts` 的 `BroadcastService`（连接/重连/窗口保活/类型化 `broadcast`/按 type 查表分发 `BroadcastHandlers`）统一承担传输与分发；`index.ts` 的 `handleBroadcastMessage` switch 与全部 7 个 `*Sync` 镜像已消灭——壳方法 3 个（`snippetsSortSync`/`updateSnippetElementSync`/`removeSnippetElementSync`）逻辑就地内联进注册键，有实质差异的镜像 5 个（`toggleSnippetSync`/`globalToggleSnippetSync`/`deleteSnippetSync`/`toggleSnippetPublishSync`/`saveSnippetSync`）分别并入 `toggleSnippet(snippet, enabled, origin)`/`globalToggleSnippet(snippetType, enabled, origin, remotePreviewingSnippetIds)`/`deleteSnippet(id, snippetType, origin, remotePreviewState)`/`toggleSnippetPublish(snippetId, enabled, origin)`/`saveSnippet(snippet, isCopy, origin, remoteCopySnippet?, remoteOldSnippet?)` 的 `origin: "local" | "remote"` 分支（toggleSnippetPublish 的 isPublish 判断依据已修复为 `window.siyuan.isPublish`，见上方「发布服务 isPublish 语义澄清」节）。统一模式：**本窗口操作 = 自拉/就地改 + 落库 + 广播；同内核其他前端实例 = 广播实例已落库，仅按自身状态同步 UI/元素，不落库、不广播**；注册键内联“来源解析”后调同方法传 `origin: "remote"`。配置类 `setting_apply` 已随思源 2a11f8ab 收口内核推送而退役（98a84d6，见上方「插件配置跨窗口同步收口」节）。
-3. 阶段 4（config 声明式 + 拆分瘦身）**进行中**：配置项类型与条目定义外迁 `src/config/schema.ts`（acb64cb）；CodeMirror 编辑器工厂外迁 `src/ui/codemirror.ts`（df4ff9c）；编辑器生命周期管理（主题监听/更新/重建）外迁 `src/ui/editor-manager.ts`（fdbc2ef，`onload` 初始化 `this.editorManager` 并经读取器实时转发 console/editorIndentUnit/i18n）；`applySetting` 大 switch 的剩余 case 已全部迁入 `configItems` 条目 `onApply`，`applySetting` 收口为查表分发、switch 已删除（b16639e）——`SnippetsConfigContext` 相应扩展运行态读取器/动作面（menuOpen/menuSnippetsItemsHtml/updateAllEditorConfigs/removeTopBarElement/initTopBar/setMenuPosition/startFileWatch/stopFileWatch/handleFileWatchPathChange/handleFileWatchIntervalChange），`handleFileWatchModeChange` 死方法随迁删除；设置对话框装配/交互外迁 `src/ui/setting-dialog.ts`（abaf6a1，`SettingDialog`+`SettingDialogHost`，`openSetting` 收口为委托，`openSettingTab`/重试常量随迁）。剩余：把设置装配/持久化（`createSettingItem`/`createConfigGetter`/`createConfigSetter`/`loadConfig`/`initSetting` 的 defineProperty 段/`saveSetting`/`applyConfig`）下沉独立模块（建议 `src/config/config-service.ts`）；其余 `index.ts` 大段按需外迁（生命周期/watch 管理、文件监听、导入导出等）持续瘦身。
+3. 阶段 4（config 声明式 + 拆分瘦身）**进行中**：配置项类型与条目定义外迁 `src/config/schema.ts`（acb64cb）；CodeMirror 编辑器工厂外迁 `src/ui/codemirror.ts`（df4ff9c）；编辑器生命周期管理（主题监听/更新/重建）外迁 `src/ui/editor-manager.ts`（fdbc2ef，`onload` 初始化 `this.editorManager` 并经读取器实时转发 console/editorIndentUnit/i18n）；`applySetting` 大 switch 的剩余 case 已全部迁入 `configItems` 条目 `onApply`，`applySetting` 收口为查表分发、switch 已删除（b16639e）——`SnippetsConfigContext` 相应扩展运行态读取器/动作面（menuOpen/menuSnippetsItemsHtml/updateAllEditorConfigs/removeTopBarElement/initTopBar/setMenuPosition/startFileWatch/stopFileWatch/handleFileWatchPathChange/handleFileWatchIntervalChange），`handleFileWatchModeChange` 死方法随迁删除；设置对话框装配/交互外迁 `src/ui/setting-dialog.ts`（abaf6a1，`SettingDialog`+`SettingDialogHost`，`openSetting` 收口为委托，`openSettingTab`/重试常量随迁）；配置装配/持久化/热应用外迁 `src/config/config-service.ts`（b415de3，`ConfigService`+`ConfigServiceHost`——init 收编 initSetting/loadConfig、saveFromDialog 收编 saveSetting、reloadFromStorage 收编 onDataChanged 方法体、applyConfig/disableNotification 随迁；onDataChanged 与 onLayoutReady 相应收口）。剩余：其余 `index.ts` 大段按需外迁（顶栏菜单/生命周期/watch 管理、文件监听、导入导出等）持续瘦身；`initConfigItems` 的 ctx 装配暂留 index（依赖实例方法），后续可再评估。
 4. 之后：UI 视图化（阶段 5）、jcsm 收敛（阶段 6，前置已启动：见上方「jcsm 现状」节）。
 
 ---
