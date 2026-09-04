@@ -232,7 +232,7 @@ export class SnippetManager {
      * @param copySnippet 副本代码片段
      */
     applySnippetUIChange(snippet: Snippet, isAddOrUpdate: boolean, copySnippet?: Snippet) {
-        const snippetMenuItem = this.plugin.menuItems?.querySelector(`.jcsm-snippet-item[data-id="${snippet.id}"]`) as HTMLElement;
+        const snippetMenuItem = this.plugin.menuView.menuItems?.querySelector(`.jcsm-snippet-item[data-id="${snippet.id}"]`) as HTMLElement;
         const dialog = document.querySelector(`.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id="${snippet.id}"]`) as HTMLDivElement;
         let deleteButton, confirmButton;
         if (dialog && !copySnippet) {
@@ -243,12 +243,12 @@ export class SnippetManager {
         // 应用代码片段变更，修改相关的元素
         if (isAddOrUpdate) {
             // 打开菜单时才需要修改菜单项
-            if (this.plugin.menu) {
+            if (this.plugin.menuView.menu) {
                 if (snippetMenuItem) {
                     // 有菜单项
                     if (copySnippet) {
                         // 在指定菜单项的上方插入新的副本菜单项
-                        const snippetsHtml = this.plugin.genMenuSnippetsItems([copySnippet]);
+                        const snippetsHtml = this.plugin.menuView.genMenuSnippetsItems([copySnippet]);
                         snippetMenuItem.insertAdjacentHTML("beforebegin", snippetsHtml);
                     } else {
                         // 更新菜单项
@@ -261,8 +261,8 @@ export class SnippetManager {
                     }
                 } else {
                     // 没有菜单项，在菜单项列表的顶部插入新的菜单项
-                    const snippetsHtml = this.plugin.genMenuSnippetsItems([snippet]);
-                    this.plugin.menuItems.querySelector(".jcsm-snippets-container")?.insertAdjacentHTML("afterbegin", snippetsHtml);
+                    const snippetsHtml = this.plugin.menuView.genMenuSnippetsItems([snippet]);
+                    this.plugin.menuView.menuItems.querySelector(".jcsm-snippets-container")?.insertAdjacentHTML("afterbegin", snippetsHtml);
                 }
             }
 
@@ -388,9 +388,9 @@ export class SnippetManager {
             element?.remove();
         }
 
-        if (previewState === undefined && isEnabled && this.plugin.menu && snippet.type === this.plugin.snippetsType && !isSnippetsTypeEnabled) {
+        if (previewState === undefined && isEnabled && this.plugin.menuView.menu && snippet.type === this.plugin.snippetsType && !isSnippetsTypeEnabled) {
             // 如果当前的操作是在非预览状态下、开启代码片段、开启了菜单、菜单上显示的是这个类型的代码片段、这个类型的代码片段是关闭状态 → 全局开关闪烁一下
-            this.plugin.setSnippetsTypeSwitchBreathing();
+            this.plugin.menuView.setSnippetsTypeSwitchBreathing();
         }
 
         // 需要弹出消息提示的情况：
@@ -402,7 +402,7 @@ export class SnippetManager {
             // JS 代码片段元素更新需要弹出消息提示
             this.plugin.showNotification("reloadUIAfterModifyJS", 4000);
             // 高亮菜单上的重新加载界面按钮
-            await this.plugin.setReloadUIButtonBreathing();
+            await this.plugin.menuView.setReloadUIButtonBreathing();
         }
     }
 
@@ -421,7 +421,7 @@ export class SnippetManager {
         // 删除 JS 代码片段需要弹出消息提示：有旧代码 && 旧代码有效
         if (snippetType === "js" && element && element.innerHTML && isValidJavaScriptCode(element.innerHTML)) {
             this.plugin.showNotification("reloadUIAfterModifyJS", 4000);
-            await this.plugin.setReloadUIButtonBreathing();
+            await this.plugin.menuView.setReloadUIButtonBreathing();
         }
         element?.remove();
     }
@@ -453,8 +453,8 @@ export class SnippetManager {
             await this.updateSnippetElement(snippet);
 
             // 更新菜单中的开关状态（如果菜单已打开）
-            if (this.plugin.menuItems) {
-                const checkbox = this.plugin.menuItems.querySelector(`.jcsm-snippet-item[data-id="${snippet.id}"] input[data-type='snippetSwitch']`) as HTMLInputElement;
+            if (this.plugin.menuView.menuItems) {
+                const checkbox = this.plugin.menuView.menuItems.querySelector(`.jcsm-snippet-item[data-id="${snippet.id}"] input[data-type='snippetSwitch']`) as HTMLInputElement;
                 checkbox && (checkbox.checked = enabled);
                 this.plugin.console.log("toggleSnippetSync: checkbox", checkbox, "enabled", enabled);
             }
@@ -554,8 +554,8 @@ export class SnippetManager {
         // 更新菜单中的开关状态（如果菜单已打开）
         // 注意：菜单 publishSwitch 的勾选语义为“允许发布”（checked = !disabledInPublish），
         // 而广播载荷 enabled 的语义为 disabledInPublish，故此处必须取反
-        if (!this.plugin.menuItems) return;
-        const checkbox = this.plugin.menuItems.querySelector(`.jcsm-snippet-item[data-id="${snippetId}"] input[data-type='publishSwitch']`) as HTMLInputElement;
+        if (!this.plugin.menuView.menuItems) return;
+        const checkbox = this.plugin.menuView.menuItems.querySelector(`.jcsm-snippet-item[data-id="${snippetId}"] input[data-type='publishSwitch']`) as HTMLInputElement;
         checkbox && (checkbox.checked = !enabled);
         this.plugin.console.log("toggleSnippetPublish: checkbox", checkbox, "enabled", enabled);
     }
@@ -607,8 +607,8 @@ export class SnippetManager {
             });
 
             // 更新菜单中的全局开关状态（如果菜单已打开，并且显示的是这个类型的代码片段）
-            if (this.plugin.menuItems) {
-                const globalSwitch = this.plugin.menuItems.querySelector(`.jcsm-top-container[data-type="${snippetType}"] .jcsm-all-snippets-switch`) as HTMLInputElement;
+            if (this.plugin.menuView.menuItems) {
+                const globalSwitch = this.plugin.menuView.menuItems.querySelector(`.jcsm-top-container[data-type="${snippetType}"] .jcsm-all-snippets-switch`) as HTMLInputElement;
                 globalSwitch && (globalSwitch.checked = enabled);
             }
             return;
