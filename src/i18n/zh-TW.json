@@ -43,8 +43,6 @@
   "giveUpEdit": "放棄修改",
   "deleteSnippet": "刪除代碼片段",
   "deleteSnippetFailed": "刪除代碼片段失敗，缺少參數 ID 或類型",
-  "getPluginLogFailed": "取得插件記錄失敗",
-  "writePluginLogFailed": "寫入插件記錄失敗",
   "realTimePreview": "CSS 代碼片段即時預覽",
   "realTimePreviewDescription": "在代碼片段編輯浮窗中修改 CSS 代碼片段時，會即時應用到目前介面中以便預覽效果，但不會即時儲存",
   "realTimePreviewHandlerFunctionError": "CSS 代碼片段即時預覽函數錯誤，代碼片段類型不為 CSS",

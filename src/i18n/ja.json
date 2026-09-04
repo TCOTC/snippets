@@ -43,8 +43,6 @@
   "giveUpEdit": "編集を放棄",
   "deleteSnippet": "スニペットを削除",
   "deleteSnippetFailed": "スニペットの削除に失敗しました。パラメータIDまたはタイプが不足しています",
-  "getPluginLogFailed": "プラグインログの取得に失敗しました",
-  "writePluginLogFailed": "プラグインログの書き込みに失敗しました",
   "realTimePreview": "CSSスニペットリアルタイムプレビュー",
   "realTimePreviewDescription": "スニペット編集フローティングウィンドウでCSSスニペットを変更すると、プレビュー効果のために現在のインターフェースにリアルタイムで適用されますが、リアルタイムでは保存されません",
   "realTimePreviewHandlerFunctionError": "CSSスニペットリアルタイムプレビュー関数エラー。スニペットタイプがCSSではありません",

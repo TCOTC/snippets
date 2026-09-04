@@ -8,9 +8,9 @@ import {ConfigService} from "./config/config-service";
 import {BroadcastService} from "./services/sync";
 import {FileWatchService} from "./services/file-watch";
 import {hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, showElementTooltip} from "./utils";
-import {getFile, putFile} from "./services/storage";
 import {EventBus} from "./core/event-bus";
 import {ImportExportService} from "./services/import-export";
+import {FeedbackService} from "./services/feedback";
 
 // 思源插件 API
 import {
@@ -23,8 +23,7 @@ import {
     Menu,
     platformUtils,
     Plugin,
-    Setting,
-    showMessage
+    Setting
 } from "siyuan";
 // 未使用的：Custom、confirm、openTab、adaptHotkey、getBackend、Protyle、openWindow、IOperation、openMobileFileById、lockScreen、ICard、ICardData、exitSiYuan、getModelByDockType、getAllEditor、Files、platformUtils、openAttributePanel、saveLayout
 
@@ -39,8 +38,6 @@ import {SettingDialog} from "./ui/setting-dialog";
 
 const PLUGIN_NAME = "snippets";                    // 插件名
 const STORAGE_NAME = "plugin-config.json";         // 配置文件名
-const LOG_NAME = "plugin-snippets.log";            // 日志文件名
-const TEMP_PLUGIN_PATH = "/temp/plugin-snippets/"; // 插件临时文件路径
 // const TAB_TYPE = "custom-tab"; // 自定义标签页
 
 // noinspection JSUnusedGlobalSymbols
@@ -111,6 +108,11 @@ export default class PluginSnippets extends Plugin {
      * 导入导出服务（代码片段导出/导入见 src/services/import-export.ts）
      */
     private importExportService!: ImportExportService;
+
+    /**
+     * 通知/错误提示服务（实现见 src/services/feedback.ts，showNotification/showErrorMessage 委托到它）
+     */
+    private feedbackService!: FeedbackService;
 
     /**
      * 启用插件
@@ -201,6 +203,13 @@ export default class PluginSnippets extends Plugin {
             saveSnippetsList: (snippetsList) => this.saveSnippetsList(snippetsList),
             storeReplaceAll: (snippetsList) => this.snippetStore.replaceAll(snippetsList),
             refreshMenuSnippetsType: () => this.setMenuSnippetsType(this.snippetsType),
+        });
+
+        // 初始化通知/错误提示服务（配置开关读取经实例 defineProperty 镜像转发）
+        this.feedbackService = new FeedbackService({
+            displayName: () => this.displayName,
+            i18n: () => this.i18n,
+            readConfig: (key) => (this as any)[key],
         });
 
         // 订阅代码片段列表变更事件：菜单打开时刷新各类型计数
@@ -3107,129 +3116,23 @@ export default class PluginSnippets extends Plugin {
     // ================================ 消息处理 ================================
 
     /**
-     * 是否开启通知
-     */
-    private notificationSwitch = true; // 暂时默认开启
-
-    /**
-     * 弹出通知（仅限在插件设置中存在选项的通知可以使用该方法）
+     * 弹出通知（实现见 src/services/feedback.ts FeedbackService）
      * @param messageI18nKey 消息的 i18n 键
      * @param timeout 消息显示时间（毫秒）；-1 永不关闭；0 永不关闭，添加一个关闭按钮；undefined 默认 6000 毫秒
      */
     private showNotification(messageI18nKey: string, timeout: number | undefined = undefined) {
-        if (this.notificationSwitch && (this as any)[messageI18nKey + "Notice"] && this.i18n[messageI18nKey]) {
-            // 全局通知开关开启、该通知选项开启、i18n 键存在 → 弹出通知
-            const ignoreNoticeButton = `<button class='jscm-snackbar-ignore-notice-button b3-button ariaLabel' aria-label='${this.i18n.ignoreNoticeButtonAriaLabel}' onclick='event.stopPropagation(); window.siyuan.jcsm.disableNotification(\"${messageI18nKey}\");'>${this.i18n.noLongerShow}</button>`;
-            const message = this.i18n[messageI18nKey].replace("${ignoreNoticeButton}", ignoreNoticeButton);
-            // 传入 messageId 参数之后，反复弹出相同的消息时，不会关闭上一个消息再弹出新消息
-            showMessage(message, timeout, "info", PLUGIN_NAME + "-" + messageI18nKey);
-        }
+        this.feedbackService.showNotification(messageI18nKey, timeout);
     }
 
     /**
-     * 弹出错误消息
+     * 弹出错误消息（实现见 src/services/feedback.ts FeedbackService）
      * @param message 错误消息
      * @param timeout 消息显示时间（毫秒）；-1 永不关闭；0 永不关闭，添加一个关闭按钮；undefined 默认 6000 毫秒
      * @param id 消息的 ID
      */
     private showErrorMessage(message: string, timeout: number | undefined = undefined, id?: string) {
-        showMessage(this.displayName + ": " + message, timeout, "error", id);
-        // 将日志写入任务添加到队列
-        this.addLogWriteTask(message);
+        this.feedbackService.showErrorMessage(message, timeout, id);
     }
-
-    /**
-     * 日志写入队列
-     */
-    private logWriteQueue: Array<() => Promise<void>> = [];
-
-    /**
-     * 是否正在写入日志
-     */
-    private isLogWriting = false;
-
-    /**
-     * 添加日志写入任务到队列
-     * @param message 错误消息
-     */
-    private addLogWriteTask(message: string) {
-        const writeTask = async () => {
-            try {
-                // 在 temp 目录记录错误日志（格式参考 siyuan.log）
-                const writeLog = async (oldLog = "") => {
-                    // 如果 oldLog 的行数超过 200 行，则删除开头 1 行
-                    const lines = oldLog.split("\n");
-                    if (lines.length > 200) {
-                        oldLog = lines.slice(1).join("\n");
-                    }
-                    // E 2025/07/24 21:13:19 错误消息
-                    const now = new Date();
-                    const pad = (n: number) => n.toString().padStart(2, "0"); // 补齐两位数
-                    const year = now.getFullYear();
-                    const month = pad(now.getMonth() + 1); // 月份从 0 开始，需要加 1
-                    const day = pad(now.getDate());
-                    const hour = pad(now.getHours());
-                    const minute = pad(now.getMinutes());
-                    const second = pad(now.getSeconds());
-                    const timestamp = `${year}/${month}/${day} ${hour}:${minute}:${second}`;
-                    const newLog = oldLog + "E " + timestamp + " " + message + "\n";
-                    const response = await putFile(TEMP_PLUGIN_PATH + LOG_NAME, newLog);
-                    if (!response || (response as any).code !== 0) {
-                        // 写入失败
-                        showMessage(this.displayName + ": " + this.i18n.writePluginLogFailed + " [" + response?.code + ": " + response?.msg + "]", 20000, "error");
-                    }
-                };
-
-                const response = await getFile(TEMP_PLUGIN_PATH + LOG_NAME) as any;
-                if (response && response.code === 404) {
-                    // 没有文件，直接创建文件
-                    await writeLog();
-                } else if ((response || response === "") && !response.code) {
-                    // 如果有文件，response 就是文件内容、没有 response.code
-                    await writeLog(response as string);
-                } else {
-                    // 其他错误（具体错误详情见原生 API 文档）
-                    showMessage(this.displayName + ": " + this.i18n.getPluginLogFailed + " [" + response?.code + ": " + response?.msg + "]", 20000, "error");
-                }
-            } catch (error) {
-                this.console.error("Failed to write log:", error);
-            }
-        };
-
-        // 将任务添加到队列
-        this.logWriteQueue.push(writeTask);
-
-        // 如果当前没有在写入，则开始处理队列
-        if (!this.isLogWriting) {
-            void this.processLogQueue();
-        }
-    }
-
-    /**
-     * 处理日志写入队列
-     */
-    private async processLogQueue() {
-        if (this.isLogWriting || this.logWriteQueue.length === 0) {
-            return;
-        }
-
-        this.isLogWriting = true;
-
-        try {
-            // 依次处理队列中的任务
-            while (this.logWriteQueue.length > 0) {
-                const task = this.logWriteQueue.shift();
-                if (task) {
-                    await task();
-                }
-            }
-        } catch (error) {
-            this.console.error("Error occurred while processing the log queue:", error);
-        } finally {
-            this.isLogWriting = false;
-        }
-    }
-
 
     // ================================ 工具方法 ================================
 
@@ -3717,5 +3620,6 @@ export default class PluginSnippets extends Plugin {
      */
     private syncService: BroadcastService | null = null;
 }
+
 
 

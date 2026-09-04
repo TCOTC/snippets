@@ -43,8 +43,6 @@
   "giveUpEdit": "放弃修改",
   "deleteSnippet": "删除代码片段",
   "deleteSnippetFailed": "删除代码片段失败，缺少参数 ID 或类型",
-  "getPluginLogFailed": "获取插件日志失败",
-  "writePluginLogFailed": "写入插件日志失败",
   "realTimePreview": "CSS 代码片段实时预览",
   "realTimePreviewDescription": "在代码片段编辑浮窗中修改 CSS 代码片段时，会实时应用到当前界面中以便预览效果，但不会实时保存",
   "realTimePreviewHandlerFunctionError": "CSS 代码片段实时预览函数错误，代码片段类型不为 CSS",

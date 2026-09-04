@@ -43,8 +43,6 @@
   "giveUpEdit": "Give up edit",
   "deleteSnippet": "Delete snippet",
   "deleteSnippetFailed": "Failed to delete snippet, missing parameter ID or type",
-  "getPluginLogFailed": "Failed to get plugin log",
-  "writePluginLogFailed": "Failed to write plugin log",
   "realTimePreview": "CSS snippet real-time preview",
   "realTimePreviewDescription": "When you modify the CSS snippet in the snippet floating window, the changes will be applied to the current interface in real time for preview, but will not be saved in real time",
   "realTimePreviewHandlerFunctionError": "CSS snippet real-time preview function error, snippet type is not CSS",
