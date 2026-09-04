@@ -1,12 +1,11 @@
 import "./index.scss";
 import {Snippet, SnippetType} from "./types";
-import {SNIPPETS_CHANGED, SnippetStore} from "./domain/snippet-store";
+import {SnippetStore} from "./domain/snippet-store";
 import {createSnippetsConfigItems} from "./config/schema";
 import type {SnippetsConfigItem} from "./config/schema";
 import {ConfigService, STORAGE_NAME} from "./config/config-service";
 import {BroadcastService} from "./services/sync";
 import {FileWatchService} from "./services/file-watch";
-import {EventBus} from "./core/event-bus";
 import {ImportExportService} from "./services/import-export";
 import {FeedbackService} from "./services/feedback";
 import {ListenerRegistry} from "./services/listener-registry";
@@ -44,12 +43,7 @@ export default class PluginSnippets extends Plugin {
     isMobile = false;
 
     /**
-     * 类型化事件总线：数据变更后驱动 UI 刷新等内部解耦
-     */
-    private internalEventBus = new EventBus();
-
-    /**
-     * 代码片段列表 Store：数据写路径的单一入口，统一在列表变更后触发 SNIPPETS_CHANGED 事件
+     * 代码片段列表 Store：数据写路径的单一入口，列表变更后回调刷新菜单计数（菜单打开时自拉刷新）
      * （SnippetManager 直连访问，故公开）
      */
     snippetStore!: SnippetStore;
@@ -111,11 +105,14 @@ export default class PluginSnippets extends Plugin {
      */
     public async onload() {
         // 初始化代码片段列表 Store（后端为插件实例 snippetsList 缓存：以内核为权威，菜单打开/保存后自拉刷新）
-        this.snippetStore = new SnippetStore(this.internalEventBus, {
+        this.snippetStore = new SnippetStore({
             get: () => this.snippetsList,
             set: (snippetsList) => {
                 this.snippetsList = snippetsList;
             },
+        }, () => {
+            // 列表变更后刷新菜单计数
+            this.menuView.setMenuSnippetCount();
         });
 
         // 初始化代码片段管理器（直连本实例，运行态延迟到调用时读取）
@@ -147,11 +144,6 @@ export default class PluginSnippets extends Plugin {
 
         // 初始化对话框管理器（代码片段编辑对话框/确认对话框/按元素关闭等；直连本实例）
         this.snippetsDialog = new SnippetsDialog(this);
-
-        // 订阅代码片段列表变更事件：菜单打开时刷新各类型计数
-        this.internalEventBus.on(SNIPPETS_CHANGED, (_snippetId: string) => {
-            this.menuView.setMenuSnippetCount();
-        });
     }
 
     /**
@@ -253,9 +245,6 @@ export default class PluginSnippets extends Plugin {
      * 插件更新会先执行 onunload 再执行 onload，不会执行 uninstall
      */
     public onunload() {
-        // 取消该实例注册的全部事件订阅
-        this.internalEventBus.clear();
-
         // 关闭跨窗口同步服务（发送下线通知并断开连接）
         this.syncService?.stop();
 
@@ -515,58 +504,17 @@ export default class PluginSnippets extends Plugin {
     }
 
     /**
-     * 控制台调试输出（SnippetManager 直连访问，故公开）
+     * 控制台输出（SnippetManager 直连访问，故公开；log 仅在开启"开发者工具调试输出"配置时打印）
      */
-    console = (() => {
-        // 日志编号计数器，从 1 开始
-        let logCounter = 1;
-
-        /**
-         * 获取当前编号字符串，格式为 3 位数字（如 001、002）
-         */
-        const getLogNumber = () => {
-            const num = logCounter.toString().padStart(3, "0");
-            logCounter++;
-            return num;
-        };
-
-        /**
-         * 通用日志输出方法，简化重复代码
-         * @param label 日志标签
-         * @param args 日志内容
-         */
-        const output = (label: string, args: any[]) => {
-            const logNumber = getLogNumber();
-            console.groupCollapsed(`[${logNumber}] ${label}:`, ...args); // 使用 console.groupCollapsed 创建可折叠的日志组，保持源代码可点击性
-            console.trace("Call Stack:"); // 使用 console.trace 输出可点击的调用栈
-            console.groupEnd();
-        };
-
-        return {
-            /**
-             * 输出调试日志
-             * @param args 日志内容
-             */
-            log: (...args: any[]) => {
-                if (!this.consoleDebug) return;
-                output("Log", args);
-            },
-            /**
-             * 输出警告日志
-             * @param args 日志内容
-             */
-            warn: (...args: any[]) => {
-                output("Warning", args);
-            },
-            /**
-             * 输出错误日志
-             * @param args 日志内容
-             */
-            error: (...args: any[]) => {
-                output("Error", args);
+    console = {
+        log: (...args: any[]) => {
+            if (this.consoleDebug) {
+                console.log(...args);
             }
-        };
-    })();
+        },
+        warn: (...args: any[]) => console.warn(...args),
+        error: (...args: any[]) => console.error(...args),
+    };
 
     // 全局键盘按下/移除事件监听与开合判断（globalKeyDownHandler/destroyGlobalKeyDownHandler/isDialogAndMenuOpen）
     // 见 src/ui/menu.ts SnippetsMenu

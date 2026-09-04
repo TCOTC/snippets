@@ -1,11 +1,4 @@
-import {EventBus} from "../core/event-bus";
 import type {Snippet} from "../types";
-
-/**
- * 代码片段列表变更事件
- * payload 为变更涉及的代码片段 ID：删除时为被删除的代码片段 ID，后续新增/更新时为对应代码片段 ID。
- */
-export const SNIPPETS_CHANGED = "snippets-changed";
 
 /**
  * 代码片段列表在内存中的存取适配
@@ -19,17 +12,16 @@ export interface SnippetListStorage {
 
 /**
  * 代码片段列表 Store（单一写路径）
- * 收敛散落在各方法中的 this.snippetsList 增/删/改逻辑，统一在数据变更后触发
- * SNIPPETS_CHANGED 事件，供菜单计数等订阅方自行刷新；
- * 为后续"本地操作与跨窗口同步合并为同一条路径"做准备。
+ * 收敛散落在各方法中的 snippetsList 增/删/改/整表替换；列表变更后统一回调 onChanged
+ * （插件侧刷新菜单计数；当前仅此一个订阅方，无需事件总线）。
  */
 export class SnippetStore {
-    private readonly eventBus: EventBus;
     private readonly storage: SnippetListStorage;
+    private readonly onChanged: () => void;
 
-    constructor(eventBus: EventBus, storage: SnippetListStorage) {
-        this.eventBus = eventBus;
+    constructor(storage: SnippetListStorage, onChanged: () => void) {
         this.storage = storage;
+        this.onChanged = onChanged;
     }
 
     /**
@@ -41,12 +33,11 @@ export class SnippetStore {
 
     /**
      * 整表替换代码片段列表（导入覆盖/追加后使用）
-     * 列表变更后统一触发 SNIPPETS_CHANGED 事件；整表替换无单一关联片段，事件载荷传空字符串。
      * @param snippetsList 新的代码片段列表
      */
     replaceAll(snippetsList: Snippet[]): void {
         this.storage.set(snippetsList);
-        this.eventBus.emit(SNIPPETS_CHANGED, "");
+        this.onChanged();
     }
 
     /**
@@ -61,7 +52,7 @@ export class SnippetStore {
             return false;
         }
         this.storage.set(newList);
-        this.eventBus.emit(SNIPPETS_CHANGED, id);
+        this.onChanged();
         return true;
     }
 
@@ -69,7 +60,6 @@ export class SnippetStore {
      * 拖拽排序：将代码片段移动到目标片段前/后
      * 保持 CSS 在前、JS 在后的分区：拖拽跨分区时按分区边界落位；
      * 目标片段不存在或位置实际未变化时返回 false。
-     * 位置变化后统一触发 SNIPPETS_CHANGED 事件。
      * @param id 被移动的代码片段 ID
      * @param targetId 目标代码片段 ID
      * @param isTop 是否移动到目标上方
@@ -141,7 +131,7 @@ export class SnippetStore {
         }
 
         this.storage.set(snippetsList);
-        this.eventBus.emit(SNIPPETS_CHANGED, id);
+        this.onChanged();
         return true;
     }
 
@@ -149,7 +139,6 @@ export class SnippetStore {
      * 在指定代码片段之前插入新代码片段（复制场景：副本紧邻原片段上方）
      * 前置条件：锚点存在于列表中（复制源来自列表）；若缺失，回退按分区插入（upsert 新增语义），
      * 避免副本丢失，同时保证 CSS 在前、JS 在后的分区不被破坏。
-     * 列表变更后统一触发 SNIPPETS_CHANGED 事件。
      * @param snippet 要插入的代码片段
      * @param anchorId 锚点代码片段 ID
      */
@@ -162,14 +151,13 @@ export class SnippetStore {
         }
         newList.splice(anchorIndex, 0, snippet);
         this.storage.set(newList);
-        this.eventBus.emit(SNIPPETS_CHANGED, snippet.id);
+        this.onChanged();
     }
 
     /**
      * 新增或更新代码片段
      * 存在同 ID 片段时整体替换；不存在时按类型分区插入（CSS 保持在前、JS 保持在后，
      * 与思源原生列表的分区规则一致：JS 插入到当前首个 JS 片段之前，无 JS 片段时追加到末尾）。
-     * 列表变更后统一触发 SNIPPETS_CHANGED 事件。
      * @param snippet 代码片段
      * @returns 变更详情：added 表示是否为新增；oldSnippet 为被替换的旧片段（更新时存在）
      */
@@ -197,7 +185,7 @@ export class SnippetStore {
             }
             this.storage.set(newList);
         }
-        this.eventBus.emit(SNIPPETS_CHANGED, snippet.id);
+        this.onChanged();
         return { added: !oldSnippet, oldSnippet };
     }
 }

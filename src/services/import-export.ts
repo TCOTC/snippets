@@ -193,7 +193,7 @@ export class ImportExportService {
 
                     // 保存新的代码片段列表
                     void this.plugin.snippetManager.saveSnippetsList(newSnippetsList);
-                    // 整表替换到 Store：计数由 SNIPPETS_CHANGED 事件统一刷新（菜单打开时）
+                    // 整表替换到 Store（菜单计数由变更回调刷新）
                     this.plugin.snippetStore.replaceAll(newSnippetsList);
 
                     // 更新菜单显示（类型开关状态等）

@@ -106,7 +106,7 @@ export class SnippetManager {
             copySnippet.id = genNewSnippetId(this.plugin.snippetsList);
             copySnippet.name = snippet.name + ` (${this.plugin.i18n.duplicate} ${new Date().toLocaleString()})`;
 
-            // 把副本创建在当前代码片段的上面（菜单计数由 SNIPPETS_CHANGED 事件统一刷新）
+            // 把副本创建在当前代码片段的上面（菜单计数由 Store 变更回调统一刷新）
             this.plugin.snippetStore.insertBefore(copySnippet, snippet.id);
             hasChanges = true;
 
