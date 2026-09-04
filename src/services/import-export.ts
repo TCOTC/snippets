@@ -1,6 +1,7 @@
 // 代码片段导入导出
 // 职责：导出全部代码片段为 JSON（经 /api/export/exportResources 导出 zip 并去随机前缀后 saveExportFile 下载）；
-// 从本地文件（json/zip）导入——zip 上传解压后递归定位 json；校验、ID 去重、覆盖前备份、整表替换写库。
+// 从本地文件（json/zip）导入——zip 上传解压后递归定位 json；校验、ID 去重、覆盖前备份、整表替换写库，
+// 落库成功后经 SnippetManager.applyImportedSnippets 立即应用并广播到其他窗口（见 snippet-manager.ts）。
 import {saveExportFile, showMessage} from "siyuan";
 import {isValidCssSnippetContent, snippetTitle} from "../domain/snippet";
 import {escapeHtml, fetchPostPromise, genNewSnippetId, getFile, putFile, renameFile} from "../utils";
