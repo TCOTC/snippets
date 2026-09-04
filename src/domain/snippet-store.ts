@@ -1,34 +1,31 @@
+import type PluginSnippets from "../index";
 import type {Snippet} from "../types";
 
 /**
- * 代码片段列表在内存中的存取适配
- * 当前实现为读写插件实例的 snippetsList 缓存（内核 /api/snippet/getSnippet 为权威，菜单打开/保存等场景
- * 自拉刷新；仅作同页会话缓存，插件重载后由下一次自拉重建）
- */
-export interface SnippetListStorage {
-    get(): Snippet[];
-    set(snippetsList: Snippet[]): void;
-}
-
-/**
  * 代码片段列表 Store（单一写路径）
- * 收敛散落在各方法中的 snippetsList 增/删/改/整表替换；列表变更后统一回调 onChanged
- * （插件侧刷新菜单计数；当前仅此一个订阅方，无需事件总线）。
+ * 收敛散落在各方法中的插件 snippetsList 缓存增/删/改/整表替换（缓存以内核 /api/snippet/getSnippet 为权威，
+ * 菜单打开/保存等场景自拉刷新；仅作同页会话缓存，插件重载后由下一次自拉重建）；
+ * 列表变更后统一经 notifyChanged 刷新菜单计数（plugin.menuView.setMenuSnippetCount，当前仅此一个订阅方）。
  */
 export class SnippetStore {
-    private readonly storage: SnippetListStorage;
-    private readonly onChanged: () => void;
+    private readonly plugin: PluginSnippets;
 
-    constructor(storage: SnippetListStorage, onChanged: () => void) {
-        this.storage = storage;
-        this.onChanged = onChanged;
+    constructor(plugin: PluginSnippets) {
+        this.plugin = plugin;
     }
 
     /**
      * 当前代码片段列表（内存态）
      */
     get list(): Snippet[] {
-        return this.storage.get();
+        return this.plugin.snippetsList;
+    }
+
+    /**
+     * 列表变更后刷新菜单计数
+     */
+    private notifyChanged(): void {
+        this.plugin.menuView.setMenuSnippetCount();
     }
 
     /**
@@ -36,8 +33,8 @@ export class SnippetStore {
      * @param snippetsList 新的代码片段列表
      */
     replaceAll(snippetsList: Snippet[]): void {
-        this.storage.set(snippetsList);
-        this.onChanged();
+        this.plugin.snippetsList = snippetsList;
+        this.notifyChanged();
     }
 
     /**
@@ -46,13 +43,13 @@ export class SnippetStore {
      * @returns 列表中存在该 ID 并实际删除时为 true
      */
     remove(id: string): boolean {
-        const oldList = this.storage.get();
+        const oldList = this.plugin.snippetsList;
         const newList = oldList.filter((snippet: Snippet) => snippet.id !== id);
         if (newList.length === oldList.length) {
             return false;
         }
-        this.storage.set(newList);
-        this.onChanged();
+        this.plugin.snippetsList = newList;
+        this.notifyChanged();
         return true;
     }
 
@@ -66,7 +63,7 @@ export class SnippetStore {
      * @returns 是否真的发生了位置变化
      */
     move(id: string, targetId: string, isTop: boolean): boolean {
-        const snippetsList = this.storage.get();
+        const snippetsList = this.plugin.snippetsList;
         const fromIndex = snippetsList.findIndex((s: Snippet) => s.id === id);
         const toIndex = snippetsList.findIndex((s: Snippet) => s.id === targetId);
         if (fromIndex === -1 || toIndex === -1) {
@@ -130,8 +127,7 @@ export class SnippetStore {
             return false;
         }
 
-        this.storage.set(snippetsList);
-        this.onChanged();
+        this.notifyChanged();
         return true;
     }
 
@@ -143,15 +139,15 @@ export class SnippetStore {
      * @param anchorId 锚点代码片段 ID
      */
     insertBefore(snippet: Snippet, anchorId: string): void {
-        const newList = [...this.storage.get()];
+        const newList = [...this.plugin.snippetsList];
         const anchorIndex = newList.findIndex((s: Snippet) => s.id === anchorId);
         if (anchorIndex < 0) {
             this.upsert(snippet);
             return;
         }
         newList.splice(anchorIndex, 0, snippet);
-        this.storage.set(newList);
-        this.onChanged();
+        this.plugin.snippetsList = newList;
+        this.notifyChanged();
     }
 
     /**
@@ -162,11 +158,11 @@ export class SnippetStore {
      * @returns 变更详情：added 表示是否为新增；oldSnippet 为被替换的旧片段（更新时存在）
      */
     upsert(snippet: Snippet): { added: boolean; oldSnippet?: Snippet } {
-        const oldList = this.storage.get();
+        const oldList = this.plugin.snippetsList;
         const oldSnippet = oldList.find((s: Snippet) => s.id === snippet.id);
         if (oldSnippet) {
             // 更新：整体替换同 ID 片段
-            this.storage.set(oldList.map((s: Snippet) => (s.id === snippet.id ? snippet : s)));
+            this.plugin.snippetsList = oldList.map((s: Snippet) => (s.id === snippet.id ? snippet : s));
         } else {
             // 新增：按类型分区插入
             const newList = [...oldList];
@@ -183,9 +179,9 @@ export class SnippetStore {
                     newList.push(snippet);
                 }
             }
-            this.storage.set(newList);
+            this.plugin.snippetsList = newList;
         }
-        this.onChanged();
+        this.notifyChanged();
         return { added: !oldSnippet, oldSnippet };
     }
 }

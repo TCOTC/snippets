@@ -209,16 +209,9 @@ export default class PluginSnippets extends Plugin {
      * 启用插件
      */
     public async onload() {
-        // 初始化代码片段列表 Store（后端为插件实例 snippetsList 缓存：以内核为权威，菜单打开/保存后自拉刷新）
-        this.snippetStore = new SnippetStore({
-            get: () => this.snippetsList,
-            set: (snippetsList) => {
-                this.snippetsList = snippetsList;
-            },
-        }, () => {
-            // 列表变更后刷新菜单计数
-            this.menuView.setMenuSnippetCount();
-        });
+        // 初始化代码片段列表 Store（后端为插件实例 snippetsList 缓存：以内核为权威，菜单打开/保存后自拉刷新；
+        // 变更后统一经 Store 刷新菜单计数）
+        this.snippetStore = new SnippetStore(this);
 
         // 初始化代码片段管理器（直连本实例，运行态延迟到调用时读取）
         this.snippetManager = new SnippetManager(this);

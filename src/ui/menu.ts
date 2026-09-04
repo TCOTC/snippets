@@ -50,7 +50,7 @@ export class SnippetsMenu {
     private readonly isTouchDevice = ("ontouchstart" in window) && navigator.maxTouchPoints > 1;
 
     /**
-     * 移除顶栏按钮（schema ctx removeTopBarElement 使用；与 initTopBar 配合用于重建，如顶栏位置变更）
+     * 移除顶栏按钮（schema onApply（topBarPosition 变更）使用；与 initTopBar 配合用于重建，如顶栏位置变更）
      */
     removeTopBarElement() {
         this.topBarElement?.remove();
@@ -79,7 +79,7 @@ export class SnippetsMenu {
 
     /**
      * 初始化顶栏按钮
-     * 顶栏按钮即菜单入口：schema ctx initTopBar/生命周期装配经插件直连本方法。
+     * 顶栏按钮即菜单入口：schema onApply（topBarPosition 变更）/生命周期装配经插件直连本方法。
      */
     async initTopBar() {
         const topBarKeymap = this.plugin.getCustomKeymapByCommand("openSnippetsManager");

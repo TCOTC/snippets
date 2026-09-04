@@ -1,6 +1,6 @@
 // 插件配置：声明式配置项定义 + 装配、持久化与热应用
-// 本模块统一承载：配置项类型与条目构建（SnippetsConfigItem/SnippetsConfigContext/createSnippetsConfigItems，
-// 条目经 ctx 读取器/动作函数实时转发插件运行态）、ConfigService（配置读取与版本校验 → 逐项写入插件实例
+// 本模块统一承载：配置项类型与条目构建（SnippetsConfigItem/createSnippetsConfigItems，条目直连插件实例
+// 引用，运行态属性在调用时才求值）、ConfigService（配置读取与版本校验 → 逐项写入插件实例
 // 字段 → 构建 Setting 项；对话框保存 saveFromDialog；配置热应用 applyConfig（onDataChanged 同源）；
 // 通知禁用持久化 disableNotification）。
 // 配置值存于插件实例同名字段（配置每次 init 从磁盘重新加载、写配置即落盘，无需外部全局仓库）；
@@ -16,41 +16,6 @@ import type {SettingItem} from "../types";
 export interface SnippetsConfigOption {
     value: string | number;
     text: string;
-}
-
-/**
- * 构建配置项时所需的插件运行态上下文
- * 以读取器/动作函数形式提供，由调用方用箭头函数闭包捕获插件实例（避免 no-this-alias）；
- * 注意：条目构建时的静态属性值（ignore/description 等）在构建时刻调用读取器求值；
- * 条目内箭头函数体（createActionElement/onApply）中的读取器/动作则在函数被调用时才执行，
- * 因此菜单容器等运行态引用能拿到实时值，不会停留在构建时刻的快照。
- */
-export interface SnippetsConfigContext {
-    /** 读取：是否移动端 */
-    readonly isMobile: () => boolean;
-    /** 读取：插件 i18n 文案 */
-    readonly i18n: () => any;
-    /** 读取：顶栏菜单列表容器（可能尚未打开） */
-    readonly menuItems: () => HTMLElement | undefined;
-    /** 读取：顶栏菜单是否打开（菜单关闭后 menuItems 仍引用已脱离文档的节点，不可据此判断） */
-    readonly menuOpen: () => boolean;
-    /** 读取：按当前排序规则生成的代码片段列表 HTML（用于菜单项重渲染） */
-    readonly menuSnippetsItemsHtml: () => string;
-    /** 动作：更新所有已打开的编辑器对话框中的编辑器配置 */
-    readonly updateAllEditorConfigs: (reason: string) => void;
-    /** 动作：移除顶栏按钮 */
-    readonly removeTopBarElement: () => void;
-    /** 动作：重建顶栏按钮（含快捷键提示标题） */
-    readonly initTopBar: () => Promise<void>;
-    /** 动作：定位或更新已打开顶栏菜单的位置 */
-    readonly setMenuPosition: (isUpdate?: boolean) => void;
-    /** 动作：启动/停止文件监听 */
-    readonly startFileWatch: () => void;
-    readonly stopFileWatch: () => void;
-    /** 动作：文件监听路径变更后的重载处理（内部会按当前监听模式判断是否可执行） */
-    readonly handleFileWatchPathChange: () => void;
-    /** 动作：文件监听间隔变更后的定时器重置 */
-    readonly handleFileWatchIntervalChange: () => void;
 }
 
 /**
@@ -153,28 +118,14 @@ export class ConfigService {
 
     /**
      * 构建配置项（条目定义见本模块 createSnippetsConfigItems；仅构建一次并复用，
-     * 构建结果与运行态无关，运行态由 ctx 读取器/动作函数实时转发到插件实例）
+     * 条目直连插件实例引用，运行态属性在 onApply/createActionElement 调用时才求值）
      * 注意：构建时不使用 this.plugin.console 之类的方法——它们需配置加载完成后才可用
      */
     private initConfigItems() {
         if (this.configItems.length > 0) {
             return;
         }
-        this.configItems = createSnippetsConfigItems({
-            isMobile: () => this.plugin.isMobile,
-            i18n: () => this.plugin.i18n,
-            menuItems: () => this.plugin.menuView.menuItems,
-            menuOpen: () => !!this.plugin.menuView.menu,
-            menuSnippetsItemsHtml: () => this.plugin.menuView.genMenuSnippetsItems(),
-            updateAllEditorConfigs: (reason) => this.plugin.editorManager.updateAllEditorConfigs(reason),
-            removeTopBarElement: () => this.plugin.menuView.removeTopBarElement(),
-            initTopBar: () => this.plugin.menuView.initTopBar(),
-            setMenuPosition: (isUpdate) => this.plugin.menuView.setMenuPosition(isUpdate),
-            startFileWatch: () => this.plugin.fileWatchService.start(),
-            stopFileWatch: () => this.plugin.fileWatchService.stop(),
-            handleFileWatchPathChange: () => void this.plugin.fileWatchService.handlePathChange(),
-            handleFileWatchIntervalChange: () => this.plugin.fileWatchService.handleIntervalChange(),
-        });
+        this.configItems = createSnippetsConfigItems(this.plugin);
     }
 
     /**
@@ -408,30 +359,31 @@ export class ConfigService {
 }
 
 /**
- * 构建全部配置项
- * 求值时机：ignore/description 等属性值在构建时刻求值，
- * 箭头函数体内的 ctx 读取器/动作在调用时才执行（由调用方以箭头函数实时转发到插件实例）。
- * @param ctx 配置项构建上下文（见 SnippetsConfigContext）
+ * 构建全部配置项（直连插件实例引用）
+ * 求值时机：ignore/description 等属性值在构建时刻求值；
+ * createActionElement/onApply 箭头函数体内的 plugin 读取在函数被调用时才执行，
+ * 因此菜单容器等运行态引用能拿到实时值，不会停留在构建时刻的快照。
+ * @param plugin 插件实例
  * @returns 配置项数组
  */
-export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsConfigItem[] => [
+export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfigItem[] => [
     {
         key: "openNativeSnippets",
         description: "openNativeSnippetsDescription",
         type: "createActionElement",
         createActionElement: () => {
             return htmlToElement(
-                `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="settingsSnippets"><svg><use xlink:href="#iconJcsm"></use></svg>${ctx.i18n().openNativeSnippetsWindow}</span>`
+                `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="settingsSnippets"><svg><use xlink:href="#iconJcsm"></use></svg>${plugin.i18n.openNativeSnippetsWindow}</span>`
             );
         },
-        ignore: ctx.isMobile(),
+        ignore: plugin.isMobile,
     },
     {
         key: "multipleSnippetEditors",
         description: "multipleSnippetEditorsDescription",
         type: "boolean",
         defaultValue: true,
-        ignore: ctx.isMobile(),
+        ignore: plugin.isMobile,
     },
     {
         key: "realTimePreview",
@@ -479,7 +431,7 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
         defaultValue: false,
         // 修改 showDuplicateButton 之后，查询所有菜单项修改创建副本按钮的 fn__none
         onApply: (newValue) => {
-            const duplicateButtons = ctx.menuItems()?.querySelectorAll(".jcsm-snippet-item button[data-type='duplicate']") as NodeListOf<HTMLButtonElement>;
+            const duplicateButtons = plugin.menuView.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='duplicate']") as NodeListOf<HTMLButtonElement>;
             duplicateButtons.forEach(duplicateButton => {
                 if (newValue) {
                     duplicateButton.classList.remove("fn__none");
@@ -496,7 +448,7 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
         defaultValue: true,
         // 修改 showDeleteButton 之后，查询所有菜单项修改删除按钮的 fn__none
         onApply: (newValue) => {
-            const deleteButtons = ctx.menuItems()?.querySelectorAll(".jcsm-snippet-item button[data-type='delete']") as NodeListOf<HTMLButtonElement>;
+            const deleteButtons = plugin.menuView.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='delete']") as NodeListOf<HTMLButtonElement>;
             deleteButtons.forEach(deleteButton => {
                 if (newValue) {
                     deleteButton.classList.remove("fn__none");
@@ -513,7 +465,7 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
         defaultValue: true,
         // 修改 showEditButton 之后，查询所有菜单项修改编辑按钮的 fn__none
         onApply: (newValue) => {
-            const editButtons = ctx.menuItems()?.querySelectorAll(".jcsm-snippet-item button[data-type='edit']") as NodeListOf<HTMLButtonElement>;
+            const editButtons = plugin.menuView.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='edit']") as NodeListOf<HTMLButtonElement>;
             editButtons.forEach(editButton => {
                 if (newValue) {
                     editButton.classList.remove("fn__none");
@@ -589,10 +541,10 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
         ],
         // 修改 snippetSortType 之后，按新排序重新生成菜单中的片段项（仅菜单已打开时需要）
         onApply: () => {
-            if (!ctx.menuOpen()) return;
-            const snippetsContainer = ctx.menuItems()?.querySelector(".jcsm-snippets-container");
+            if (!plugin.menuView.menu) return;
+            const snippetsContainer = plugin.menuView.menuItems?.querySelector(".jcsm-snippets-container");
             if (!snippetsContainer) return;
-            const snippetsItems = ctx.menuSnippetsItemsHtml();
+            const snippetsItems = plugin.menuView.genMenuSnippetsItems();
             snippetsContainer.querySelectorAll(".jcsm-snippet-item:is([data-type='js'], [data-type='css'])").forEach(item => {
                 item.remove();
             });
@@ -613,19 +565,19 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
         // 修改 snippetSearchType 之后，显示/隐藏菜单中的搜索按钮与搜索输入框
         onApply: (newValue) => {
             if (newValue === 0) {
-                const searchButton = ctx.menuItems()?.querySelector(".jcsm-top-container button[data-type='search']") as HTMLButtonElement;
+                const searchButton = plugin.menuView.menuItems?.querySelector(".jcsm-top-container button[data-type='search']") as HTMLButtonElement;
                 if (searchButton) {
                     searchButton.classList.add("fn__none");
                     searchButton.classList.remove("jcsm-active");
                 }
-                const searchInput = ctx.menuItems()?.querySelector("input[data-action='search']") as HTMLInputElement;
+                const searchInput = plugin.menuView.menuItems?.querySelector("input[data-action='search']") as HTMLInputElement;
                 if (searchInput) {
                     searchInput.classList.add("fn__none");
                     searchInput.value = "";
                     searchInput.dispatchEvent(new Event("input", { bubbles: true }));
                 }
             } else {
-                ctx.menuItems()?.querySelector(".jcsm-top-container button[data-type='search']")?.classList.remove("fn__none");
+                plugin.menuView.menuItems?.querySelector(".jcsm-top-container button[data-type='search']")?.classList.remove("fn__none");
             }
         },
     },
@@ -648,7 +600,7 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
             { value: "space8", text: "editorIndentUnitSpace8" }
         ],
         // 修改编辑器缩进单位后，更新所有已打开的编辑器
-        onApply: () => ctx.updateAllEditorConfigs("indent unit"),
+        onApply: () => plugin.editorManager.updateAllEditorConfigs("indent unit"),
     },
     {
         key: "fileWatchEnabled",
@@ -663,9 +615,9 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
         // 修改 fileWatchEnabled 之后，按新模式启动或停止文件监听
         onApply: (newValue) => {
             if (newValue === "disabled") {
-                ctx.stopFileWatch();
+                plugin.fileWatchService.stop();
             } else {
-                ctx.startFileWatch();
+                plugin.fileWatchService.start();
             }
         },
     },
@@ -675,7 +627,7 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
         type: "string",
         defaultValue: "data/snippets",
         // 修改 fileWatchPath 之后，重载监听文件（方法内部会按当前监听模式判断是否可执行）
-        onApply: () => ctx.handleFileWatchPathChange(),
+        onApply: () => plugin.fileWatchService.handlePathChange(),
     },
     {
         key: "fileWatchInterval",
@@ -683,7 +635,7 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
         type: "number",
         defaultValue: 5,
         // 修改 fileWatchInterval 之后，按新间隔重置监听定时器
-        onApply: () => ctx.handleFileWatchIntervalChange(),
+        onApply: () => plugin.fileWatchService.handleIntervalChange(),
     },
     {
         key: "topBarPosition",
@@ -694,13 +646,13 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
             { value: "left", text: "topBarPositionLeft" },
             { value: "right", text: "topBarPositionRight" }
         ],
-        ignore: ctx.isMobile(),
+        ignore: plugin.isMobile,
         // 修改 topBarPosition 之后，移除并重建顶栏按钮；菜单已打开时按新位置重排
         onApply: async () => {
-            ctx.removeTopBarElement();
-            await ctx.initTopBar();
-            if (ctx.menuOpen()) {
-                ctx.setMenuPosition(true);
+            plugin.menuView.removeTopBarElement();
+            await plugin.menuView.initTopBar();
+            if (plugin.menuView.menu) {
+                plugin.menuView.setMenuPosition(true);
             }
         },
     },
@@ -710,7 +662,7 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
         type: "createActionElement",
         createActionElement: () => {
             return htmlToElement(
-                `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="exportSnippets"><svg><use xlink:href="#iconUpload"></use></svg>${ctx.i18n().export}</span>`
+                `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="exportSnippets"><svg><use xlink:href="#iconUpload"></use></svg>${plugin.i18n.export}</span>`
             );
         },
     },
@@ -720,7 +672,7 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
         type: "createActionElement",
         createActionElement: () => {
             return htmlToElement(
-                `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="importSnippetsWithAppend"><svg><use xlink:href="#iconDownload"></use></svg>${ctx.i18n().importWithAppend}</span>`
+                `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="importSnippetsWithAppend"><svg><use xlink:href="#iconDownload"></use></svg>${plugin.i18n.importWithAppend}</span>`
             );
         },
     },
@@ -730,7 +682,7 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
         type: "createActionElement",
         createActionElement: () => {
             return htmlToElement(
-                `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="importSnippetsWithOverwrite"><svg><use xlink:href="#iconDownload"></use></svg>${ctx.i18n().importWithOverwrite}</span>`
+                `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="importSnippetsWithOverwrite"><svg><use xlink:href="#iconDownload"></use></svg>${plugin.i18n.importWithOverwrite}</span>`
             );
         },
     },
@@ -741,7 +693,7 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
         createActionElement: () => {
             const repoLink = "https://github.com/TCOTC/snippets";
             return htmlToElement(
-                `<a href="${repoLink}" target="_blank" rel="noopener noreferrer" class="b3-button b3-button--outline fn__flex-center fn__size200 ariaLabel" aria-label="${repoLink}" data-position="north"><svg><use xlink:href="#iconGithub"></use></svg>${ctx.i18n().feedbackIssueButton}</a>`
+                `<a href="${repoLink}" target="_blank" rel="noopener noreferrer" class="b3-button b3-button--outline fn__flex-center fn__size200 ariaLabel" aria-label="${repoLink}" data-position="north"><svg><use xlink:href="#iconGithub"></use></svg>${plugin.i18n.feedbackIssueButton}</a>`
             );
         },
     },
@@ -753,7 +705,7 @@ export const createSnippetsConfigItems = (ctx: SnippetsConfigContext): SnippetsC
     },
     {
         key: "reloadUIAfterModifyJSNotice",
-        description: !ctx.isMobile() ? "reloadUIAfterModifyJSNoticeDescription" : "reloadUIAfterModifyJSNoticeDescriptionMobile",
+        description: !plugin.isMobile ? "reloadUIAfterModifyJSNoticeDescription" : "reloadUIAfterModifyJSNoticeDescriptionMobile",
         type: "boolean",
         defaultValue: true,
     }
