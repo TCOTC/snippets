@@ -6,8 +6,6 @@ import {BroadcastService} from "./services/sync";
 import type {
     SettingApplyPayload,
     SnippetDeletePayload,
-    SnippetElementRemovePayload,
-    SnippetElementUpdatePayload,
     SnippetSavePayload,
     SnippetToggleGlobalPayload,
     SnippetTogglePublishPayload
@@ -255,9 +253,28 @@ export default class PluginSnippets extends Plugin {
                 snippet_toggle_global: (payload) => this.globalToggleSnippetSync(payload),
                 snippet_save: (payload) => this.saveSnippetSync(payload),
                 snippet_delete: (payload) => this.deleteSnippetSync(payload),
-                snippet_element_update: (payload) => this.updateSnippetElementSync(payload),
-                snippet_element_remove: (payload) => this.removeSnippetElementSync(payload),
-                snippets_sort: () => this.snippetsSortSync(),
+                snippet_element_update: async ({snippet, snippetId, previewState}) => {
+                    // 预览放行原文（豁免）：snippet 来自消息体（编辑中内容未保存、无法自拉）；
+                    // 未携带原文（退出预览）时按 ID 自拉已保存片段恢复
+                    let realSnippet = snippet;
+                    if (!realSnippet) {
+                        const fetchedSnippet = await this.getSnippetById(snippetId!);
+                        if (fetchedSnippet === false || fetchedSnippet === undefined) {
+                            this.console.error("snippet_element_update: Snippet not found:", snippetId);
+                            return;
+                        }
+                        realSnippet = fetchedSnippet;
+                    }
+                    await this.updateSnippetElement(realSnippet, undefined, previewState);
+                    this.console.log("snippet_element_update: updated snippet element for", realSnippet.id);
+                },
+                snippet_element_remove: ({snippetId, snippetType}) => this.removeSnippetElement(snippetId, snippetType),
+                snippets_sort: async () => {
+                    this.console.log("snippetsSortSync");
+                    // 重新加载代码片段列表（读取权威态语义）并刷新菜单
+                    this.snippetsList = await this.getSnippetsList() as Snippet[];
+                    this.menuItems && this.initSnippetsContainer();
+                },
                 setting_apply: (payload) => this.applySettingSync(payload),
             },
         });
@@ -2136,19 +2153,6 @@ export default class PluginSnippets extends Plugin {
     }
 
     /**
-     * 处理代码片段排序同步
-     */
-    private async snippetsSortSync() {
-        this.console.log("snippetsSortSync");
-
-        // 重新加载代码片段列表
-        this.snippetsList = await this.getSnippetsList() as Snippet[];
-
-        // 刷新菜单
-        this.menuItems && this.initSnippetsContainer();
-    }
-
-    /**
      * 菜单鼠标按下事件处理（用于拖拽排序）
      * @param event 鼠标事件
      */
@@ -3097,30 +3101,6 @@ export default class PluginSnippets extends Plugin {
     }
 
     /**
-     * 处理代码片段元素更新同步
-     * 预览放行原文（豁免）：previewState 为 true 时 snippet 来自消息体（编辑中内容未保存、无法自拉）；
-     * previewState 为 false 时消息不携带 snippet，需按 snippetId 自拉已保存片段恢复。
-     * @param data 同步数据，包含 snippet（可选）与 previewState
-     */
-    private async updateSnippetElementSync(data: SnippetElementUpdatePayload) {
-        const { snippet, snippetId, previewState } = data;
-        let realSnippet = snippet;
-        if (!realSnippet) {
-            // 未携带原文（退出预览），按 ID 自拉已保存片段
-            const fetchedSnippet = await this.getSnippetById(snippetId!);
-            if (fetchedSnippet === false || fetchedSnippet === undefined) {
-                this.console.error("updateSnippetElementSync: Snippet not found:", snippetId);
-                return;
-            }
-            realSnippet = fetchedSnippet;
-        }
-
-        // 调用原有的 updateSnippetElement 方法更新元素
-        await this.updateSnippetElement(realSnippet, undefined, previewState);
-        this.console.log("updateSnippetElementSync: updated snippet element for", realSnippet.id);
-    }
-
-    /**
      * 移除代码片段元素
      * @param snippetId 代码片段 ID
      * @param snippetType 代码片段类型
@@ -3138,15 +3118,6 @@ export default class PluginSnippets extends Plugin {
             await this.setReloadUIButtonBreathing();
         }
         element?.remove();
-    }
-
-    /**
-     * 处理移除代码片段元素同步
-     * @param data 同步数据，包含 snippetId 和 snippetType
-     */
-    private removeSnippetElementSync(data: SnippetElementRemovePayload) {
-        const { snippetId, snippetType } = data;
-        void this.removeSnippetElement(snippetId, snippetType);
     }
 
 
