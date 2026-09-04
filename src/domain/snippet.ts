@@ -1,4 +1,5 @@
 import {parse as acornParse} from "acorn";
+import type {SnippetType} from "../types";
 
 /**
  * 简单判断内容是否为有效的 JavaScript 代码
@@ -47,4 +48,16 @@ export function isValidJavaScriptCode(code: string): boolean {
     } catch {
         return false;
     }
+}
+
+/**
+ * 判断代码片段类型是否启用
+ * @param snippetType 代码片段类型
+ * @returns 是否启用
+ */
+export function isSnippetsTypeEnabled(snippetType: SnippetType): boolean {
+    if (snippetType === "css") {
+        return window.siyuan.config.snippet.enabledCSS;
+    }
+    return window.siyuan.config.snippet.enabledJS;
 }

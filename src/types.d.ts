@@ -97,6 +97,11 @@ interface FileState {
 }
 
 /**
+ * 代码片段类型（css 或 js）
+ */
+type SnippetType = "css" | "js";
+
+/**
  * 代码片段类型
  * 参考 app/src/types/index.d.ts 的 ISnippet
  */
@@ -104,7 +109,7 @@ interface Snippet {
     id: string;
     name: string;
     content: string;
-    type: "css" | "js";
+    type: SnippetType;
     enabled: boolean;
     disabledInPublish?: boolean | undefined;
 }
@@ -138,4 +143,4 @@ declare module "siyuan" {
     export function saveExportFile(uri: string, msgId?: string): Promise<void>;
 }
 
-export { Snippet, SettingItem, ListenersArray, ElementListeners, ListenerItem, FileState };
+export { Snippet, SnippetType, SettingItem, ListenersArray, ElementListeners, ListenerItem, FileState };

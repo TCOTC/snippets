@@ -1,6 +1,6 @@
 import "./index.scss";
-import {FileState, ListenersArray, Snippet} from "./types";
-import {isValidJavaScriptCode} from "./domain/snippet";
+import {FileState, ListenersArray, Snippet, SnippetType} from "./types";
+import {isSnippetsTypeEnabled, isValidJavaScriptCode} from "./domain/snippet";
 import {hideTooltip, htmlToElement, isInputElementActive, showElementTooltip} from "./utils";
 
 // 思源插件 API
@@ -1543,7 +1543,7 @@ export default class PluginSnippets extends Plugin {
             // 切换代码片段类型
             if (tagName === "input" && target.getAttribute("name") === "jcsm-tabs") {
                 const type = target.dataset.snippetType;
-                if (type) {
+                if (type === "css" || type === "js") {
                     this.snippetsType = type;
                     this.setMenuSnippetsType(type);
                 }
@@ -2514,13 +2514,13 @@ export default class PluginSnippets extends Plugin {
      * 设置菜单代码片段类型
      * @param snippetType 代码片段类型
      */
-    private setMenuSnippetsType(snippetType: string) {
+    private setMenuSnippetsType(snippetType: SnippetType) {
         if (!this.isMobile) {
             this.setMenuSelection(snippetType);
         }
 
         // 设置该代码片段类型的全局开关状态
-        const enabled = this.isSnippetsTypeEnabled(snippetType);
+        const enabled = isSnippetsTypeEnabled(snippetType);
         const snippetsTypeSwitch = this.menuItems.querySelector(".jcsm-all-snippets-switch") as HTMLInputElement;
         snippetsTypeSwitch.checked = enabled;
 
@@ -2658,7 +2658,7 @@ export default class PluginSnippets extends Plugin {
     /**
      * 代码片段类型
      */
-    get snippetsType() { 
+    get snippetsType(): SnippetType { 
         // 如果已经有值（用户切换过标签），使用该值，否则使用配置中的默认值
         const type = window.siyuan.jcsm?.snippetsType ?? window.siyuan.jcsm?.defaultSnippetsType;
         if (type !== "css" && type !== "js") {
@@ -2666,7 +2666,7 @@ export default class PluginSnippets extends Plugin {
         }
         return type;
     }
-    set snippetsType(value: string) { (window.siyuan.jcsm ??= {}).snippetsType = value; }
+    set snippetsType(value: SnippetType) { (window.siyuan.jcsm ??= {}).snippetsType = value; }
 
     /**
      * 创建代码片段
@@ -3040,9 +3040,9 @@ export default class PluginSnippets extends Plugin {
 
         // ?? 空值合并运算符，当左侧值为 null 或 undefined 时返回右侧值，此处优先使用 enabled 的值
         const isEnabled = enabled ?? snippet.enabled;
-        const isSnippetsTypeEnabled = this.isSnippetsTypeEnabled(snippet.type);
+        const isSnippetsTypeEnabledFlag = isSnippetsTypeEnabled(snippet.type);
 
-        if (isEnabled && (isSnippetsTypeEnabled || previewState)) {
+        if (isEnabled && (isSnippetsTypeEnabledFlag || previewState)) {
             // 代码片段需要启用 && （该代码片段对应的类型是启用状态 || 正在预览该代码片段）→ 则添加新元素
             if (element && element.innerHTML === snippet.content) {
                 // 如果要添加的代码片段与原来的一样，就忽略
@@ -4329,16 +4329,6 @@ export default class PluginSnippets extends Plugin {
             newId = window.Lute.NewNodeID();
         }
         return newId;
-    }
-
-    /**
-     * 判断代码片段类型是否启用
-     * @param snippetType 代码片段类型
-     * @returns 是否启用
-     */
-    private isSnippetsTypeEnabled(snippetType: string): boolean {
-        return (window.siyuan.config.snippet.enabledCSS && snippetType === "css") ||
-               (window.siyuan.config.snippet.enabledJS  && snippetType === "js" );
     }
 
     /**
