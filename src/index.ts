@@ -2,6 +2,8 @@ import "./index.scss";
 import {FileState, ListenersArray, Snippet, SnippetType} from "./types";
 import {isSnippetsTypeEnabled, isValidJavaScriptCode} from "./domain/snippet";
 import {SNIPPETS_CHANGED, SnippetStore} from "./domain/snippet-store";
+import {createSnippetsConfigItems} from "./config/schema";
+import type {SnippetsConfigItem} from "./config/schema";
 import {BroadcastService} from "./services/sync";
 import type {SettingApplyPayload} from "./services/sync";
 import {hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, showElementTooltip} from "./utils";
@@ -431,287 +433,24 @@ export default class PluginSnippets extends Plugin {
     private consoleDebug!: boolean;
 
     /**
-     * 配置项定义
+     * 配置项定义（类型定义与条目构建见 src/config/schema.ts）
      */
-    private configItems: Array<{
-        key: string;
-        description?: string;
-        type?: "boolean" | "string" | "number" | "selectString" | "selectNumber" | "createActionElement";
-        defaultValue?: any;
-        direction?: "row" | "column";
-        createActionElement?: () => HTMLElement;
-        options?: Array<{ value: string | number; text: string }>;
-        ignore?: boolean;
-        /** 应用该配置项时的 UI 副作用（阶段 4：逐步从 applySetting 大 switch 迁入，全部迁完后删除 switch） */
-        onApply?: (newValue: any) => void | Promise<void>;
-    }> = [];
+    private configItems: SnippetsConfigItem[] = [];
 
     /**
-     * 初始化配置项
+     * 初始化配置项（阶段 4：条目定义已外迁至 src/config/schema.ts，此处仅构建一次并挂到实例）
+     * 注意在这里面不能用 this.console 之类的方法，因为它们需要先加载完插件配置才能用
      */
     private async initConfigItems() {
-        // 注意在这里面不能用 this.console 之类的方法，因为它们需要先加载完插件配置才能用
-        this.configItems.push(
-            {
-                key: "openNativeSnippets",
-                description: "openNativeSnippetsDescription",
-                type: "createActionElement",
-                createActionElement: () => {
-                    return htmlToElement(
-                        `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="settingsSnippets"><svg><use xlink:href="#iconJcsm"></use></svg>${this.i18n.openNativeSnippetsWindow}</span>`
-                    );
-                },
-                ignore: this.isMobile,
-            },
-            {
-                key: "multipleSnippetEditors",
-                description: "multipleSnippetEditorsDescription",
-                type: "boolean",
-                defaultValue: true,
-                ignore: this.isMobile,
-            },
-            {
-                key: "realTimePreview",
-                description: "realTimePreviewDescription",
-                type: "boolean",
-                defaultValue: true,
-            },
-            {
-                key: "autoReloadUIAfterModifyJS",
-                description: "autoReloadUIAfterModifyJSDescription",
-                type: "boolean",
-                defaultValue: true,
-            },
-            {
-                key: "newSnippetEnabled",
-                type: "boolean",
-                defaultValue: true,
-            },
-            {
-                key: "showDuplicateButton",
-                description: "showDuplicateButtonDescription",
-                type: "boolean",
-                defaultValue: false,
-                // 修改 showDuplicateButton 之后，查询所有菜单项修改创建副本按钮的 fn__none
-                onApply: (newValue) => {
-                    const duplicateButtons = this.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='duplicate']") as NodeListOf<HTMLButtonElement>;
-                    duplicateButtons.forEach(duplicateButton => {
-                        if (newValue) {
-                            duplicateButton.classList.remove("fn__none");
-                        } else {
-                            duplicateButton.classList.add("fn__none");
-                        }
-                    });
-                },
-            },
-            {
-                key: "showDeleteButton",
-                description: "showDeleteButtonDescription",
-                type: "boolean",
-                defaultValue: true,
-                // 修改 showDeleteButton 之后，查询所有菜单项修改删除按钮的 fn__none
-                onApply: (newValue) => {
-                    const deleteButtons = this.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='delete']") as NodeListOf<HTMLButtonElement>;
-                    deleteButtons.forEach(deleteButton => {
-                        if (newValue) {
-                            deleteButton.classList.remove("fn__none");
-                        } else {
-                            deleteButton.classList.add("fn__none");
-                        }
-                    });
-                },
-            },
-            {
-                key: "showEditButton",
-                description: "showEditButtonDescription",
-                type: "boolean",
-                defaultValue: true,
-                // 修改 showEditButton 之后，查询所有菜单项修改编辑按钮的 fn__none
-                onApply: (newValue) => {
-                    const editButtons = this.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='edit']") as NodeListOf<HTMLButtonElement>;
-                    editButtons.forEach(editButton => {
-                        if (newValue) {
-                            editButton.classList.remove("fn__none");
-                        } else {
-                            editButton.classList.add("fn__none");
-                        }
-                    });
-                },
-            },
-            {
-                key: "showPublishCheckbox",
-                description: "showPublishCheckboxDescription",
-                type: "selectNumber",
-                defaultValue: 0,
-                options: [
-                    { value: 0, text: "showPublishCheckboxWithPublish" },
-                    { value: 1, text: "showPublishCheckboxShowAlways" },
-                    { value: 2, text: "showPublishCheckboxHideAlways" }
-                ],
-            },
-            {
-                key: "defaultSnippetsType",
-                description: "defaultSnippetsTypeDescription",
-                type: "selectString",
-                defaultValue: "css",
-                options: [
-                    { value: "css", text: "defaultSnippetsTypeCSS" },
-                    { value: "js", text: "defaultSnippetsTypeJS" }
-                ],
-            },
-            {
-                key: "snippetOptionClickBehavior",
-                description: "snippetOptionClickBehaviorDescription",
-                type: "selectNumber",
-                defaultValue: 1,
-                options: [
-                    { value: 0, text: "snippetOptionClickBehaviorNone" },
-                    { value: 1, text: "snippetOptionClickBehaviorToggle" },
-                    { value: 2, text: "snippetOptionClickBehaviorOpenEditor" }
-                ],
-            },
-            {
-                key: "snippetSortType",
-                description: "snippetSortTypeDescription",
-                type: "selectString",
-                defaultValue: "customSort",
-                options: [
-                    { value: "fixedSort", text: "fixedSort" },             // 固定排序
-                    { value: "customSort", text: "customSort" },           // 自定义排序
-                    { value: "enabledASC", text: "enabledASC" },           // 已开启优先
-                    { value: "enabledDESC", text: "enabledDESC" },         // 未开启优先
-                    { value: "fileNameASC", text: "fileNameASC" },         // 名称字母升序
-                    { value: "fileNameDESC", text: "fileNameDESC" },       // 名称字母降序
-                    { value: "fileNameNatASC", text: "fileNameNatASC" },   // 名称自然升序
-                    { value: "fileNameNatDESC", text: "fileNameNatDESC" }, // 名称自然降序
-                    { value: "createdASC", text: "createdASC" },           // 创建时间升序
-                    { value: "createdDESC", text: "createdDESC" }          // 创建时间降序
-                ],
-            },
-            {
-                key: "snippetSearchType",
-                description: "snippetSearchTypeDescription",
-                type: "selectNumber",
-                defaultValue: 1,
-                options: [
-                    { value: 0, text: "snippetSearchTypeDisabled" },
-                    { value: 1, text: "snippetSearchTypeName" },
-                    { value: 2, text: "snippetSearchTypeContent" },
-                    { value: 3, text: "snippetSearchTypeNameAndContent" }
-                ],
-            },
-            {
-                key: "editorIndentUnit",
-                description: "editorIndentUnitDescription",
-                type: "selectString",
-                defaultValue: "followSiyuan",
-                options: [
-                    { value: "followSiyuan", text: "editorIndentUnitFollowSiyuan" },
-                    { value: "tab1", text: "editorIndentUnitTab1" },
-                    { value: "tab2", text: "editorIndentUnitTab2" },
-                    { value: "space1", text: "editorIndentUnitSpace1" },
-                    { value: "space2", text: "editorIndentUnitSpace2" },
-                    { value: "space3", text: "editorIndentUnitSpace3" },
-                    { value: "space4", text: "editorIndentUnitSpace4" },
-                    { value: "space5", text: "editorIndentUnitSpace5" },
-                    { value: "space6", text: "editorIndentUnitSpace6" },
-                    { value: "space7", text: "editorIndentUnitSpace7" },
-                    { value: "space8", text: "editorIndentUnitSpace8" }
-                ],
-            },
-            {
-                key: "fileWatchEnabled",
-                description: "fileWatchEnabledDescription",
-                type: "selectString",
-                defaultValue: "disabled",
-                options: [
-                    { value: "disabled", text: "fileWatchModeDisabled" },
-                    { value: "enabled", text: "fileWatchModeEnabled" },
-                    { value: "loadOnly", text: "fileWatchModeLoadOnly" }
-                ],
-            },
-            {
-                key: "fileWatchPath",
-                description: "fileWatchPathDescription",
-                type: "string",
-                defaultValue: "data/snippets",
-            },
-            {
-                key: "fileWatchInterval",
-                description: "fileWatchIntervalDescription",
-                type: "number",
-                defaultValue: 5,
-            },
-            {
-                key: "topBarPosition",
-                description: "topBarPositionDescription",
-                type: "selectString",
-                defaultValue: "right",
-                options: [
-                    { value: "left", text: "topBarPositionLeft" },
-                    { value: "right", text: "topBarPositionRight" }
-                ],
-                ignore: this.isMobile,
-            },
-            {
-                key: "exportSnippets",
-                description: "exportSnippetsDescription",
-                type: "createActionElement",
-                createActionElement: () => {
-                    return htmlToElement(
-                        `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="exportSnippets"><svg><use xlink:href="#iconUpload"></use></svg>${this.i18n.export}</span>`
-                    );
-                },
-            },
-            {
-                key: "importSnippetsWithAppend",
-                description: "importSnippetsWithAppendDescription",
-                type: "createActionElement",
-                createActionElement: () => {
-                    return htmlToElement(
-                        `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="importSnippetsWithAppend"><svg><use xlink:href="#iconDownload"></use></svg>${this.i18n.importWithAppend}</span>`
-                    );
-                },
-            },
-            {
-                key: "importSnippetsWithOverwrite",
-                description: "importSnippetsWithOverwriteDescription",
-                type: "createActionElement",
-                createActionElement: () => {
-                    return htmlToElement(
-                        `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="importSnippetsWithOverwrite"><svg><use xlink:href="#iconDownload"></use></svg>${this.i18n.importWithOverwrite}</span>`
-                    );
-                },
-            },
-            {
-                key: "feedbackIssue",
-                description: "feedbackIssueDescription",
-                type: "createActionElement",
-                createActionElement: () => {
-                    const repoLink = "https://github.com/TCOTC/snippets";
-                    return htmlToElement(
-                        `<a href="${repoLink}" target="_blank" rel="noopener noreferrer" class="b3-button b3-button--outline fn__flex-center fn__size200 ariaLabel" aria-label="${repoLink}" data-position="north"><svg><use xlink:href="#iconGithub"></use></svg>${this.i18n.feedbackIssueButton}</a>`
-                    );
-                },
-            },
-            {
-                key: "consoleDebug",
-                description: "consoleDebugDescription",
-                type: "boolean",
-                defaultValue: false,
-            },
-            // {
-            //     key: "notificationSwitch", // 通知总开关，通知数量多了再添加
-            //     type: "boolean",
-            //     defaultValue: true,
-            // },
-            {
-                key: "reloadUIAfterModifyJSNotice",
-                description: !this.isMobile ? "reloadUIAfterModifyJSNoticeDescription" : "reloadUIAfterModifyJSNoticeDescriptionMobile",
-                type: "boolean",
-                defaultValue: true,
-            }
-        );
+        if (this.configItems.length > 0) {
+            // 已构建过则直接复用（构建结果与运行态无关，运行态由读取器函数实时转发）
+            return;
+        }
+        this.configItems = createSnippetsConfigItems({
+            isMobile: () => this.isMobile,
+            i18n: () => this.i18n,
+            menuItems: () => this.menuItems,
+        });
     }
 
     /**
