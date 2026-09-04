@@ -184,15 +184,16 @@ export class ImportExportService {
                         newSnippetsList = [...processedImportedSnippets, ...currentSnippets];
                     }
 
-                    // 保存新的代码片段列表
-                    void this.plugin.snippetManager.saveSnippetsList(newSnippetsList);
-                    // 整表替换到 Store（菜单计数由变更回调刷新）
-                    this.plugin.snippetStore.replaceAll(newSnippetsList);
-
-                    // 更新菜单显示（类型开关状态等）
-                    if (this.plugin.menuView.menu) {
-                        this.plugin.menuView.setMenuSnippetsType(this.plugin.snippetsType);
+                    // 落库成功后再整表应用导入结果（失败时 saveSnippetsList 已自行弹错，
+                    // 此处仅中止导入，避免整表落库被拒后仍“假成功”地替换本地列表）
+                    try {
+                        await this.plugin.snippetManager.saveSnippetsList(newSnippetsList);
+                    } catch {
+                        return;
                     }
+                    // 立即应用并广播导入结果：更新 Store 缓存、对齐注入元素、刷新已打开菜单并广播到
+                    // 其他窗口（实现见 SnippetManager.applyImportedSnippets，本地导入与跨窗口导入广播共用）
+                    await this.plugin.snippetManager.applyImportedSnippets(newSnippetsList);
 
                     // 显示成功消息
                     const successMessage = overwrite

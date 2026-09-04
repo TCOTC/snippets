@@ -44,10 +44,11 @@ const setup = (serverSnippets: Snippet[] = []) => {
             deleteSnippetFailed: "删除代码片段失败",
             updateSnippetElementParamError: "代码片段参数错误",
             invalidJavaScriptCode: "无效的 JS 代码",
+            invalidCssSnippetContent: "CSS 内容违规",
         },
         console: {log: vi.fn(), warn: vi.fn(), error: vi.fn()},
         showErrorMessage: vi.fn(),
-        snippetStore: {upsert: vi.fn(), remove: vi.fn(), insertBefore: vi.fn()},
+        snippetStore: {upsert: vi.fn(), remove: vi.fn(), insertBefore: vi.fn(), replaceAll: vi.fn()},
         menuView: {
             menu: undefined,
             menuItems: undefined,
@@ -371,7 +372,73 @@ describe("SnippetManager", () => {
         });
     });
 
+    describe("applyImportedSnippets 导入后整表应用", () => {
+        it("本地导入：Store 整表替换 + 注入新启用片段 + 广播 snippets_import", async () => {
+            const {manager, plugin, broadcast} = setup([]);
+            window.siyuan.config.snippet.enabledCSS = true;
+            const newList = [makeSnippet("imp-1", "css", "body { color: red; }", true, "导入片段")];
+            await manager.applyImportedSnippets(newList);
+            expect(plugin.snippetStore.replaceAll).toHaveBeenCalledWith(newList);
+            expectInjected("imp-1", "css", newList[0].content);
+            expect(broadcast).toHaveBeenCalledWith({type: "snippets_import"});
+        });
+
+        it("本地导入覆盖：移除已不在列表中的旧注入元素", async () => {
+            const {manager, plugin} = setup([]);
+            window.siyuan.config.snippet.enabledCSS = true;
+            // 预置一个旧片段元素（模拟导入前已注入生效）
+            const oldElement = document.createElement("style");
+            oldElement.id = "snippetCSSold-1";
+            oldElement.textContent = "p {}";
+            document.head.appendChild(oldElement);
+            const newList = [makeSnippet("imp-1", "css", "body {}")];
+            await manager.applyImportedSnippets(newList);
+            expect(document.getElementById("snippetCSSold-1")).toBeNull();
+            expectInjected("imp-1", "css", "body {}");
+            void plugin;
+        });
+
+        it("本地导入禁用片段不注入元素", async () => {
+            const {manager} = setup([]);
+            window.siyuan.config.snippet.enabledCSS = true;
+            await manager.applyImportedSnippets([makeSnippet("off-1", "css", "body {}", false)]);
+            expect(document.getElementById("snippetCSSoff-1")).toBeNull();
+        });
+
+        it("远程导入：自拉权威列表整表应用，不广播", async () => {
+            const serverList = [makeSnippet("js-1", "js", "console.log(1)", true, "服务端片段")];
+            const {manager, plugin, broadcast} = setup(serverList);
+            window.siyuan.config.snippet.enabledJS = true;
+            await manager.applyImportedSnippets(undefined, "remote");
+            // 自拉结果整表替换 Store
+            expect(plugin.snippetStore.replaceAll).toHaveBeenCalledWith(serverList);
+            expectInjected("js-1", "js", serverList[0].content);
+            expect(broadcast).not.toHaveBeenCalled();
+        });
+
+        it("传入列表缺失时报错（本地路径防御）", async () => {
+            const {manager, plugin} = setup([]);
+            await manager.applyImportedSnippets(undefined);
+            expect(plugin.console.error).toHaveBeenCalledWith(
+                "applyImportedSnippets: Snippets list is missing"
+            );
+            expect(plugin.snippetStore.replaceAll).not.toHaveBeenCalled();
+        });
+    });
+
     describe("buildSyncHandlers 广播分发", () => {
+        it("snippets_import 远程分发：自拉权威列表整表应用且不广播", async () => {
+            const serverList = [makeSnippet("css-2", "css", "p {}", true, "导入片段")];
+            const {manager, plugin, broadcast} = setup(serverList);
+            window.siyuan.config.snippet.enabledCSS = true;
+            const handlers = manager.buildSyncHandlers();
+            await handlers.snippets_import?.();
+            // 自拉结果整表替换 Store 并注入元素
+            expect(plugin.snippetStore.replaceAll).toHaveBeenCalledWith(serverList);
+            expectInjected("css-2", "css", "p {}");
+            expect(broadcast).not.toHaveBeenCalled();
+        });
+
         it("snippet_toggle 远程分发：自拉权威片段后按 remote 切换，不广播", async () => {
             const serverList = [makeSnippet("css-1", "css", "body {}", false)];
             const {manager, plugin, broadcast} = setup(serverList);

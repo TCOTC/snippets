@@ -86,7 +86,8 @@ export type SnippetBroadcastBody =
     | ({type: "snippet_delete"} & SnippetDeletePayload)
     | ({type: "snippet_element_update"} & SnippetElementUpdatePayload)
     | ({type: "snippet_element_remove"} & SnippetElementRemovePayload)
-    | {type: "snippets_sort"}; // 排序消息无载荷，接收方全量重拉列表
+    | {type: "snippets_sort"} // 排序消息无载荷，接收方全量重拉列表
+    | {type: "snippets_import"}; // 导入消息无载荷，接收方全量重拉列表并对齐注入元素与菜单
 
 /**
  * 给联合类型每个成员附加信封字段（分布式条件类型，按成员逐一展开）
@@ -123,6 +124,7 @@ export interface BroadcastHandlers {
     snippet_element_update: (payload: SnippetElementUpdatePayload) => void | Promise<void>;
     snippet_element_remove: (payload: SnippetElementRemovePayload) => void | Promise<void>;
     snippets_sort: () => void | Promise<void>;
+    snippets_import: () => void | Promise<void>;
 }
 
 /**

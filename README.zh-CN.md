@@ -45,5 +45,6 @@
 
 ##### v2.0
 
-- 重构插件代码
+- 重构插件代码 [#28](https://github.com/TCOTC/snippets/issues/28)
+- 导入代码片段后立即应用并广播到其他窗口 [#31](https://github.com/TCOTC/snippets/issues/31)
 - 适配发布服务 [#33](https://github.com/TCOTC/snippets/issues/33)

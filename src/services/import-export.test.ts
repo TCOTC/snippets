@@ -39,6 +39,7 @@ const setup = (serverSnippets: Snippet[] = []) => {
         snippetManager: {
             getSnippetsList: vi.fn(async () => [...serverSnippets]),
             saveSnippetsList: vi.fn(async () => undefined),
+            applyImportedSnippets: vi.fn(async () => undefined),
         },
         snippetStore: {replaceAll: vi.fn()},
         menuView: {menu: undefined, setMenuSnippetsType: vi.fn()},
@@ -170,7 +171,7 @@ describe("ImportExportService", () => {
             await triggerFileChange(input, new File([importedJson], "snippets.json", {type: "application/json"}));
             await promise;
 
-            const newList = vi.mocked(plugin.snippetStore.replaceAll).mock.calls[0][0] as Snippet[];
+            const newList = vi.mocked(plugin.snippetManager.applyImportedSnippets).mock.calls[0][0] as Snippet[];
             expect(newList.map(s => s.id)).toEqual(["imp-1", "s-1"]);
             expect(plugin.snippetManager.saveSnippetsList).toHaveBeenCalledWith(newList);
             expect(showMessage).toHaveBeenCalledWith("Snippets: 追加成功", 3000, "info");
@@ -186,7 +187,7 @@ describe("ImportExportService", () => {
             await triggerFileChange(inputOf(), new File([importedJson], "snippets.json"));
             await promise;
 
-            const newList = vi.mocked(plugin.snippetStore.replaceAll).mock.calls[0][0] as Snippet[];
+            const newList = vi.mocked(plugin.snippetManager.applyImportedSnippets).mock.calls[0][0] as Snippet[];
             expect(newList.map(s => s.id)).toEqual(["imp-1"]);
             // 备份写入 /temp/plugin-snippets/
             const putCalls = fetchPostMock.mock.calls.filter(([u]) => u === "/api/file/putFile");
@@ -241,7 +242,7 @@ describe("ImportExportService", () => {
             await triggerFileChange(inputOf(), new File([data], "s.json"));
             await promise;
 
-            const newList = vi.mocked(plugin.snippetStore.replaceAll).mock.calls[0][0] as Snippet[];
+            const newList = vi.mocked(plugin.snippetManager.applyImportedSnippets).mock.calls[0][0] as Snippet[];
             // 追加模式：导入的两条（重生成后）在前，现有片段在后
             expect(newList.map(s => s.id)).toEqual(["gen-2", "gen-3", "s-1"]);
             // 重生成后不与现有/彼此重复
@@ -282,7 +283,7 @@ describe("ImportExportService", () => {
             await triggerFileChange(inputOf(), new File(["binary"], "backup.zip", {type: "application/zip"}));
             await promise;
 
-            const newList = vi.mocked(plugin.snippetStore.replaceAll).mock.calls[0][0] as Snippet[];
+            const newList = vi.mocked(plugin.snippetManager.applyImportedSnippets).mock.calls[0][0] as Snippet[];
             expect(newList.map(s => s.id)).toEqual(["z-1", "s-1"]);
             // putFile 上传了 zip
             expect(fetchPostMock.mock.calls.filter(([u]) => u === "/api/file/putFile")).toHaveLength(1);

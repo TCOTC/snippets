@@ -165,6 +165,14 @@ describe("BroadcastService", () => {
         expect(handlers.snippets_sort).not.toHaveBeenCalled();
     });
 
+    it("snippets_import 无载荷消息分发到对应 handler", async () => {
+        handlers.snippets_import = vi.fn();
+        const ws = await startService();
+        ws.receive(JSON.stringify({type: "snippets_import", windowId: "other-window-id"}));
+        expect(handlers.snippets_import).toHaveBeenCalledTimes(1);
+        expect(handlers.snippets_import).toHaveBeenCalledWith({type: "snippets_import", windowId: "other-window-id"});
+    });
+
     it("未注册 handler 的消息类型记录告警", async () => {
         const ws = await startService();
         ws.receive(JSON.stringify({type: "snippet_element_remove", snippetId: "x", snippetType: "css", windowId: "other"}));

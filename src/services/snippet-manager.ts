@@ -619,6 +619,74 @@ export class SnippetManager {
     }
 
     /**
+     * 应用导入后的代码片段列表（本窗口操作与同内核其他前端实例导入广播共用同一路径）
+     * - 本窗口操作（origin 缺省为 local）：导入服务已 await 落库成功（/api/snippet/setSnippet），
+     *   本方法将本地注入元素/Store/已打开菜单对齐到导入结果，并向其他窗口广播导入消息；
+     * - 同内核其他前端实例导入广播（origin 为 remote）：广播窗口已落库，本窗口不落库、不广播，
+     *   仅自拉权威列表（协议不含片段原文）后对齐注入元素/Store/已打开菜单。
+     * 内核 /api/snippet/setSnippet 不触发 ws-main setSnippet 广播（仅 /api/setting/setSnippet 与
+     * 数据同步触发，见 kernel/api/snippet.go 与 kernel/model/push_reload.go），因此导入后的注入元素
+     * 对齐必须由本插件自身完成，不能依赖思源 renderSnippet。
+     * @param snippetsList 导入后的权威列表（origin 为 remote 时忽略，以自拉结果为准）
+     * @param origin 变更来源：local（本窗口导入）| remote（其他窗口导入广播）
+     */
+    async applyImportedSnippets(snippetsList: Snippet[] | undefined, origin: "local" | "remote" = "local") {
+        if (origin === "remote") {
+            // 远程：先自拉权威列表（广播无载荷），自拉失败时保持现状（getSnippetsList 已弹错误提示）
+            if (!(await this.refreshSnippetsList())) {
+                return;
+            }
+            snippetsList = this.plugin.snippetsList;
+        } else if (!snippetsList) {
+            this.plugin.console.error("applyImportedSnippets: Snippets list is missing");
+            return;
+        }
+
+        // 对齐注入元素：移除已不在列表中的旧元素（含思源原生 renderSnippet 注入的同 id 规则元素），
+        // 再逐个幂等同步列表内片段（预览中的片段由 updateSnippetElement/removeSnippetElement 内部跳过）
+        await this.syncInjectedElements(snippetsList);
+
+        // Store 整表替换（列表缓存与菜单计数刷新）
+        this.plugin.snippetStore.replaceAll(snippetsList);
+
+        // 菜单打开时重建片段列表项（导入追加/覆盖后菜单需反映最新片段集合）
+        if (this.plugin.menuView.menuItems) {
+            this.plugin.menuView.initSnippetsContainer();
+        }
+
+        if (origin === "local") {
+            // 广播导入消息到其他窗口（无载荷：接收窗口自拉权威列表）
+            this.plugin.syncService?.broadcast({ type: "snippets_import" });
+        }
+    }
+
+    /**
+     * 将注入元素与给定列表对齐（导入整表替换后使用）
+     * 逐个对列表片段执行 updateSnippetElement（幂等：内容一致不重建、禁用则移除元素）；
+     * 对 document.head 中已注入但不在列表中的旧片段元素执行移除（思源原生 renderSnippet 与
+     * 本插件共用 snippetCSS/snippetJS + 片段 ID 的元素 id 规则，见 app/src/config/util/snippets.ts
+     * renderSnippet 与 snippetElementId）
+     * @param snippetsList 目标片段列表
+     */
+    private async syncInjectedElements(snippetsList: Snippet[]): Promise<void> {
+        const targetIds = new Set(snippetsList.map((snippet) => snippet.id));
+        const injectedElements = Array.from(document.head.querySelectorAll<HTMLElement>('style[id^="snippetCSS"], script[id^="snippetJS"]'));
+        for (const element of injectedElements) {
+            const isCss = element.id.startsWith("snippetCSS");
+            const prefix = isCss ? "snippetCSS" : "snippetJS";
+            const snippetId = element.id.slice(prefix.length);
+            if (!snippetId || targetIds.has(snippetId)) {
+                continue;
+            }
+            // 不在目标列表中的旧元素：移除（JS 片段的重载提示与预览保护由 removeSnippetElement 内部处理）
+            await this.removeSnippetElement(snippetId, isCss ? "css" : "js");
+        }
+        for (const snippet of snippetsList) {
+            await this.updateSnippetElement(snippet);
+        }
+    }
+
+    /**
      * 构建跨窗口广播业务消息分发注册表
      * 供 BroadcastService 按 type 查表分发（services/sync.ts）；注册键内联“来源解析”后调本类
      * 对应方法并传 origin 为 "remote"（广播窗口已落库，本窗口不落库、不广播，仅同步自身状态）。
@@ -689,6 +757,7 @@ export class SnippetManager {
                 this.plugin.console.log("snippet_element_update: updated snippet element for", realSnippet.id);
             },
             snippet_element_remove: ({snippetId, snippetType}) => this.removeSnippetElement(snippetId, snippetType),
+            snippets_import: () => this.applyImportedSnippets(undefined, "remote"),
             snippets_sort: async () => {
                 this.plugin.console.log("snippetsSortSync");
                 // 重新加载代码片段列表（读取权威态语义）并刷新菜单；失败时保持现状（getSnippetsList 已弹错误提示）
