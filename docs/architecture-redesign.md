@@ -19,6 +19,8 @@
 ### 已完成提交（main，最新在上）
 | commit | 内容 |
 |---|---|
+| `57313b1` | refactor: saveSnippet 本窗口/同内核前端 origin 合流，删除 saveSnippetSync 镜像 |
+| `a0e9f11` | docs: 记录 toggleSnippetPublish 合流与 isPublish 语义澄清 |
 | `633801c` | refactor: toggleSnippetPublish 本窗口/同内核前端 origin 合流并修复 isPublish 语义 |
 | `2624c32` | docs: 记录 globalToggle/delete origin 合流进度 |
 | `25ddd38` | refactor: globalToggle/delete 本地远程 origin 合流，删除两个 Sync 镜像 |
@@ -55,7 +57,7 @@
 | `dd296e9` | refactor: 抽取纯工具函数到 `utils.ts` |
 | `4f2773e` | refactor: 抽取 `isValidJavaScriptCode` 到 `domain/snippet.ts` |
 
-当前工作区：**干净**（633801c 已提交；阶段 3 仅剩 `saveSnippetSync` 收敛，见下方「下一步建议」）。
+当前工作区：**干净**（57313b1 已提交；阶段 3 sync 收敛收官——最后一个 `*Sync` 镜像 `saveSnippetSync` 已并入 `saveSnippet`，见下方「下一步建议」）。
 
 ### 已建模块
 - `src/core/event-bus.ts`（类型化 pub/sub，`on/off/emit/clear`；注意：勿用字段名 `eventBus`，会与 siyuan `Plugin` 基类成员冲突，内部用 `internalEventBus`）
@@ -119,12 +121,12 @@
 - 接收窗口需要片段内容时，一律自行调用 `/api/snippet/getSnippet` 获取权威数据，禁止依赖消息中的原文。
 - **豁免项（2026-09-04 用户拍板）**：编辑中的 CSS 实时预览同步（`snippet_element_update` 且 `previewState: true`）允许携带原文（content），因为内容未保存、接收窗口无法自拉；范围仅限此预览场景。
 - **现状违规点（待改造）**：无。`snippet_element_update` 的退出预览用法（`previewState: false`）已去原文化（只发 `snippetId` + `previewState: false`，接收窗口自拉后恢复）；`snippet_save` 已去原文化；其余消息（`snippet_toggle`、`snippet_toggle_publish`、`snippet_delete`、`snippet_element_remove`、`snippets_sort`、`setting_apply`）均只含元数据，合规。
-- **snippet_save 已去原文化（2026-09-04，commit `985cd61`）**：本地 `saveSnippet` 广播只发 `{ snippetId, isCopy, copySnippetId }`（写入已 `await saveSnippetsList` 落库，接收窗口按 ID 自拉即可）；`saveSnippetSync` 改为先记录本窗口旧片段、再 `getSnippetById` 自拉权威数据后走 store（复制：自拉副本后镜像菜单/对话框更新；非复制：与旧片段比较后按需更新注入元素）。
+- **snippet_save 已去原文化（2026-09-04，commit `985cd61`）**：本地 `saveSnippet` 广播只发 `{ snippetId, isCopy, copySnippetId }`（写入已 `await saveSnippetsList` 落库，接收窗口按 ID 自拉即可）；`saveSnippetSync` 改为先记录本窗口旧片段、再 `getSnippetById` 自拉权威数据后走 store（复制：自拉副本后镜像菜单/对话框更新；非复制：与旧片段比较后按需更新注入元素）；该镜像已于 `57313b1` 并入 `saveSnippet` 的 origin remote 分支（复制场景经 `remoteCopySnippet` 传入自拉的权威副本、非复制场景经 `remoteOldSnippet` 传入自拉前捕获的本窗口旧片段），语义不变。
 
 ### 下一步建议（朝目标架构，拆可验证子批推进）
 1. 阶段 2（Store 收敛）已完成：`domain/snippet-store.ts` 的 `remove`/`upsert`/`insertBefore`/`move`/`replaceAll` 已承接全部本地结构写，计数统一由 `SNIPPETS_CHANGED` 事件驱动。
-2. 阶段 3（sync 收敛）已过**传输 + 分发注册表 + 本地/同内核前端 origin 合流（剩 save）**：`services/sync.ts` 含协议类型与 `BroadcastService`（连接/重连/窗口保活/类型化 `broadcast`/按 type 查表分发 `BroadcastHandlers`）；`index.ts` 的 `handleBroadcastMessage` switch 与 6 个 Sync 镜像已删（壳方法 3 个：`snippetsSortSync`/`updateSnippetElementSync`/`removeSnippetElementSync`；有实质差异的镜像 3 个：`toggleSnippetSync`/`globalToggleSnippetSync`/`deleteSnippetSync`/`toggleSnippetPublishSync`——分别合流为 `toggleSnippet(snippet, enabled, origin)`/`globalToggleSnippet(snippetType, enabled, origin, remotePreviewingSnippetIds)`/`deleteSnippet(id, snippetType, origin, remotePreviewState)`/`toggleSnippetPublish(snippetId, enabled, origin)`，其中 toggleSnippetPublish 的 isPublish 判断依据已修复为 `window.siyuan.isPublish`，见上方「发布服务 isPublish 语义澄清」节）。统一模式：**本窗口操作 = 自拉/就地改 + 落库 + 广播；同内核其他前端实例 = 广播实例已落库，仅按自身状态同步 UI/元素，不落库、不广播**；注册键内联“来源解析”后调同方法传 `origin: "remote"`。**下一步**：按同一手法收敛剩余最后一个镜像 `snippet_save`（最复杂：复制分支——自拉副本 → upsert + 更新元素 + applySnippetUIChange 镜像菜单/对话框；非复制——比较旧片段后按需更新注入元素；含“本窗口旧片段”与权威态自拉 diff；合流前需逐分支对照；`setting_apply` 归阶段 4）。
-3. 之后：config 声明式（阶段 4）、UI 视图化（阶段 5）、jcsm 收敛（阶段 6，前置已启动：见上方「jcsm 现状」节）。
+2. 阶段 3（sync 收敛）**已完成（57313b1 收官）**：`services/sync.ts` 的 `BroadcastService`（连接/重连/窗口保活/类型化 `broadcast`/按 type 查表分发 `BroadcastHandlers`）统一承担传输与分发；`index.ts` 的 `handleBroadcastMessage` switch 与全部 7 个 `*Sync` 镜像已消灭——壳方法 3 个（`snippetsSortSync`/`updateSnippetElementSync`/`removeSnippetElementSync`）逻辑就地内联进注册键，有实质差异的镜像 5 个（`toggleSnippetSync`/`globalToggleSnippetSync`/`deleteSnippetSync`/`toggleSnippetPublishSync`/`saveSnippetSync`）分别并入 `toggleSnippet(snippet, enabled, origin)`/`globalToggleSnippet(snippetType, enabled, origin, remotePreviewingSnippetIds)`/`deleteSnippet(id, snippetType, origin, remotePreviewState)`/`toggleSnippetPublish(snippetId, enabled, origin)`/`saveSnippet(snippet, isCopy, origin, remoteCopySnippet?, remoteOldSnippet?)` 的 `origin: "local" | "remote"` 分支（toggleSnippetPublish 的 isPublish 判断依据已修复为 `window.siyuan.isPublish`，见上方「发布服务 isPublish 语义澄清」节）。统一模式：**本窗口操作 = 自拉/就地改 + 落库 + 广播；同内核其他前端实例 = 广播实例已落库，仅按自身状态同步 UI/元素，不落库、不广播**；注册键内联“来源解析”后调同方法传 `origin: "remote"`。`setting_apply`/`applySettingSync` 留待阶段 4 config 声明式一并收敛。
+3. 之后：进入**阶段 4 config 声明式**（`applySetting` 大 switch → 每配置项 `onApply` 回调；同步收敛 `setting_apply` 广播与 `applySettingSync`），再 UI 视图化（阶段 5）、jcsm 收敛（阶段 6，前置已启动：见上方「jcsm 现状」节）。
 
 ---
 
