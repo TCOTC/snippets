@@ -7,10 +7,12 @@ import type PluginSnippets from "../index";
 import {isSnippetsTypeEnabled, isValidJavaScriptCode} from "../domain/snippet";
 import {genNewSnippetId, isPreviewingSnippet} from "../utils";
 import type {Snippet, SnippetType} from "../types";
+import type {BroadcastHandlers} from "./sync";
 
 /**
  * 代码片段管理器（原 index.ts createSnippet/saveSnippet/deleteSnippet/applySnippetUIChange/getSnippetById/
- * getSnippetsList/saveSnippetsList/updateSnippetElement/removeSnippetElement 外迁，行为等价）
+ * getSnippetsList/saveSnippetsList/updateSnippetElement/removeSnippetElement 外迁，行为等价；
+ * 跨窗口广播业务消息分发注册表构建 buildSyncHandlers 同迁本类）
  */
 export class SnippetManager {
     private readonly plugin: PluginSnippets;
@@ -639,5 +641,85 @@ export class SnippetManager {
             enabled,
             previewingSnippetIds,
         });
+    }
+
+    /**
+     * 构建跨窗口广播业务消息分发注册表（原 index.ts onLayoutReady 内联注册表外迁，行为等价）
+     * 供 BroadcastService 按 type 查表分发（services/sync.ts）；注册键内联“来源解析”后调本类
+     * 对应方法并传 origin 为 "remote"（广播窗口已落库，本窗口不落库、不广播，仅同步自身状态）。
+     * 协议不含片段原文（禁原文约束）：接收窗口一律按 snippetId 自拉权威数据后再走本地相同路径。
+     */
+    buildSyncHandlers(): Partial<BroadcastHandlers> {
+        return {
+            snippet_toggle: async ({snippetId, enabled}) => {
+                // 远程开关：先自拉权威数据（协议不含片段原文），再走与本地相同的 toggleSnippet 路径
+                const snippet = await this.getSnippetById(snippetId);
+                if (!snippet) {
+                    this.plugin.console.error("snippet_toggle: Snippet not found:", snippetId);
+                    return;
+                }
+                await this.toggleSnippet(snippet, enabled, "remote");
+            },
+            snippet_toggle_publish: ({snippetId, enabled}) => this.toggleSnippetPublish(snippetId, enabled, "remote"),
+            snippet_toggle_global: ({snippetType, enabled, previewingSnippetIds}) =>
+                this.globalToggleSnippet(snippetType, enabled, "remote", previewingSnippetIds),
+            snippet_save: async (payload) => {
+                // 协议不含片段原文：接收窗口一律按 ID 自拉权威数据后，再与本地保存走同一路径（origin 为 remote）
+                const {snippetId, isCopy, copySnippetId} = payload;
+                if (!snippetId || isCopy === undefined || (isCopy && !copySnippetId)) {
+                    this.plugin.console.error("snippet_save: Snippet or isCopy is missing:", payload);
+                    return;
+                }
+                this.plugin.console.log("snippet_save", {snippetId, isCopy, copySnippetId});
+                if (isCopy) {
+                    // 复制：先按副本 ID 自拉服务端权威数据（getSnippetById 副作用刷新列表为权威顺序），
+                    // 被复制原片段作为菜单项插入锚点，从刷新后的列表取
+                    const copySnippet = await this.getSnippetById(copySnippetId!);
+                    if (!copySnippet) {
+                        this.plugin.console.error("snippet_save: copySnippet not found:", copySnippetId);
+                        return;
+                    }
+                    const originalSnippet = this.plugin.snippetsList.find((s: Snippet) => s.id === snippetId);
+                    if (!originalSnippet) {
+                        this.plugin.console.error("snippet_save: original snippet not found:", snippetId);
+                        return;
+                    }
+                    await this.saveSnippet(originalSnippet, true, "remote", copySnippet);
+                    return;
+                }
+                // 更新/新增：先在自拉前捕获本窗口旧片段（自拉会刷新列表为权威态，旧片段将不可再取），再自拉权威新态
+                const oldSnippet = this.plugin.snippetsList.find((s: Snippet) => s.id === snippetId);
+                const snippet = await this.getSnippetById(snippetId);
+                if (snippet === false || snippet === undefined) {
+                    this.plugin.console.error("snippet_save: Snippet not found:", snippetId);
+                    return;
+                }
+                await this.saveSnippet(snippet, false, "remote", undefined, oldSnippet);
+            },
+            snippet_delete: ({snippetId, snippetType, previewState}) =>
+                this.deleteSnippet(snippetId, snippetType, "remote", previewState),
+            snippet_element_update: async ({snippet, snippetId, previewState}) => {
+                // 预览放行原文（豁免）：snippet 来自消息体（编辑中内容未保存、无法自拉）；
+                // 未携带原文（退出预览）时按 ID 自拉已保存片段恢复
+                let realSnippet = snippet;
+                if (!realSnippet) {
+                    const fetchedSnippet = await this.getSnippetById(snippetId!);
+                    if (fetchedSnippet === false || fetchedSnippet === undefined) {
+                        this.plugin.console.error("snippet_element_update: Snippet not found:", snippetId);
+                        return;
+                    }
+                    realSnippet = fetchedSnippet;
+                }
+                await this.updateSnippetElement(realSnippet, undefined, previewState);
+                this.plugin.console.log("snippet_element_update: updated snippet element for", realSnippet.id);
+            },
+            snippet_element_remove: ({snippetId, snippetType}) => this.removeSnippetElement(snippetId, snippetType),
+            snippets_sort: async () => {
+                this.plugin.console.log("snippetsSortSync");
+                // 重新加载代码片段列表（读取权威态语义）并刷新菜单
+                this.plugin.snippetsList = await this.getSnippetsList() as Snippet[];
+                this.plugin.menuView.menuItems && this.plugin.menuView.initSnippetsContainer();
+            },
+        };
     }
 }

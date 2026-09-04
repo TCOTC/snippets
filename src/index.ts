@@ -270,80 +270,12 @@ export default class PluginSnippets extends Plugin {
         // 获取已打开的所有自定义页签
         // this.getOpenedTab();
 
-        // 初始化跨窗口同步服务用于跨窗口通信（需要等插件设置加载完成；传输 + 窗口保活 + 业务分发收敛于 services/sync.ts）
+        // 初始化跨窗口同步服务用于跨窗口通信（需要等插件设置加载完成；传输 + 窗口保活收敛于 services/sync.ts）
         this.syncService = new BroadcastService({
             logger: this.console,
-            handlers: {
-                snippet_toggle: async ({snippetId, enabled}) => {
-                    // 远程开关：先自拉权威数据（协议不含片段原文），再走与本地相同的 toggleSnippet 路径
-                    const snippet = await this.snippetManager.getSnippetById(snippetId);
-                    if (!snippet) {
-                        this.console.error("snippet_toggle: Snippet not found:", snippetId);
-                        return;
-                    }
-                    await this.snippetManager.toggleSnippet(snippet, enabled, "remote");
-                },
-                snippet_toggle_publish: ({snippetId, enabled}) => this.snippetManager.toggleSnippetPublish(snippetId, enabled, "remote"),
-                snippet_toggle_global: ({snippetType, enabled, previewingSnippetIds}) =>
-                    this.snippetManager.globalToggleSnippet(snippetType, enabled, "remote", previewingSnippetIds),
-                snippet_save: async (payload) => {
-                    // 协议不含片段原文：接收窗口一律按 ID 自拉权威数据后，再与本地保存走同一路径（origin 为 remote）
-                    const {snippetId, isCopy, copySnippetId} = payload;
-                    if (!snippetId || isCopy === undefined || (isCopy && !copySnippetId)) {
-                        this.console.error("snippet_save: Snippet or isCopy is missing:", payload);
-                        return;
-                    }
-                    this.console.log("snippet_save", {snippetId, isCopy, copySnippetId});
-                    if (isCopy) {
-                        // 复制：先按副本 ID 自拉服务端权威数据（getSnippetById 副作用刷新列表为权威顺序），
-                        // 被复制原片段作为菜单项插入锚点，从刷新后的列表取
-                        const copySnippet = await this.snippetManager.getSnippetById(copySnippetId!);
-                        if (!copySnippet) {
-                            this.console.error("snippet_save: copySnippet not found:", copySnippetId);
-                            return;
-                        }
-                        const originalSnippet = this.snippetsList.find((s: Snippet) => s.id === snippetId);
-                        if (!originalSnippet) {
-                            this.console.error("snippet_save: original snippet not found:", snippetId);
-                            return;
-                        }
-                        await this.snippetManager.saveSnippet(originalSnippet, true, "remote", copySnippet);
-                        return;
-                    }
-                    // 更新/新增：先在自拉前捕获本窗口旧片段（自拉会刷新列表为权威态，旧片段将不可再取），再自拉权威新态
-                    const oldSnippet = this.snippetsList.find((s: Snippet) => s.id === snippetId);
-                    const snippet = await this.snippetManager.getSnippetById(snippetId);
-                    if (snippet === false || snippet === undefined) {
-                        this.console.error("snippet_save: Snippet not found:", snippetId);
-                        return;
-                    }
-                    await this.snippetManager.saveSnippet(snippet, false, "remote", undefined, oldSnippet);
-                },
-                snippet_delete: ({snippetId, snippetType, previewState}) =>
-                    this.snippetManager.deleteSnippet(snippetId, snippetType, "remote", previewState),
-                snippet_element_update: async ({snippet, snippetId, previewState}) => {
-                    // 预览放行原文（豁免）：snippet 来自消息体（编辑中内容未保存、无法自拉）；
-                    // 未携带原文（退出预览）时按 ID 自拉已保存片段恢复
-                    let realSnippet = snippet;
-                    if (!realSnippet) {
-                        const fetchedSnippet = await this.snippetManager.getSnippetById(snippetId!);
-                        if (fetchedSnippet === false || fetchedSnippet === undefined) {
-                            this.console.error("snippet_element_update: Snippet not found:", snippetId);
-                            return;
-                        }
-                        realSnippet = fetchedSnippet;
-                    }
-                    await this.snippetManager.updateSnippetElement(realSnippet, undefined, previewState);
-                    this.console.log("snippet_element_update: updated snippet element for", realSnippet.id);
-                },
-                snippet_element_remove: ({snippetId, snippetType}) => this.snippetManager.removeSnippetElement(snippetId, snippetType),
-                snippets_sort: async () => {
-                    this.console.log("snippetsSortSync");
-                    // 重新加载代码片段列表（读取权威态语义）并刷新菜单
-                    this.snippetsList = await this.snippetManager.getSnippetsList() as Snippet[];
-                    this.menuView.menuItems && this.menuView.initSnippetsContainer();
-                },
-            },
+            // 业务分发注册表见 SnippetManager.buildSyncHandlers（src/services/snippet-manager.ts）：
+            // 各消息键把远程广播映射到同一方法并传 origin 为 "remote"，接收窗口按 snippetId 自拉权威数据
+            handlers: this.snippetManager.buildSyncHandlers(),
         });
         await this.syncService.start();
     }
