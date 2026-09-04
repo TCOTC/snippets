@@ -425,4 +425,219 @@ export class SnippetManager {
         }
         element?.remove();
     }
+
+    /**
+     * 当前实例是否为发布站点（而非“内核是否启用了发布服务”）：
+     * window.siyuan.isPublish 由内核按会话角色注入，发布站点（发布静态页的 WebSocket/API 会话）
+     * 为 true，普通编辑前端为 false。发布站点不加载插件（petal 仅加载于普通会话），
+     * 因此本方法在现实可达路径上恒为 false，仅作 issue #33 预留判断。
+     */
+    private isPublish(): boolean { return window.siyuan.isPublish ?? false; }
+
+    /**
+     * 切换代码片段的开关状态（本地操作与跨窗口同步共用同一路径，阶段 3：消灭 toggleSnippetSync 镜像）
+     * - 本地（origin 缺省为 local）：改内存 → 落库 → 更新元素 → 广播；若已打开该片段的 CSS 实时预览
+     *   对话框，则跳过广播（开关状态由预览中的对话框接管，广播方窗口不推送）；
+     * - 远程（origin 为 remote）：广播窗口已落库，本窗口仅同步元素与菜单开关 UI，不落库、不广播。
+     * @param snippet 代码片段（本地取自列表/自拉；远程为按 snippetId 自拉的权威对象）
+     * @param enabled 是否启用
+     * @param origin 变更来源：local（本窗口操作）| remote（其他窗口广播）
+     */
+    async toggleSnippet(snippet: Snippet, enabled: boolean, origin: "local" | "remote" = "local") {
+        // 在菜单上切换代码片段的开关状态要实时保存
+        snippet.enabled = enabled;
+
+        if (origin === "remote") {
+            this.plugin.console.log("Handling switch state synchronization:", {snippetId: snippet.id, enabled});
+            // 更新代码片段元素
+            await this.updateSnippetElement(snippet);
+
+            // 更新菜单中的开关状态（如果菜单已打开）
+            if (this.plugin.menuItems) {
+                const checkbox = this.plugin.menuItems.querySelector(`.jcsm-snippet-item[data-id="${snippet.id}"] input[data-type='snippetSwitch']`) as HTMLInputElement;
+                checkbox && (checkbox.checked = enabled);
+                this.plugin.console.log("toggleSnippetSync: checkbox", checkbox, "enabled", enabled);
+            }
+            return;
+        }
+
+        void this.saveSnippetsList(this.plugin.snippetsList);
+        void this.updateSnippetElement(snippet);
+
+        if (snippet.type === "css" && this.plugin.realTimePreview && document.querySelector(`.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id="${snippet.id}"]`)) {
+            // 如果开启了实时预览，并且打开了对应的 CSS 代码片段对话框，则在菜单项上开关代码片段的操作需要忽略，不广播开关状态变更到其他窗口
+            return;
+        }
+
+        // 广播开关状态变更到其他窗口
+        this.plugin.syncService?.broadcast({
+            type: "snippet_toggle",
+            snippetId: snippet.id,
+            enabled: snippet.enabled,
+        });
+    }
+
+    /**
+     * 切换代码片段的发布服务开关状态（本窗口操作与同内核其他前端实例广播共用同一路径，阶段 3：消灭 toggleSnippetPublishSync 镜像）
+     * 说明：这里所说的“跨窗口同步”指同一内核的不同前端实例（多 Electron 窗口 / 浏览器标签页 /
+     * 移动端均连同一内核 WebSocket）；广播消息即“来自其他前端实例”，非跨设备同步。
+     * 载荷 enabled 字段语义即 disabledInPublish（与 services/sync.ts 载荷注释保持一致）：
+     * 为 true 表示“不在发布服务中显示”，为 false 表示“允许发布”。
+     * - 本窗口操作（origin 缺省为 local）：本窗口菜单发布开关（普通编辑前端；发布站点不加载插件，
+     *   issue #33）。就地改 disabledInPublish → 落库 → 广播；
+     * - 同内核其他前端实例广播（origin 为 remote）：广播实例已落库，本实例不落库、不广播，仅同步自身状态：
+     *   - 当前实例为发布站点（window.siyuan.isPublish 为 true）：维护发布界面中的注入元素——
+     *     标记为“不在发布中显示”时按需添加元素，标记为“允许发布”时强制移除元素并从 Store 删除
+     *     （原实现保留，含 issue #33 TODO；现状发布站点不加载插件，此分支实际不可达）；
+     *   - 当前实例为普通编辑前端（window.siyuan.isPublish 为 false）：发布开关仅是无副作用的元数据
+     *     （记录将来发布时该片段是否显示），不更新注入元素，仅就地改 disabledInPublish 并同步菜单 publishSwitch。
+     * @param snippetId 代码片段 ID
+     * @param enabled 是否禁用发布（即 disabledInPublish）
+     * @param origin 变更来源：local（本窗口操作）| remote（同内核其他前端实例广播）
+     */
+    async toggleSnippetPublish(snippetId: string, enabled: boolean, origin: "local" | "remote" = "local") {
+        this.plugin.console.log("toggleSnippetPublish:", { snippetId, enabled, origin });
+
+        if (origin === "local") {
+            // 本窗口操作：菜单发布开关（本窗口调用点总是先 getSnippetById 自拉成功，片段必在列表中）
+            const snippet = this.plugin.snippetsList.find((s: Snippet) => s.id === snippetId);
+            if (!snippet) {
+                this.plugin.console.error("toggleSnippetPublish: Snippet not found:", snippetId);
+                return;
+            }
+            snippet.disabledInPublish = enabled;
+            void this.saveSnippetsList(this.plugin.snippetsList);
+            // void this.updateSnippetElement(snippet); // 发布服务开关状态变更不需要更新元素
+
+            this.plugin.syncService?.broadcast({
+                type: "snippet_toggle_publish",
+                snippetId: snippet.id,
+                enabled: snippet.disabledInPublish,
+            });
+            return;
+        }
+
+        // 同内核其他前端实例广播（origin 为 remote）
+        if (this.isPublish()) {
+            // 当前实例为发布站点
+            // TODO功能: 支持在发布服务启用插件 https://github.com/TCOTC/snippets/issues/33
+            if (enabled) {
+                // enabled（disabledInPublish=true，不在发布中显示）：添加 snippet（由 updateSnippetElement 判断是否需要添加元素）
+                const snippet = await this.getSnippetById(snippetId);
+                if (snippet) {
+                    await this.updateSnippetElement(snippet);
+                }
+            } else {
+                // enabled=false（允许发布）：移除 snippet 的注入元素并从 Store 删除
+                const snippet = this.plugin.snippetsList.find((s: Snippet) => s.id === snippetId);
+                if (snippet) {
+                    await this.updateSnippetElement(snippet, false); // 必须移除元素
+                    // 从 Store 中删除：统一更新列表并触发计数刷新事件
+                    this.plugin.snippetStore.remove(snippetId);
+                }
+            }
+            return;
+        }
+
+        // 当前实例为普通编辑前端：发布开关仅是元数据，不影响本实例注入元素，所以不优先获取最新的代码片段
+        let snippet: Snippet | undefined | false = this.plugin.snippetsList.find((s: Snippet) => s.id === snippetId);
+        if (!snippet) {
+            snippet = await this.getSnippetById(snippetId);
+            await this.updateSnippetElement(snippet);
+        }
+        if (snippet) {
+            snippet.disabledInPublish = enabled;
+        } else {
+            this.plugin.console.error("toggleSnippetPublish: Snippet not found:", snippetId);
+        }
+
+        // 更新菜单中的开关状态（如果菜单已打开）
+        // 注意：菜单 publishSwitch 的勾选语义为“允许发布”（checked = !disabledInPublish），
+        // 而广播载荷 enabled 的语义为 disabledInPublish，故此处必须取反
+        if (!this.plugin.menuItems) return;
+        const checkbox = this.plugin.menuItems.querySelector(`.jcsm-snippet-item[data-id="${snippetId}"] input[data-type='publishSwitch']`) as HTMLInputElement;
+        checkbox && (checkbox.checked = !enabled);
+        this.plugin.console.log("toggleSnippetPublish: checkbox", checkbox, "enabled", enabled);
+    }
+
+    /**
+     * 切换某类型代码片段的全局开关状态（本地操作与跨窗口同步共用，阶段 3：消灭 globalToggleSnippetSync 镜像）
+     * - 本地（origin 缺省为 local）：本窗口菜单开关。更新 config 镜像并调 /api/setting/setSnippet
+     *   （内核即时广播，其他实例原生重渲染注入元素），收集本窗口实时预览中的片段 ID 随消息广播；
+     * - 远程（origin 为 remote）：广播窗口已调 API，本窗口不重复调用，仅同步自身状态——更新 config
+     *   镜像、刷新注入元素（跳过广播窗口正在实时预览的片段）与菜单全局开关 UI。
+     * @param snippetType 代码片段类型
+     * @param enabled 是否启用
+     * @param origin 变更来源：local（本窗口操作）| remote（其他窗口广播）
+     * @param remotePreviewingSnippetIds 广播窗口正在实时预览的片段 ID（仅远程使用，供本窗口跳过元素更新）
+     */
+    async globalToggleSnippet(snippetType: SnippetType, enabled: boolean, origin: "local" | "remote" = "local", remotePreviewingSnippetIds: string[] = []) {
+        this.plugin.console.log("globalToggleSnippet:", { snippetType, enabled, origin });
+
+        // 更新全局变量和配置
+        const syConfig = window.siyuan.config!;
+        if (snippetType === "css") {
+            syConfig.snippet.enabledCSS = enabled;
+        } else if (snippetType === "js") {
+            syConfig.snippet.enabledJS = enabled;
+        }
+
+        if (origin === "remote") {
+            // 如果接受广播的窗口没有打开过菜单，可能不存在 snippetsList，需要获取
+            if (!this.plugin.snippetsList || this.plugin.snippetsList.length === 0) {
+                const snippetsList = await this.getSnippetsList();
+                if (snippetsList) {
+                    this.plugin.snippetsList = snippetsList;
+                } else {
+                    this.plugin.console.error("globalToggleSnippet: Can not get snippetsList");
+                    return;
+                }
+            }
+
+            // 更新代码片段元素
+            // 切换全局开关只会影响已启用的代码片段，所以过滤出来
+            let filteredSnippets = this.plugin.snippetsList.filter((snippet: Snippet) => snippet.type === snippetType && snippet.enabled === true);
+            if (this.plugin.realTimePreview) {
+                // 忽略在广播的窗口中正在实时预览的 CSS 代码片段元素更新
+                filteredSnippets = filteredSnippets.filter(snippet => !remotePreviewingSnippetIds.includes(snippet.id));
+            }
+            filteredSnippets.forEach((snippet: Snippet) => {
+                // enabled 为 true 时，snippet.enabled 也一定为 true
+                this.updateSnippetElement(snippet, enabled);
+            });
+
+            // 更新菜单中的全局开关状态（如果菜单已打开，并且显示的是这个类型的代码片段）
+            if (this.plugin.menuItems) {
+                const globalSwitch = this.plugin.menuItems.querySelector(`.jcsm-top-container[data-type="${snippetType}"] .jcsm-all-snippets-switch`) as HTMLInputElement;
+                globalSwitch && (globalSwitch.checked = enabled);
+            }
+            return;
+        }
+
+        // 本地：调用内核 API（触发内核即时广播，其他实例原生全量重渲染注入元素）
+        fetchPost("/api/setting/setSnippet", syConfig.snippet);
+
+        // 更新代码片段元素（本地正在预览的片段由 updateSnippetElement 内部按 isPreviewingSnippet 跳过）
+        // 切换全局开关只会影响已启用的代码片段，所以过滤出来
+        const filteredSnippets = this.plugin.snippetsList.filter((snippet: Snippet) => snippet.type === snippetType && snippet.enabled === true);
+        filteredSnippets.forEach((snippet: Snippet) => {
+            // enabled 为 true 时，snippet.enabled 也一定为 true
+            // updateSnippetElement 几乎不会抛出错误，但我们仍需要处理返回的 Promise 以满足 ESLint 要求
+            this.updateSnippetElement(snippet, enabled).then();
+        });
+
+        let previewingSnippetIds: string[] = [];
+        if (this.plugin.realTimePreview) {
+            // 收集正在实时预览的代码片段 ID
+            previewingSnippetIds = Array.from(document.querySelectorAll('.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id]')).map(item => item.getAttribute("data-snippet-id") as string);
+        }
+
+        // 广播全局开关状态变更到其他窗口
+        this.plugin.syncService?.broadcast({
+            type: "snippet_toggle_global",
+            snippetType,
+            enabled,
+            previewingSnippetIds,
+        });
+    }
 }
