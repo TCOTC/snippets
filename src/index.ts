@@ -3,6 +3,7 @@ import {FileState, ListenersArray, Snippet, SnippetType} from "./types";
 import {isSnippetsTypeEnabled, isValidJavaScriptCode} from "./domain/snippet";
 import {hideTooltip, htmlToElement, isInputElementActive, showElementTooltip} from "./utils";
 import {getFile, putFile, renameFile} from "./services/storage";
+import {EventBus} from "./core/event-bus";
 
 // 思源插件 API
 import {
@@ -61,6 +62,7 @@ const LOG_NAME = "plugin-snippets.log";            // 日志文件名
 const TEMP_PLUGIN_PATH = "/temp/plugin-snippets/"; // 插件临时文件路径
 const TEMP_EXPORT_PATH = "/temp/export/";          // 导入导出临时文件路径
 const BROADCAST_CHANNEL_NAME = "snippets-plugin-sync"; // 广播通道名称
+const SNIPPETS_CHANGED = "snippets-changed"; // 代码片段列表变更事件
 // const TAB_TYPE = "custom-tab"; // 自定义标签页
 
 // 思源 3.7.0+ 的 openSetting 支持第二个参数 tab 用于指定初始选项卡
@@ -103,9 +105,18 @@ export default class PluginSnippets extends Plugin {
     private topBarElement!: HTMLElement;
 
     /**
+     * 类型化事件总线：数据变更后驱动 UI 刷新等内部解耦
+     */
+    private internalEventBus = new EventBus();
+
+    /**
      * 启用插件
      */
     public async onload() {
+        // 订阅代码片段列表变更事件：菜单打开时刷新各类型计数
+        this.internalEventBus.on(SNIPPETS_CHANGED, (_snippetId: string) => {
+            this.setMenuSnippetCount();
+        });
     }
 
     /**
@@ -214,6 +225,9 @@ export default class PluginSnippets extends Plugin {
      * 插件更新会先执行 onunload 再执行 onload，不会执行 uninstall
      */
     public onunload() {
+        // 取消该实例注册的全部事件订阅
+        this.internalEventBus.clear();
+
         // 清理 Broadcast Channel
         this.cleanupBroadcastChannel();
 
@@ -2874,7 +2888,8 @@ export default class PluginSnippets extends Plugin {
         // 需要等 getSnippetsList() 调用的 API 执行完毕之后才推送更新，其他窗口需要用到代码片段的最新数据
         void await this.saveSnippetsList(this.snippetsList);
 
-        this.setMenuSnippetCount();
+        // 广播列表变更，菜单在打开时会自行刷新计数
+        this.internalEventBus.emit(SNIPPETS_CHANGED, id);
         void this.removeSnippetElement(id, snippetType);
         this.applySnippetUIChange(snippet, false);
 
