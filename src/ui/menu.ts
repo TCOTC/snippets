@@ -596,6 +596,8 @@ export class SnippetsMenu {
 
     /**
      * 是否显示发布服务开关
+     * （plugin.json disabledInPublish 为 true，发布会话不加载本插件；
+     * 此开关用于在普通会话中管理片段是否在发布服务中生效）
      */
     isShowPublishCheckbox() {
         return this.plugin.config.showPublishCheckbox === 0 ? window.siyuan.config!.publish.enable === true : this.plugin.config.showPublishCheckbox === 1;

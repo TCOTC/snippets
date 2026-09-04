@@ -31,13 +31,6 @@ export default class PluginSnippets extends Plugin {
     isMobile = false;
 
     /**
-     * 是否为发布服务会话（window.siyuan.isPublish 由内核按会话角色注入，仅发布站访问为 true）
-     * 发布页为只读会话：插件仍会加载（plugin.json disabledInPublish 为 false），
-     * 但无管理 UI/文件监听/跨窗口广播——发布会话收不到广播，片段变更以刷新页面为准。
-     */
-    isPublish = false;
-
-    /**
      * 代码片段列表 Store：数据写路径的单一入口
      */
     snippetStore!: SnippetStore;
@@ -100,8 +93,8 @@ export default class PluginSnippets extends Plugin {
 
     /**
      * 跨窗口广播服务（传输/窗口保活/业务分发实现见 services/sync.ts）
-     * onload 中创建并启动；业务消息按 type 查表分发到 handlers 注册表（见构造处）。
-     * 发布页（isPublish）保持 null 不启动。
+     * onload 中创建并启动（plugin.json disabledInPublish 为 true，发布会话不加载本插件，普通会话恒可用）；
+     * 业务消息按 type 查表分发到 handlers 注册表。
      */
     syncService: BroadcastService | null = null;
 
@@ -210,59 +203,47 @@ export default class PluginSnippets extends Plugin {
         // 是否为移动端（getFrontend 只读 UA 与静态骨架，官方样例即在 onload 调用）
         this.isMobile = ["mobile", "browser-mobile"].includes(getFrontend());
 
-        // 是否为发布服务会话（window.siyuan.isPublish 由内核按会话角色注入；思源 conf 响应先于插件加载，onload 时已就绪）
-        this.isPublish = window.siyuan.isPublish === true;
-
         // 顶栏按钮图标（iconJcsm symbol 注册见 SnippetsMenu.initIcons，src/ui/menu.ts；
         // addIcons 仅向 body 注入隐藏 svg defs，须先于 initTopBar 调用）
         this.menuView.initIcons();
 
         // 注册快捷键（都默认置空；addCommand 只写 window.siyuan.config.keymap，无布局依赖）
-        if (!this.isPublish) {
-            this.addCommand({
-                langKey: "openSnippetsManager", // 打开代码片段管理器
-                hotkey: "",
-                callback: () => {
-                    // 快捷键唤起菜单时，如果菜单已经打开，要先关闭再重新打开，所以这里直接执行就好，会自动关闭菜单再重开
-                    this.menuView.openSnippetsManager();
-                },
-            });
-            this.addCommand({
-                langKey: "reloadUI", // 重新加载界面
-                hotkey: "",
-                callback: () => {
-                    // 重载界面（扫描打开的编辑对话框未保存变更并二次确认）见 SnippetsDialog.reloadUI
-                    this.snippetsDialog.reloadUI();
-                },
-            });
-        }
+        this.addCommand({
+            langKey: "openSnippetsManager", // 打开代码片段管理器
+            hotkey: "",
+            callback: () => {
+                // 快捷键唤起菜单时，如果菜单已经打开，要先关闭再重新打开，所以这里直接执行就好，会自动关闭菜单再重开
+                this.menuView.openSnippetsManager();
+            },
+        });
+        this.addCommand({
+            langKey: "reloadUI", // 重新加载界面
+            hotkey: "",
+            callback: () => {
+                // 重载界面（扫描打开的编辑对话框未保存变更并二次确认）见 SnippetsDialog.reloadUI
+                this.snippetsDialog.reloadUI();
+            },
+        });
 
         // 初始化插件设置（loadData 走内核 HTTP，不依赖布局 DOM；顶栏按钮位置等运行期再读取配置）
         await this.configService.init();
-        // 插件设置加载之后启动文件监听（发布页为只读会话，不监听本地文件）
-        if (!this.isPublish && this.config.fileWatchEnabled && this.config.fileWatchEnabled !== "disabled") {
+        // 插件设置加载之后启动文件监听
+        if (this.config.fileWatchEnabled && this.config.fileWatchEnabled !== "disabled") {
             this.fileWatchService.start();
         }
 
         // 初始化跨窗口同步服务用于跨窗口通信（传输 + 窗口保活收敛于 services/sync.ts）
-        // 发布页（isPublish）不启动、syncService 保持 null：发布会话连不上内核广播通道，
-        // 各广播调用点均以 syncService?. 可选链安全跳过
-        if (!this.isPublish) {
-            this.syncService = new BroadcastService({
-                logger: this.console,
-                // 业务分发注册表见 SnippetManager.buildSyncHandlers（src/services/snippet-manager.ts）：
-                // 各消息键把远程广播映射到同一方法并传 origin 为 "remote"，接收窗口按 snippetId 自拉权威数据
-                handlers: this.snippetManager.buildSyncHandlers(),
-            });
-            await this.syncService.start();
-        }
+        this.syncService = new BroadcastService({
+            logger: this.console,
+            // 业务分发注册表见 SnippetManager.buildSyncHandlers（src/services/snippet-manager.ts）：
+            // 各消息键把远程广播映射到同一方法并传 origin 为 "remote"，接收窗口按 snippetId 自拉权威数据
+            handlers: this.snippetManager.buildSyncHandlers(),
+        });
+        await this.syncService.start();
 
         // 监听内核 ws-main setSnippet 广播（数据同步/他窗口或思源原生修改片段后刷新插件列表与菜单，
-        // 实现见 src/services/ws-main.ts）；发布页收不到该广播（内核跳过发布会话，见 kernel/util/websocket.go），
-        // 与跨窗口广播同条件不注册
-        if (!this.isPublish) {
-            this.wsMainSync.start();
-        }
+        // 实现见 src/services/ws-main.ts）
+        this.wsMainSync.start();
 
         console.log(this.displayName, "plugin onloaded");
     }
@@ -272,10 +253,8 @@ export default class PluginSnippets extends Plugin {
      */
     public async onLayoutReady() {
         // 初始化顶栏按钮（addTopBar 依赖布局就绪后的顶栏 DOM #barPlugins，须在 onLayoutReady 中调用；
-        // 按钮位置取自已加载完成的插件设置）；发布页为只读会话，不添加管理用顶栏按钮
-        if (!this.isPublish) {
-            void this.menuView.initTopBar();
-        }
+        // 按钮位置取自已加载完成的插件设置）
+        void this.menuView.initTopBar();
     }
 
     /**

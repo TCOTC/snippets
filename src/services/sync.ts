@@ -205,7 +205,9 @@ export class BroadcastService {
         // 内核 /ws/broadcast 与 /es/broadcast/subscribe 等通道要求管理员角色（CheckAdminRole），发布会话握手即 403，
         // 且内核自身推送同样跳过发布会话。因此编辑端到"已打开发布页"的实时同步不可行：发布页片段由发布渲染
         // 按 DisabledInPublish 过滤后静态注入，刷新页面即取最新内容（发布服务会话支持见
-        // https://github.com/TCOTC/snippets/issues/33 ）
+        // https://github.com/TCOTC/snippets/issues/33 ）。
+        // 本插件已在发布会话禁用加载（plugin.json disabledInPublish 为 true），本广播仅覆盖普通编辑会话，
+        // 发布页片段始终由思源发布渲染按 disabledInPublish 过滤后静态注入，上述限制由思源原生机制保证。
 
         // 组装信封：windowId 由本服务保证覆盖（消息体类型上已无该字段）
         const envelope = {

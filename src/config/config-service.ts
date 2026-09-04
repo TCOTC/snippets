@@ -564,8 +564,7 @@ const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfigItem[]
         onApply: (newValue) => {
             if (newValue === "disabled") {
                 plugin.fileWatchService.stop();
-            } else if (!plugin.isPublish) {
-                // 发布页为只读会话，不监听本地文件
+            } else {
                 plugin.fileWatchService.start();
             }
         },
@@ -595,10 +594,6 @@ const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfigItem[]
         ignore: plugin.isMobile,
         // 修改 topBarPosition 之后，移除并重建顶栏按钮；菜单已打开时按新位置重排
         onApply: async () => {
-            if (plugin.isPublish) {
-                // 发布页为只读会话、无顶栏按钮
-                return;
-            }
             plugin.menuView.removeTopBarElement();
             await plugin.menuView.initTopBar();
             if (plugin.menuView.menu) {

@@ -3,7 +3,6 @@ import { ISiyuan } from "siyuan/types";
 declare global {
     interface Window {
         siyuan: ISiyuan & {
-            isPublish?: boolean;
             // 运行时 window.siyuan.config/languages/menus 恒存在，此处显式置为必选以消除大量空值断言
             config: NonNullable<ISiyuan["config"]>;
             menus: NonNullable<ISiyuan["menus"]>;

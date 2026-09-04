@@ -22,7 +22,6 @@ const createFakePlugin = (stored: unknown = undefined) => {
         config: new SnippetsConfig(),
         data: {[STORAGE_NAME]: stored},
         isMobile: false,
-        isPublish: false,
         i18n: {},
         console: {log: vi.fn(), warn: vi.fn(), error: vi.fn()},
         showErrorMessage: vi.fn(),

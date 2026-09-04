@@ -6,7 +6,7 @@
   "minAppVersion": "3.8.3-alpha.1",
   "backends": ["all"],
   "frontends": ["all"],
-  "disabledInPublish": false,
+  "disabledInPublish": true,
   "displayName": {
     "default": "Code Snippets Manager",
     "zh-CN": "代码片段管理器",

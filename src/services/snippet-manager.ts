@@ -513,14 +513,14 @@ export class SnippetManager {
      * 切换代码片段的发布服务开关状态（本窗口操作与同内核其他前端实例广播共用同一路径）
      * 说明：这里所说的“跨窗口同步”指同一内核的不同前端实例（多 Electron 窗口 / 浏览器标签页 /
      * 移动端均连同一内核 WebSocket）；广播消息即“来自其他前端实例”，非跨设备同步。
-     * disabledInPublish 是“将来发布到发布服务时该片段是否显示”的元数据：不更新注入元素，
-     * 仅需保持各窗口菜单/编辑对话框的勾选一致。
+     * disabledInPublish 是“该片段是否在发布服务中显示”的元数据：不更新注入元素，
+     * 仅需保持各窗口菜单/编辑对话框的勾选一致。发布会话不加载本插件
+     * （plugin.json disabledInPublish 为 true），发布页片段由思源发布渲染按 disabledInPublish
+     * 过滤后静态注入，本开关即用于在普通会话中管理该过滤结果。
      * 载荷 enabled 字段语义即 disabledInPublish：为 true 表示“不在发布服务中显示”，为 false 表示“允许发布”。
      * - 本窗口操作（origin 缺省为 local）：就地改 disabledInPublish → 落库 → 广播；
      * - 同内核其他前端实例广播（origin 为 remote）：广播实例已落库，本实例不落库、不广播，
      *   仅就地改列表副本并同步已打开菜单的 publishSwitch 勾选。
-     * 发布服务会话（plugin.isPublish）不在广播网络内（收不到任何跨窗口消息，见 services/sync.ts），
-     * 因此无需为其保留 remote 分支。
      * @param snippetId 代码片段 ID
      * @param enabled 是否禁用发布（即 disabledInPublish）
      * @param origin 变更来源：local（本窗口操作）| remote（同内核其他前端实例广播）
@@ -553,7 +553,7 @@ export class SnippetManager {
         void this.saveSnippetsList(this.plugin.snippetsList);
         // 发布服务开关状态变更不需要更新注入元素（元素注入与 disabledInPublish 无关）
 
-        // 广播发布开关状态变更到其他窗口（发布会话收不到广播，此处仅覆盖普通编辑前端）
+        // 广播发布开关状态变更到其他窗口
         this.plugin.syncService?.broadcast({
             type: "snippet_toggle_publish",
             snippetId: snippet.id,
