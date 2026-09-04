@@ -1,55 +1,25 @@
 // 代码片段导入导出（原 index.ts「导出与导入功能」分节外迁，行为等价）
 // 职责：导出全部代码片段为 JSON（经 /api/export/exportResources 导出 zip 并去随机前缀后 saveExportFile 下载）；
 // 从本地文件（json/zip）导入——zip 上传解压后递归定位 json；校验、ID 去重、覆盖前备份、整表替换写库。
-// 运行态依赖（列表读写/菜单刷新/日志/提示等）经 ImportExportHost 注入，由插件实例以箭头函数实时转发。
+// 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
+// 列表读写经 plugin.snippetManager/snippetStore、菜单刷新经 plugin.menuView 直连。
 import {fetchPost, saveExportFile, showMessage} from "siyuan";
+import {genNewSnippetId} from "../utils";
 import {getFile, putFile, renameFile} from "./storage";
-import type {Snippet, SnippetType} from "../types";
+import type PluginSnippets from "../index";
+import type {Snippet} from "../types";
 
 const TEMP_PLUGIN_PATH = "/temp/plugin-snippets/"; // 插件临时文件路径
 const TEMP_EXPORT_PATH = "/temp/export/";          // 导入导出临时文件路径
 
 /**
- * 导入导出所需的插件运行态（读取器/动作函数形式，调用时才取值或执行）
- */
-export interface ImportExportHost {
-    /** 插件日志器 */
-    logger: {
-        log(...args: any[]): void;
-        error(...args: any[]): void;
-    };
-    /** 读取：插件显示名 */
-    displayName: () => string;
-    /** 读取：插件 i18n 文案 */
-    i18n: () => any;
-    /** 读取：当前菜单展示的代码片段类型 */
-    snippetsType: () => SnippetType;
-    /** 读取：当前代码片段列表（导入去重用） */
-    snippetsList: () => Snippet[];
-    /** 读取：顶栏菜单是否打开 */
-    menuOpen: () => boolean;
-    /** 动作：弹出错误消息 */
-    showErrorMessage: (message: string, timeout?: number, id?: string) => void;
-    /** 动作：生成新代码片段 ID */
-    genNewSnippetId: () => string;
-    /** 动作：拉取当前代码片段列表（失败返回 false） */
-    getSnippetsList: () => Promise<Snippet[] | false>;
-    /** 动作：保存代码片段列表到内核 */
-    saveSnippetsList: (snippetsList: Snippet[]) => Promise<void>;
-    /** 动作：整表替换到 Store（触发计数刷新等） */
-    storeReplaceAll: (snippetsList: Snippet[]) => void;
-    /** 动作：刷新菜单类型开关显示（菜单打开时） */
-    refreshMenuSnippetsType: () => void;
-}
-
-/**
  * 导入导出服务（原 index.ts「导出与导入功能」分节外迁，行为等价）
  */
 export class ImportExportService {
-    private readonly host: ImportExportHost;
+    private readonly plugin: PluginSnippets;
 
-    constructor(host: ImportExportHost) {
-        this.host = host;
+    constructor(plugin: PluginSnippets) {
+        this.plugin = plugin;
     }
 
     /**
@@ -61,7 +31,7 @@ export class ImportExportService {
             // 获取代码片段文件 data/snippets/conf.json
             const snippetsFile = await getFile("data/snippets/conf.json");
             if (!snippetsFile) {
-                this.host.showErrorMessage(this.host.i18n().getSnippetsListFailed);
+                this.plugin.showErrorMessage(this.plugin.i18n.getSnippetsListFailed);
                 return;
             }
 
@@ -76,7 +46,7 @@ export class ImportExportService {
             const minute = pad(now.getMinutes());
             const second = pad(now.getSeconds());
             const timestamp = `${year}-${month}-${day} ${hour}-${minute}-${second}`;
-            const fileName = `${this.host.i18n().snippet} ${timestamp}.json`;
+            const fileName = `${this.plugin.i18n.snippet} ${timestamp}.json`;
 
             // 调用 API 导出代码片段文件
             const exportResponse = await new Promise<any>((resolve) => {
@@ -85,8 +55,8 @@ export class ImportExportService {
                     name: fileName
                 }, (response: any) => {
                     if (response.code !== 0) {
-                        this.host.logger.error("exportSnippets: Failed to export resources", response);
-                        this.host.showErrorMessage(`Export failed: ${response.msg}`);
+                        this.plugin.console.error("exportSnippets: Failed to export resources", response);
+                        this.plugin.showErrorMessage(`Export failed: ${response.msg}`);
                         return;
                     }
                     resolve(response);
@@ -110,8 +80,8 @@ export class ImportExportService {
             // 否则移动端原生 saveExportFile 会因缺少前导 "/" 无法定位文件，报“文件不存在或为空”
             await saveExportFile("/export/" + encodeURIComponent(cleanExportFileName));
         } catch (error) {
-            this.host.logger.error("exportSnippets: Failed to export snippets: ", error);
-            this.host.showErrorMessage(this.host.i18n().exportSnippetsFailed + ": " + error.message);
+            this.plugin.console.error("exportSnippets: Failed to export snippets: ", error);
+            this.plugin.showErrorMessage(this.plugin.i18n.exportSnippetsFailed + ": " + error.message);
         }
     }
 
@@ -151,7 +121,7 @@ export class ImportExportService {
                         // 上传 zip 文件
                         const uploadResp = await this.putBinaryFile(zipPath, file);
                         if (!uploadResp || uploadResp.code !== 0) {
-                            throw new Error(`${this.host.i18n().uploadImportFileFailed} [${uploadResp?.code}: ${uploadResp?.msg}]`);
+                            throw new Error(`${this.plugin.i18n.uploadImportFileFailed} [${uploadResp?.code}: ${uploadResp?.msg}]`);
                         }
 
                         // 解压 zip 文件
@@ -159,19 +129,19 @@ export class ImportExportService {
                             fetchPost("/api/archive/unzip", { path: unzipDir, zipPath }, (resp: any) => resolve(resp));
                         });
                         if (!unzipResp || unzipResp.code !== 0) {
-                            throw new Error(`${this.host.i18n().unzipFailed} [${unzipResp?.code}: ${unzipResp?.msg}]`);
+                            throw new Error(`${this.plugin.i18n.unzipFailed} [${unzipResp?.code}: ${unzipResp?.msg}]`);
                         }
 
                         // 在解压目录查找 json 文件（可能还多一层文件夹）
                         const jsonFilePath = await this.findJsonFilePathInDir(unzipDir);
                         if (!jsonFilePath) {
-                            throw new Error(this.host.i18n().noValidJsonFileFound);
+                            throw new Error(this.plugin.i18n.noValidJsonFileFound);
                         }
 
                         // 读取服务器上的 json 文件文本
                         const getResp = await getFile(jsonFilePath);
                         if (getResp && getResp.code) {
-                            throw new Error(`${this.host.i18n().readUnzippedJsonFileFailed} [${getResp.code}: ${getResp.msg}]`);
+                            throw new Error(`${this.plugin.i18n.readUnzippedJsonFileFailed} [${getResp.code}: ${getResp.msg}]`);
                         }
 
                         // 如果返回的是对象，直接转换为 JSON 字符串
@@ -186,7 +156,7 @@ export class ImportExportService {
                     }
 
                     if (!importText) {
-                        throw new Error(this.host.i18n().importFileContentEmpty);
+                        throw new Error(this.plugin.i18n.importFileContentEmpty);
                     }
 
                     // 尝试解析 JSON，如果失败则提示用户
@@ -194,19 +164,19 @@ export class ImportExportService {
                     try {
                         importData = JSON.parse(importText);
                     } catch (parseError) {
-                        throw new Error(this.host.i18n().importFileNotValidJson);
+                        throw new Error(this.plugin.i18n.importFileNotValidJson);
                     }
 
                     // 验证导入数据格式
                     if (!this.validateImportData(importData)) {
-                        this.host.showErrorMessage(this.host.i18n().importSnippetsInvalidFormat);
+                        this.plugin.showErrorMessage(this.plugin.i18n.importSnippetsInvalidFormat);
                         return;
                     }
 
                     // 获取当前代码片段列表
-                    const currentSnippets = await this.host.getSnippetsList();
+                    const currentSnippets = await this.plugin.snippetManager.getSnippetsList();
                     if (!currentSnippets) {
-                        this.host.showErrorMessage(this.host.i18n().getSnippetsListFailed);
+                        this.plugin.showErrorMessage(this.plugin.i18n.getSnippetsListFailed);
                         return;
                     }
 
@@ -224,24 +194,24 @@ export class ImportExportService {
                     }
 
                     // 保存新的代码片段列表
-                    void this.host.saveSnippetsList(newSnippetsList);
+                    void this.plugin.snippetManager.saveSnippetsList(newSnippetsList);
                     // 整表替换到 Store：计数由 SNIPPETS_CHANGED 事件统一刷新（菜单打开时）
-                    this.host.storeReplaceAll(newSnippetsList);
+                    this.plugin.snippetStore.replaceAll(newSnippetsList);
 
                     // 更新菜单显示（类型开关状态等）
-                    if (this.host.menuOpen()) {
-                        this.host.refreshMenuSnippetsType();
+                    if (this.plugin.menuView.menu) {
+                        this.plugin.menuView.setMenuSnippetsType(this.plugin.snippetsType);
                     }
 
                     // 显示成功消息
                     const successMessage = overwrite
-                        ? this.host.i18n().importSnippetsOverwriteSuccess
-                        : this.host.i18n().importSnippetsAppendSuccess;
-                    showMessage(this.host.displayName() + ": " + successMessage, 3000, "info");
+                        ? this.plugin.i18n.importSnippetsOverwriteSuccess
+                        : this.plugin.i18n.importSnippetsAppendSuccess;
+                    showMessage(this.plugin.displayName + ": " + successMessage, 3000, "info");
 
                 } catch (error) {
-                    this.host.logger.error("importSnippets: Failed to import snippets", error);
-                    this.host.showErrorMessage(this.host.i18n().importSnippetsFailed + ": " + error.message);
+                    this.plugin.console.error("importSnippets: Failed to import snippets", error);
+                    this.plugin.showErrorMessage(this.plugin.i18n.importSnippetsFailed + ": " + error.message);
                 } finally {
                     // 清理文件输入元素
                     document.body.removeChild(input);
@@ -253,8 +223,8 @@ export class ImportExportService {
             input.click();
 
         } catch (error) {
-            this.host.logger.error("importSnippets: Failed to create file input", error);
-            this.host.showErrorMessage(this.host.i18n().importSnippetsFailed + ": " + error.message);
+            this.plugin.console.error("importSnippets: Failed to create file input", error);
+            this.plugin.showErrorMessage(this.plugin.i18n.importSnippetsFailed + ": " + error.message);
         }
     }
 
@@ -363,16 +333,16 @@ export class ImportExportService {
             const response = await putFile(backupPath, backupContent);
 
             if (response.code !== 0) {
-                this.host.logger.error("createBackup: Failed to create backup file", response);
-                this.host.showErrorMessage(`${this.host.i18n().backupCreateFailed}: ${response.msg}`);
+                this.plugin.console.error("createBackup: Failed to create backup file", response);
+                this.plugin.showErrorMessage(`${this.plugin.i18n.backupCreateFailed}: ${response.msg}`);
                 return;
             }
 
-            this.host.logger.log("createBackup: Backup created successfully", backupPath);
+            this.plugin.console.log("createBackup: Backup created successfully", backupPath);
 
         } catch (error) {
-            this.host.logger.error("createBackup: Failed to create backup", error);
-            this.host.showErrorMessage(this.host.i18n().backupCreateFailed + ": " + error.message);
+            this.plugin.console.error("createBackup: Failed to create backup", error);
+            this.plugin.showErrorMessage(this.plugin.i18n.backupCreateFailed + ": " + error.message);
         }
     }
 
@@ -382,15 +352,15 @@ export class ImportExportService {
      * @returns 处理后的代码片段数组
      */
     private processImportedSnippets(importedSnippets: Snippet[]): Snippet[] {
-        const currentIds = new Set(this.host.snippetsList().map(s => s.id));
+        const currentIds = new Set(this.plugin.snippetsList.map(s => s.id));
 
         return importedSnippets.map(snippet => {
             // 如果 ID 重复，生成新的 ID
             if (snippet.id && currentIds.has(snippet.id)) {
-                snippet.id = this.host.genNewSnippetId();
+                snippet.id = genNewSnippetId(this.plugin.snippetsList);
             } else if (!snippet.id) {
                 // 如果没有 ID，生成新的 ID
-                snippet.id = this.host.genNewSnippetId();
+                snippet.id = genNewSnippetId(this.plugin.snippetsList);
             }
 
             return snippet;
@@ -423,7 +393,7 @@ export class ImportExportService {
             fetchPost("/api/file/readDir", { path: dir }, (resp: any) => resolve(resp));
         });
         if (!listResp || listResp.code !== 0) {
-            this.host.logger.error("findJsonFileRecursive: readDir failed", listResp);
+            this.plugin.console.error("findJsonFileRecursive: readDir failed", listResp);
             return null;
         }
         const items = Array.isArray(listResp.data) ? listResp.data : [];

@@ -6,7 +6,6 @@ import type {SnippetsConfigItem} from "./config/schema";
 import {ConfigService} from "./config/config-service";
 import {BroadcastService} from "./services/sync";
 import {FileWatchService} from "./services/file-watch";
-import {genNewSnippetId} from "./utils";
 import {EventBus} from "./core/event-bus";
 import {ImportExportService} from "./services/import-export";
 import {FeedbackService} from "./services/feedback";
@@ -191,21 +190,8 @@ export default class PluginSnippets extends Plugin {
         // 初始化文件监听服务（直连本实例，配置镜像经实例读取）
         this.fileWatchService = new FileWatchService(this);
 
-        // 初始化导入导出服务（列表读写/菜单刷新等经动作转发，调用时读取运行态）
-        this.importExportService = new ImportExportService({
-            logger: this.console,
-            displayName: () => this.displayName,
-            i18n: () => this.i18n,
-            snippetsType: () => this.snippetsType,
-            snippetsList: () => this.snippetsList,
-            menuOpen: () => !!this.menuView.menu,
-            showErrorMessage: (message, timeout, id) => this.showErrorMessage(message, timeout, id),
-            genNewSnippetId: () => genNewSnippetId(this.snippetsList),
-            getSnippetsList: () => this.snippetManager.getSnippetsList(),
-            saveSnippetsList: (snippetsList) => this.snippetManager.saveSnippetsList(snippetsList),
-            storeReplaceAll: (snippetsList) => this.snippetStore.replaceAll(snippetsList),
-            refreshMenuSnippetsType: () => this.menuView.setMenuSnippetsType(this.snippetsType),
-        });
+        // 初始化导入导出服务（直连本实例，列表读写/菜单刷新经服务内转发）
+        this.importExportService = new ImportExportService(this);
 
         // 初始化通知/错误提示服务（直连本实例，配置开关经实例 defineProperty 镜像读取）
         this.feedbackService = new FeedbackService(this);
