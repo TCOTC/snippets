@@ -16,6 +16,11 @@ const PLUGIN_NAME = "snippets";                    // 插件名（通知消息 i
 export const STORAGE_NAME = "plugin-config.json";  // 配置文件名（index 侧 removeData 亦使用）
 
 /**
+ * 当前插件配置结构版本（配置结构有变化时升级；原为插件实例字段 version，仅本模块使用故迁入）
+ */
+const CONFIG_VERSION = 1;
+
+/**
  * 配置服务（原 index.ts 中对应私有方法外迁，行为等价）
  */
 export class ConfigService {
@@ -104,7 +109,7 @@ export class ConfigService {
                 // 配置文件异常，移除配置文件、弹出错误消息
                 await this.removeStoredConfig();
                 this.plugin.showErrorMessage(this.plugin.i18n.loadConfigError);
-            } else if (config.version > this.plugin.version) {
+            } else if (config.version > CONFIG_VERSION) {
                 // 当前配置文件是更高版本的，与当前版本不兼容，弹出消息提示用户升级插件（可以不升级）
                 // 如果用户不升级插件，还保存了设置，则直接覆盖掉高版本配置，这样也没有问题，因为高版本加载的时候又会自动调整配置结构
                 this.plugin.showErrorMessage(this.plugin.i18n.loadConfigIncompatible, 15000);
@@ -269,7 +274,7 @@ export class ConfigService {
      * @returns saveData 的返回（调用方用 isPromiseFulfilled 判断是否成功）
      */
     private persistConfig(): any {
-        const config: any = { version: this.plugin.version };
+        const config: any = { version: CONFIG_VERSION };
         this.plugin.configItems.forEach(item => {
             config[item.key] = this.readValue(item.key);
         });

@@ -43,6 +43,24 @@ export class SnippetsMenu {
     menuItems!: HTMLElement;
 
     /**
+     * 顶栏按钮元素（原插件实例字段迁入本类——仅菜单模块创建/读取/移除，属菜单专属 DOM）
+     */
+    private topBarElement!: HTMLElement;
+
+    /**
+     * 是否为触摸设备（原插件实例字段迁入本类——仅本类 genMenuSnippetsItems 使用，
+     * 构造时按设备能力一次性检测即可，无需经插件实例共享）
+     */
+    private readonly isTouchDevice = ("ontouchstart" in window) && navigator.maxTouchPoints > 1;
+
+    /**
+     * 移除顶栏按钮（schema ctx removeTopBarElement 使用；与 initTopBar 配合用于重建，如顶栏位置变更）
+     */
+    removeTopBarElement() {
+        this.topBarElement?.remove();
+    }
+
+    /**
      * 关闭菜单（供插件生命周期等在需要时主动关闭；Menu 关闭会触发关闭回调）
      */
     close() {
@@ -70,7 +88,7 @@ export class SnippetsMenu {
     async initTopBar() {
         const topBarKeymap = this.plugin.getCustomKeymapByCommand("openSnippetsManager");
         const title = !this.plugin.isMobile && topBarKeymap ? this.plugin.displayName + " " + platformUtils.updateHotkeyTip(topBarKeymap) : this.plugin.displayName;
-        this.plugin.topBarElement = this.plugin.addTopBar({
+        this.topBarElement = this.plugin.addTopBar({
             icon: "iconJcsm",
             title: title,
             position: this.plugin.topBarPosition || "right",
@@ -101,9 +119,9 @@ export class SnippetsMenu {
         // 如果菜单已存在，再次点击按钮就会移除菜单，此时直接返回
         if (this.menu.isOpen) {
             this.menu = undefined as unknown as Menu;
-            if (!this.plugin.isMobile && this.plugin.topBarElement && this.plugin.topBarElement.matches(":hover")) {
+            if (!this.plugin.isMobile && this.topBarElement && this.topBarElement.matches(":hover")) {
                 // 只有当鼠标悬停在顶栏按钮上时才显示 tooltip
-                showElementTooltip(this.plugin.topBarElement);
+                showElementTooltip(this.topBarElement);
             }
             return;
         }
@@ -250,7 +268,7 @@ export class SnippetsMenu {
     setMenuPosition(isUpdate = false) {
         this.plugin.console.log("setMenuPosition: isUpdate =", isUpdate);
 
-        let rect = this.plugin.topBarElement.getBoundingClientRect();
+        let rect = this.topBarElement.getBoundingClientRect();
         // 如果被隐藏，则使用更多按钮
         if (rect.width === 0) {
             rect = document.querySelector("#barMore")!.getBoundingClientRect();
@@ -282,10 +300,10 @@ export class SnippetsMenu {
         }
 
         // 顶栏按钮样式
-        if (!this.plugin.isMobile && this.plugin.topBarElement) {
-            this.plugin.topBarElement.classList.add("toolbar__item--active");
+        if (!this.plugin.isMobile && this.topBarElement) {
+            this.topBarElement.classList.add("toolbar__item--active");
             // 移除 aria-label 属性，在菜单打开时不显示 tooltip
-            this.plugin.topBarElement.removeAttribute("aria-label");
+            this.topBarElement.removeAttribute("aria-label");
             hideTooltip();
         }
     }
@@ -294,13 +312,13 @@ export class SnippetsMenu {
      * 关闭顶栏菜单回调
      */
     private closeMenuCallback() {
-        if (this.plugin.topBarElement) {
+        if (this.topBarElement) {
             // topBarElement 不存在时说明 isMobile 为 true，此时不需要修改顶栏按钮样式
-            this.plugin.topBarElement.classList.remove("toolbar__item--active");
+            this.topBarElement.classList.remove("toolbar__item--active");
             // topBarCommand 有可能变，所以每次都重新获取
             const topBarKeymap = this.plugin.getCustomKeymapByCommand("openSnippetsManager");
             const title = topBarKeymap ? this.plugin.displayName + " " + platformUtils.updateHotkeyTip(topBarKeymap) : this.plugin.displayName;
-            this.plugin.topBarElement.setAttribute("aria-label", title);
+            this.topBarElement.setAttribute("aria-label", title);
         }
 
         // 移除事件监听
@@ -609,7 +627,7 @@ export class SnippetsMenu {
         // （含深拷贝与按键排序，见 domain/snippet.ts sortSnippets）
         const snippetsList = argSnippetsList ?? sortSnippets(this.plugin.snippetsList ?? [], this.plugin.snippetSortType);
 
-        const isTouch = this.plugin.isMobile || this.plugin.isTouchDevice;
+        const isTouch = this.plugin.isMobile || this.isTouchDevice;
         const showPublishCheckbox = this.isShowPublishCheckbox();
         let snippetsHtml = "";
 

@@ -17,8 +17,7 @@ import {SnippetsMenu} from "./ui/menu";
 import {
     fetchPost,
     getFrontend,
-    Plugin,
-    Setting
+    Plugin
 } from "siyuan";
 // 未使用的：Custom、confirm、openTab、adaptHotkey、getBackend、Protyle、openWindow、IOperation、openMobileFileById、lockScreen、ICard、ICardData、exitSiYuan、getModelByDockType、getAllEditor、Files、openAttributePanel、saveLayout
 
@@ -40,20 +39,9 @@ export default class PluginSnippets extends Plugin {
     // ================================ 生命周期方法 ================================
 
     /**
-     * 是否为移动端（onLayoutReady 时按前端类型赋值；运行态标志收敛自 window.siyuan.jcsm，
-     * 实例字段即可——每次插件加载都会重算，无需跨 reload 全局仓库）
+     * 是否为移动端（onLayoutReady 时按前端类型赋值；各 UI/服务模块直连访问，故公开）
      */
     isMobile = false;
-
-    /**
-     * 是否为触摸设备（onLayoutReady 时赋值，同上收敛自 jcsm）
-     */
-    isTouchDevice = false;
-
-    /**
-     * 顶栏按钮元素（SnippetsMenu 直连访问，故公开）
-     */
-    topBarElement!: HTMLElement;
 
     /**
      * 类型化事件总线：数据变更后驱动 UI 刷新等内部解耦
@@ -177,11 +165,9 @@ export default class PluginSnippets extends Plugin {
     public async onLayoutReady() {
         const frontEnd = getFrontend();
         this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
-        this.isTouchDevice = ("ontouchstart" in window) && navigator.maxTouchPoints > 1;
 
         // 优先初始化插件设置，因为顶栏按钮位置需要根据插件设置来决定
         await this.configService.init();
-        this.setting = this.configService.setting!;
         // 插件设置加载之后启动文件监听
         if (this.fileWatchEnabled && this.fileWatchEnabled !== "disabled") {
             this.fileWatchService.start();
@@ -327,27 +313,18 @@ export default class PluginSnippets extends Plugin {
     // ================================ 插件设置 ================================
 
     /**
-     * 插件设置
-     */
-    public setting!: Setting;
-
-    /**
-     * 配置文件版本（配置结构有变化时升级；ConfigService 直连访问，故公开）
-     */
-    version = 1;
-
-    /**
-     * CSS 代码片段实时预览（必须与 snippet.type === "css" 一起使用）
+     * CSS 代码片段实时预览（必须与 snippet.type === "css" 一起使用；配置镜像 defineProperty 投影，
+     * SnippetManager/SnippetsDialog 直连读取）
      */
     realTimePreview!: boolean;
 
     /**
-     * 新建代码片段时默认启用
+     * 新建代码片段时默认启用（配置镜像 defineProperty 投影，SnippetManager 直连读取）
      */
     newSnippetEnabled!: boolean;
 
     /**
-     * 在开发者工具中输出插件日志（ListenerRegistry 直连访问，故公开）
+     * 在开发者工具中输出插件日志（配置镜像 defineProperty 投影，ListenerRegistry 直连读取）
      */
     consoleDebug!: boolean;
 
@@ -372,7 +349,7 @@ export default class PluginSnippets extends Plugin {
             menuOpen: () => !!this.menuView.menu,
             menuSnippetsItemsHtml: () => this.menuView.genMenuSnippetsItems(),
             updateAllEditorConfigs: (reason) => this.editorManager.updateAllEditorConfigs(reason),
-            removeTopBarElement: () => this.topBarElement?.remove(),
+            removeTopBarElement: () => this.menuView.removeTopBarElement(),
             initTopBar: () => this.menuView.initTopBar(),
             setMenuPosition: (isUpdate) => this.menuView.setMenuPosition(isUpdate),
             startFileWatch: () => this.fileWatchService.start(),

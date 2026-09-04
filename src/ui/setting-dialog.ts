@@ -49,7 +49,8 @@ export class SettingDialog {
         dialog.element.setAttribute("data-modal", "true");  // 标记为模态对话框
         dialog.element.setAttribute("data-mobile", this.plugin.isMobile ? "true" : "false"); // CSS 样式用到这个属性
         const contentElement = dialog.element.querySelector(".b3-dialog__content")!;
-        this.plugin.setting.items.forEach((item) => {
+        // 设置项由 ConfigService.init 装配并持有（configService.setting），此处直连读取，无需插件实例转发
+        this.plugin.configService.setting!.items.forEach((item) => {
             let html: string;
             const actionElement = item.actionElement ?? item.createActionElement?.();
             const tagName = actionElement?.classList.contains("b3-switch") ? "label" : "div";
