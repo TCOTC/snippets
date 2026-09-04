@@ -4,7 +4,12 @@ packages:
 # pnpm 11 用 allowBuilds 取代 onlyBuiltDependencies / neverBuiltDependencies 等旧字段
 # 值为 true 表示允许该依赖执行 install/postinstall 构建脚本
 allowBuilds:
+  '@parcel/watcher': true
   esbuild: true
 
 # 非交互环境（如 CI）下重建 node_modules 时不再要求确认
 confirmModulesPurge: false
+
+minimumReleaseAgeExclude:
+  - '@codemirror/view@6.43.11'
+  - sass@1.104.0

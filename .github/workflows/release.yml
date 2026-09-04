@@ -21,11 +21,11 @@ jobs:
           fetch-depth: 0
 
       - name: Setup pnpm
-        # 省略 version，自动读取 package.json 中的 packageManager 字段（pnpm@11.9.0）
+        # 省略 version，自动读取 package.json 中的 packageManager 字段（pnpm@11.25.0）
         uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
