@@ -1,3 +1,5 @@
+import type {Snippet} from "./types";
+
 /**
  * 判断 Promise 是否已成功完成
  * @param promise Promise<any> 要判断的 Promise 对象
@@ -79,3 +81,26 @@ export const moveElementToTop = (element: HTMLElement) => {
         element.style.zIndex = (++window.siyuan.zIndex).toString();
     }
 };
+
+/**
+ * 生成新的代码片段 ID（与现有代码片段列表去重）
+ * @param snippetsList 现有代码片段列表
+ * @returns 新的代码片段 ID
+ */
+export const genNewSnippetId = (snippetsList: Snippet[]): string => {
+    let newId = window.Lute.NewNodeID();
+    while (snippetsList.find((s: Snippet) => s.id === newId)) {
+        newId = window.Lute.NewNodeID();
+    }
+    return newId;
+};
+
+/**
+ * 判断是否正在预览代码片段（开启了 CSS 实时预览且打开了对应的编辑对话框）
+ * @param snippetId 代码片段 ID
+ * @param snippetType 代码片段类型
+ * @param realTimePreview 是否启用实时预览
+ * @returns 是否正在预览
+ */
+export const isPreviewingSnippet = (snippetId: string, snippetType: string, realTimePreview: boolean): boolean =>
+    snippetType === "css" && realTimePreview && !!document.querySelector(`.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id="${snippetId}"]`);
