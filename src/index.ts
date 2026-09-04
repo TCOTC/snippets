@@ -2779,7 +2779,8 @@ export default class PluginSnippets extends Plugin {
                 const contentOrEnabledChanged = oldSnippet.content !== snippet.content || oldSnippet.enabled !== snippet.enabled || oldSnippet.disabledInPublish !== snippet.disabledInPublish;
                 hasChanges = nameChanged || contentOrEnabledChanged;
                 if (hasChanges) {
-                    this.snippetsList = this.snippetsList.map((s: Snippet) => s.id === snippet.id ? snippet : s);
+                    // 从 Store 统一替换并触发计数刷新事件
+                    this.snippetStore.upsert(snippet);
                 }
                 if (contentOrEnabledChanged) {
                     // 只有代码片段名称改变的时候不需要更新元素
@@ -2793,23 +2794,9 @@ export default class PluginSnippets extends Plugin {
                     this.showErrorMessage(this.i18n.getSnippetFailed);
                     return;
                 }
-                // 如果不存在（oldSnippet === undefined），则添加代码片段
-                if (snippet.type === "css") {
-                    // CSS 插入到开头
-                    this.snippetsList.unshift(snippet);
-                } else {
-                    // 如果不存在或者 API 调用出错，则找到第一个相同类型的代码片段，插入到它的前面。要保证 CSS 在前，JS 在后
-                    const firstSameTypeSnippet = this.snippetsList.find((s: Snippet) => s.type === snippet.type);
-                    if (firstSameTypeSnippet) {
-                        this.snippetsList.splice(this.snippetsList.indexOf(firstSameTypeSnippet), 0, snippet);
-                    } else {
-                        // 如果不存在 JS 代码片段，则直接插入到末尾
-                        this.snippetsList.push(snippet);
-                    }
-                }
+                // 如果不存在（oldSnippet === undefined），则添加代码片段（store.upsert 按类型分区插入，计数由事件统一刷新）
+                this.snippetStore.upsert(snippet);
                 hasChanges = true;
-                // 更新菜单代码片段计数
-                this.setMenuSnippetCount();
                 // 代码片段有可能未启用，所以不传入 enabled === true 的参数
                 await this.updateSnippetElement(snippet);
             }
