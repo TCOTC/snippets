@@ -2747,10 +2747,11 @@ export default class PluginSnippets extends Plugin {
             this.applySnippetUIChange(snippet, true, copySnippet);
 
             // 广播代码片段数据更新到其他窗口
+            // 注意：不得携带代码片段原文（content 可能含敏感信息），接收窗口按 ID 自拉权威数据
             this.broadcastMessage("snippet_save", {
-                snippet: snippet,
+                snippetId: snippet.id,
                 isCopy: isCopy,
-                copySnippet: copySnippet,
+                copySnippetId: copySnippet?.id,
             });
         }
     }
@@ -2760,34 +2761,48 @@ export default class PluginSnippets extends Plugin {
      * @param data 消息数据
      */
     private async saveSnippetSync(data: any) {
-        // const { snippet, isCopy } = data;
-        const { snippet, isCopy, copySnippet } = data;
-        if (!snippet || isCopy === undefined || (isCopy && copySnippet === undefined)) {
+        const { snippetId, isCopy, copySnippetId } = data;
+        if (!snippetId || isCopy === undefined || (isCopy && !copySnippetId)) {
             this.console.error("saveSnippetSync: Snippet or isCopy is missing:", data);
             return;
         }
-        this.console.log("saveSnippetSync", snippet, isCopy);
+        this.console.log("saveSnippetSync", { snippetId, isCopy, copySnippetId });
 
         if (isCopy) {
-            // 更新 this.snippetsList，加入新增的副本代码片段
-            this.snippetsList = await this.getSnippetsList() as Snippet[];
-            // // diff 以过滤出在 this.snippetsList 中存在但在 oldSnippetsList 中不存在的 copySnippet → 直接把 copySnippet 作为参数更简单，不用过滤了
-            // copySnippet = this.snippetsList.find((s: Snippet) => !oldSnippetsList.some((os: { id: string; }) => os.id === s.id));
-
-            // 更新菜单代码片段计数
-            this.setMenuSnippetCount();
+            // 消息不含原文：按副本 ID 自拉服务端权威数据（列表随之刷新，副本已按广播窗口顺序就位）
+            const copySnippet = await this.getSnippetById(copySnippetId);
+            if (!copySnippet) {
+                this.console.error("saveSnippetSync: copySnippet not found:", copySnippetId);
+                return;
+            }
+            const originalSnippet = this.snippetsList.find((s: Snippet) => s.id === snippetId);
+            if (!originalSnippet) {
+                this.console.error("saveSnippetSync: original snippet not found:", snippetId);
+                return;
+            }
+            // 从 Store 统一 upsert（幂等：副本已随自拉就位，此处仅统一触发计数刷新事件）
+            this.snippetStore.upsert(copySnippet);
 
             // 代码片段有可能未启用，所以不传入 enabled === true 的参数
             await this.updateSnippetElement(copySnippet);
 
+            // 镜像菜单项插入与原始片段对话框按钮更新
+            this.applySnippetUIChange(originalSnippet, true, copySnippet);
+
             this.console.log("saveSnippetSync: copySnippet", copySnippet);
         } else {
-            // 在 snippetsList 中查找是否存在该代码片段
-            // 不能用 const oldSnippet = await this.getSnippetById(snippet.id);，因为这样会导致 this.snippetsList 被更新
-            const { added, oldSnippet } = this.snippetStore.upsert(snippet);
-            if (oldSnippet) {
-                // 如果存在，则更新该代码片段（store.upsert 已整体替换）
+            // 消息不含原文：先记录本窗口旧片段，再按 ID 自拉服务端权威数据
+            const oldSnippet = this.snippetsList.find((s: Snippet) => s.id === snippetId);
+            const snippet = await this.getSnippetById(snippetId);
+            if (snippet === false || snippet === undefined) {
+                this.console.error("saveSnippetSync: Snippet not found:", snippetId);
+                return;
+            }
+            // 从 Store 统一 upsert（列表已随自拉刷新为权威态，计数由事件统一刷新）
+            this.snippetStore.upsert(snippet);
 
+            if (oldSnippet) {
+                // 如果存在，则更新该代码片段
                 // 比较对象属性值而不是对象引用
                 const contentOrEnabledChanged = oldSnippet.content !== snippet.content || oldSnippet.enabled !== snippet.enabled;
                 if (contentOrEnabledChanged) {
@@ -2799,14 +2814,13 @@ export default class PluginSnippets extends Plugin {
 
                     // TODO功能: 跨窗口同步时，如果有打开对应的代码片段编辑器，需要更新编辑器的内容
                 }
-            } else if (added) {
-                // 如果不存在，则添加代码片段（store.upsert 已按类型分区插入，菜单计数由 SNIPPETS_CHANGED 事件统一刷新）
+            } else {
+                // 本窗口原本没有该片段：新增（列表已按权威顺序就位）
                 // 代码片段有可能未启用，所以不传入 enabled === true 的参数
                 await this.updateSnippetElement(snippet);
             }
+            this.applySnippetUIChange(snippet, true);
         }
-
-        this.applySnippetUIChange(snippet, true, copySnippet);
     }
 
     /**
@@ -3557,6 +3571,7 @@ export default class PluginSnippets extends Plugin {
                         if (!realSnippet) return;
                         this.updateSnippetElement(realSnippet, undefined, false);
                         // 发送广播消息，在其他窗口调用 this.updateSnippetElementSync() 更新代码片段元素
+                        // TODO去原文化: 此处 realSnippet 为已保存片段（可自拉），应只发 snippetId + previewState: false
                         this.broadcastMessage("snippet_element_update", {
                             snippet: realSnippet,
                             previewState: false
@@ -3646,6 +3661,7 @@ export default class PluginSnippets extends Plugin {
             this.updateSnippetElement(previewSnippet, undefined, true);
 
             // 发送广播消息，在其他窗口调用 this.updateSnippetElementSync() 更新 CSS 代码片段元素
+            // 豁免“广播禁原文”：预览内容未保存、接收窗口无法自拉，且为同内核可信实例上的显式预览操作，允许携带编辑中的 CSS 文本
             this.broadcastMessage("snippet_element_update", {
                 snippet: previewSnippet,
                 previewState: true
