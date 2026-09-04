@@ -18,7 +18,6 @@ import {
     getFrontend,
     hideMessage,
     Menu,
-    openSetting,
     platformUtils,
     Plugin,
     saveExportFile,
@@ -34,6 +33,7 @@ import {isPromiseFulfilled} from "./utils";
 import type {EditorView} from "@codemirror/view";
 import {createCodeMirrorEditor} from "./ui/codemirror";
 import {EditorManager} from "./ui/editor-manager";
+import {SettingDialog} from "./ui/setting-dialog";
 
 const PLUGIN_NAME = "snippets";                    // 插件名
 const STORAGE_NAME = "plugin-config.json";         // 配置文件名
@@ -41,14 +41,6 @@ const LOG_NAME = "plugin-snippets.log";            // 日志文件名
 const TEMP_PLUGIN_PATH = "/temp/plugin-snippets/"; // 插件临时文件路径
 const TEMP_EXPORT_PATH = "/temp/export/";          // 导入导出临时文件路径
 // const TAB_TYPE = "custom-tab"; // 自定义标签页
-
-// 思源 3.7.0+ 的 openSetting 支持第二个参数 tab 用于指定初始选项卡
-// petal 仓库的类型定义尚未更新，这里通过类型断言绕过类型检查
-// 等 petal 仓库更新类型定义后可直接使用 openSetting 并移除此辅助函数
-const openSettingTab = openSetting as (app: Parameters<typeof openSetting>[0], tab?: string) => Dialog | undefined;
-
-// 等待原生设置对话框选项卡异步挂载的最大重试次数（约 1.6 秒@60fps，应对慢速设备与异常情况）
-const SETTING_TAB_MOUNT_MAX_RETRIES = 100;
 
 // noinspection JSUnusedGlobalSymbols
 export default class PluginSnippets extends Plugin {
@@ -100,6 +92,11 @@ export default class PluginSnippets extends Plugin {
     private editorManager!: EditorManager;
 
     /**
+     * 设置对话框管理器（装配与交互见 src/ui/setting-dialog.ts，公开 openSetting 委托到它）
+     */
+    private settingDialog!: SettingDialog;
+
+    /**
      * 启用插件
      */
     public async onload() {
@@ -116,6 +113,23 @@ export default class PluginSnippets extends Plugin {
             logger: this.console,
             editorIndentUnit: () => this.editorIndentUnit,
             i18n: () => this.i18n,
+        });
+
+        // 初始化设置对话框管理器（运行态经读取器/动作实时转发：设置项列表等需在 initSetting 完成后才有，openSetting 打开时才会读取）
+        this.settingDialog = new SettingDialog({
+            logger: this.console,
+            displayName: () => this.displayName,
+            i18n: () => this.i18n,
+            isMobile: () => this.isMobile,
+            app: () => this.app,
+            settingItems: () => this.setting.items,
+            addListener: (element, event, fn, options) => this.addListener(element, event, fn, options),
+            closeDialog: (dialogElement) => this.closeDialogByElement(dialogElement),
+            saveSetting: (dialogElement) => this.saveSetting(dialogElement),
+            closeMenu: () => this.menu?.close(),
+            exportSnippets: () => void this.exportSnippetsToFile(),
+            importSnippets: (overwrite) => void this.importSnippets(overwrite),
+            globalKeyDownHandler: () => this.globalKeyDownHandler,
         });
 
         // 订阅代码片段列表变更事件：菜单打开时刷新各类型计数
@@ -681,213 +695,11 @@ export default class PluginSnippets extends Plugin {
     }
 
     /**
-     * 打开插件设置窗口（参考原生代码 app/src/plugin/Setting.ts Setting.open 方法）
+     * 打开插件设置窗口（装配与交互见 src/ui/setting-dialog.ts SettingDialog）
      * 方法名固定为 openSetting，支持通过菜单按钮打开、被思源调用打开
      */
     public openSetting() {
-        // 生成设置对话框元素
-        const dialog = new Dialog({
-            title: this.displayName,
-            content: `
-<div class="b3-dialog__content"></div>
-<div class="b3-dialog__action">
-    <button class="b3-button b3-button--cancel" data-type="cancel">${this.i18n.cancel}</button>
-    <div class="fn__space"></div>
-    <button class="b3-button b3-button--text" data-type="confirm">${this.i18n.save}</button>
-</div>
-            `,
-            width: this.isMobile ? "92vw" : "768px",
-            height: "80vh",
-        });
-        (dialog.element as any).dialogObject = dialog;
-
-        dialog.element.setAttribute("data-key", "jcsm-setting-dialog");
-        dialog.element.setAttribute("data-modal", "true");  // 标记为模态对话框
-        dialog.element.setAttribute("data-mobile", this.isMobile ? "true" : "false"); // CSS 样式用到这个属性
-        const contentElement = dialog.element.querySelector(".b3-dialog__content")!;
-        this.setting.items.forEach((item) => {
-            let html: string;
-            const actionElement = item.actionElement ?? item.createActionElement?.();
-            const tagName = actionElement?.classList.contains("b3-switch") ? "label" : "div";
-            if (typeof item.direction === "undefined") {
-                item.direction = (!actionElement || "TEXTAREA" === actionElement.tagName) ? "row" : "column";
-            }
-            if (item.direction === "row") {
-                html = `
-<${tagName} class="b3-label">
-    <div class="fn__block">
-        ${item.title ?? ""}
-        ${item.description ? `<div class="b3-label__text">${item.description}</div>` : ""}
-        <div class="fn__hr"></div>
-    </div>
-</${tagName}>
-                `;
-            } else {
-                html = `
-<${tagName} class="fn__flex b3-label config__item">
-    <div class="fn__flex-1">
-        ${item.title ?? ""}
-        ${item.description ? `<div class="b3-label__text">${item.description}</div>` : ""}
-    </div>
-    ${actionElement ? "<span class='fn__space'></span>" : ""}
-</${tagName}>
-                `;
-            }
-            contentElement.insertAdjacentHTML("beforeend", html);
-            if (actionElement) {
-                if (item.direction === "row") {
-                    contentElement.lastElementChild?.lastElementChild?.insertAdjacentElement("beforeend", actionElement);
-                    actionElement.classList.add("fn__block");
-                } else {
-                    actionElement.classList.remove("fn__block");
-                    actionElement.classList.add("fn__flex-center", "fn__size200");
-                    contentElement.lastElementChild?.insertAdjacentElement("beforeend", actionElement);
-                }
-            }
-        });
-
-        const closeElement = dialog.element.querySelector(".b3-dialog__close") as HTMLElement;
-        const scrimElement = dialog.element.querySelector(".b3-dialog__scrim") as HTMLElement;
-
-        dialog.destroyNative = dialog.destroy;
-        dialog.destroy = () => {
-            this.console.log("settingDialog destroy");
-            this.closeDialogByElement(dialog.element);
-        };
-
-        // 设置对话框点击事件
-        const dialogClickHandler = (event: MouseEvent) => {
-            // 阻止冒泡，否则点击 Dialog 时会导致 menu 关闭
-            event.stopPropagation();
-
-            const target = event.target as HTMLElement;
-            const tagName = target.tagName.toLowerCase();
-            const isScrim = target.classList.contains("b3-dialog__scrim");
-            const isDispatch = typeof event.detail === "string";
-            if (tagName === "button" || isScrim || isDispatch) {
-                const type = target.dataset.type;
-                if (type === "cancel" || isScrim || (isDispatch && event.detail=== "Escape")) {
-                    event.stopPropagation();
-                    this.closeDialogByElement(dialog.element);
-                } else if (type === "confirm" || (isDispatch && event.detail=== "Enter")) {
-                    event.stopPropagation();
-                    this.saveSetting(dialog.element);
-                }
-            } else if (target === closeElement || target === scrimElement) {
-                this.closeDialogByElement(dialog.element);
-            }
-
-            // 执行特殊操作
-            const action = target.closest("[data-action]")?.getAttribute("data-action");
-            if (action) {
-                if (action === "settingsSnippets") {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    this.menu?.close(); // 不关闭菜单的话对话框中的容器无法滚动
-
-                    // 过程中隐藏设置对话框，避免闪烁
-                    const styleSheet = document.createElement("style");
-                    styleSheet.textContent = "body > div[data-key='dialog-setting'] { display: none; }";
-                    document.head.appendChild(styleSheet);
-
-                    const settingDialog = openSettingTab(this.app, "appearance")!; // 直接打开并切换到外观选项卡（参考原生代码 app/src/config/index.ts openSetting 方法）
-                    const settingDialogElement = settingDialog.element;
-                    // 外观选项卡的内容是异步挂载的，需要等待 #codeSnippet 按钮出现后再点击
-                    let codeSnippetRetryCount = 0;
-                    const clickCodeSnippetButton = () => {
-                        const codeSnippetButton = settingDialogElement.querySelector("button#codeSnippet");
-                        if (codeSnippetButton) {
-                            // 点击代码片段设置按钮，打开窗口
-                            codeSnippetButton.dispatchEvent(new CustomEvent("click"));
-                            settingDialog.destroy();
-                            setTimeout(() => {
-                                // destroy 有个关闭动画，需要等待动画结束才能移除样式（参考原生代码 app/src/dialog/index.ts Dialog.destroy 方法）
-                                document.head.removeChild(styleSheet);
-                            }, Constants.TIMEOUT_DBLCLICK);
-                        } else if (++codeSnippetRetryCount < SETTING_TAB_MOUNT_MAX_RETRIES) {
-                            requestAnimationFrame(clickCodeSnippetButton);
-                        } else {
-                            // 等待超时：清理资源并恢复界面
-                            this.console.error("settingsSnippets: #codeSnippet not found, giving up");
-                            settingDialog.destroy();
-                            document.head.removeChild(styleSheet);
-                        }
-                    };
-                    requestAnimationFrame(clickCodeSnippetButton);
-
-                } else if (action === "settingsKeymap") {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    this.menu?.close(); // 不关闭菜单的话对话框中的容器无法滚动
-
-                    const settingDialogElement = openSettingTab(this.app, "keymap")!.element; // 直接打开并切换到快捷键选项卡（参考原生代码 app/src/config/index.ts openSetting 方法）
-
-                    // 查找并点击指定文本
-                    const clickListItemByText = (container: Element, text: string) => {
-                        const items = container.querySelectorAll(".b3-list-item__text");
-                        for (let i = 0; i < items.length; i++) {
-                            const item = items[i] as HTMLElement;
-                            if (item.textContent === text) {
-                                item.dispatchEvent(new CustomEvent("click", { bubbles: true }));
-                                return item;
-                            }
-                        }
-                        return null;
-                    };
-
-                    // 快捷键选项卡的内容是异步挂载的，需要等待 #keymapList 出现后再点击插件名和 reloadUI 快捷键选项
-                    let keymapRetryCount = 0;
-                    const clickPluginAndReloadUI = () => {
-                        const keymapList = settingDialogElement.querySelector("#keymapList");
-                        if (!keymapList) {
-                            if (++keymapRetryCount < SETTING_TAB_MOUNT_MAX_RETRIES) {
-                                requestAnimationFrame(clickPluginAndReloadUI);
-                            } else {
-                                // 等待超时：设置对话框保持打开，用户可手动操作
-                                this.console.error("settingsKeymap: #keymapList not found, please locate reloadUI manually");
-                            }
-                            return;
-                        }
-                        // 先点击插件名展开命令列表，再点击 reloadUI 快捷键选项
-                        const pluginItem = clickListItemByText(settingDialogElement, this.displayName);
-                        if (pluginItem?.parentElement?.nextElementSibling) {
-                            clickListItemByText(pluginItem.parentElement.nextElementSibling, this.i18n.reloadUI);
-                        }
-                    };
-                    requestAnimationFrame(clickPluginAndReloadUI);
-                } else if (action === "exportSnippets") {
-                    // 导出所有代码片段为 JSON 文件
-                    event.preventDefault();
-                    event.stopPropagation();
-                    void this.exportSnippetsToFile();
-                } else if (action.startsWith("importSnippets")) {
-                    // 通过浏览器 API 导入文件
-                    event.preventDefault();
-                    event.stopPropagation();
-
-                    if (action === "importSnippetsWithAppend") {
-                        // 追加到当前代码片段列表的开头，如果有 ID 与当前代码片段列表中的 ID 重复，则重新生成 ID
-                        void this.importSnippets(false);
-                    } else if (action === "importSnippetsWithOverwrite") {
-                        // 直接覆盖所有代码片段
-                        void this.importSnippets(true);
-                    }
-                }
-                // TODO功能: 移动端的导出导入
-            }
-        };
-
-        // 添加事件监听
-        this.addListener(dialog.element, "click", dialogClickHandler, {capture: true});
-        this.addListener(document.documentElement, "keydown", this.globalKeyDownHandler);
-        this.addListener(dialog.element, "wheel", (event: WheelEvent) => {
-            // 在菜单打开的情况下，桌面端无法滚轮滚动设置对话框的 .b3-dialog__content，需要阻止事件冒泡
-            event.stopPropagation();
-        }, {passive: true});
-        this.addListener(dialog.element, "touchmove", (event: TouchEvent) => {
-            // 在菜单打开的情况下，移动端无法上下划动设置对话框的 .b3-dialog__content，需要阻止事件冒泡
-            event.stopPropagation();
-        }, {passive: true});
+        this.settingDialog.open();
     }
 
 
