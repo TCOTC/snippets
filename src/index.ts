@@ -2913,8 +2913,6 @@ export default class PluginSnippets extends Plugin {
         }
         this.console.log("deleteSnippetSync", snippetId, snippetType);
 
-        this.setMenuSnippetCount();
-
         if (!previewState) {
             // 广播窗口没有预览该代码片段的情况下，才移除元素
             void this.removeSnippetElement(snippetId, snippetType);
@@ -2925,6 +2923,8 @@ export default class PluginSnippets extends Plugin {
             this.applySnippetUIChange(snippet, false);
             // 更新 this.snippetsList，删除该代码片段
             this.snippetsList = this.snippetsList.filter((s: Snippet) => s.id !== snippetId);
+            // 广播列表变更，菜单在打开时会自行刷新计数（须在列表更新之后，否则计数仍是删除前的值）
+            this.internalEventBus.emit(SNIPPETS_CHANGED, snippetId);
         }
     }
 
