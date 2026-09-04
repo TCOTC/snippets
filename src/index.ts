@@ -1,6 +1,7 @@
 import "./index.scss";
 import {Snippet, SnippetType} from "./types";
 import {SnippetStore} from "./domain/snippet-store";
+import {SnippetsConfig} from "./config/config";
 import {ConfigService, STORAGE_NAME} from "./config/config-service";
 import {BroadcastService} from "./services/sync";
 import {FileWatchService} from "./services/file-watch";
@@ -15,8 +16,6 @@ import {
     getFrontend,
     Plugin
 } from "siyuan";
-
-import {isPromiseFulfilled} from "./utils";
 
 // CodeMirror 编辑器工厂与生命周期管理见 src/ui/editor-manager.ts，编辑对话框见 src/ui/snippets-dialog.ts
 import {EditorManager} from "./ui/editor-manager";
@@ -65,6 +64,12 @@ export default class PluginSnippets extends Plugin {
     configService!: ConfigService;
 
     /**
+     * 插件配置对象（字段默认值见 src/config/config.ts SnippetsConfig；
+     * 装配/持久化/热应用经 ConfigService，UI 模块统一经本字段类型化读取）
+     */
+    config!: SnippetsConfig;
+
+    /**
      * 文件监听服务（文件夹代码片段监听见 src/services/file-watch.ts；
      */
     fileWatchService!: FileWatchService;
@@ -86,75 +91,13 @@ export default class PluginSnippets extends Plugin {
 
     /**
      * 跨窗口广播服务（传输/窗口保活/业务分发实现见 services/sync.ts）
-     * onLayoutReady 中创建并启动；业务消息按 type 查表分发到 handlers 注册表（见构造处）。
+     * onload 中创建并启动；业务消息按 type 查表分发到 handlers 注册表（见构造处）。
      */
     syncService: BroadcastService | null = null;
 
-
-    // ================================ 插件配置 ================================
-    // 值来自配置文件 plugin-config.json（ConfigService.init 按 configItems 条目逐项覆盖）；
-    // 初始值仅占位（与 config-service.ts 条目 defaultValue 一致）。
-
-    /** CSS 代码片段实时预览（须与 snippet.type === "css" 一起使用） */
-    realTimePreview = true;
-
-    /** 新建代码片段时默认启用 */
-    newSnippetEnabled = true;
-
-    /** 在开发者工具中输出插件日志 */
-    consoleDebug = false;
-
-    /** JS 修改后自动重新加载界面 */
-    autoReloadUIAfterModifyJS = true;
-
-    /** 点击代码片段选项的行为：0 无操作 / 1 切换开关 / 2 打开编辑器 */
-    snippetOptionClickBehavior = 1;
-
-    /** 代码片段排序方式（排序逻辑见 domain/snippet.ts sortSnippets） */
-    snippetSortType = "customSort";
-
-    /** 代码片段搜索类型：0 不搜索 / 1 标题 / 2 内容 / 3 标题或内容 */
-    snippetSearchType = 1;
-
-    /** 是否显示创建副本按钮 */
-    showDuplicateButton = false;
-
-    /** 是否显示删除按钮 */
-    showDeleteButton = true;
-
-    /** 是否显示编辑按钮 */
-    showEditButton = true;
-
-    /** 发布开关显示策略：0 跟随发布服务 / 1 总是显示 / 2 总是隐藏 */
-    showPublishCheckbox = 0;
-
-    /** 新建片段时的默认类型 */
-    defaultSnippetsType: SnippetType = "css";
-
-    /** 编辑器缩进单位（CodeMirror 解析见 ui/editor-manager.ts getEditorIndentUnit） */
-    editorIndentUnit = "followSiyuan";
-
-    /** 是否允许同时打开多个代码片段编辑器 */
-    multipleSnippetEditors = true;
-
-    /** 文件夹监听模式：disabled 禁用 / enabled 监听 / loadOnly 仅启动时加载 */
-    fileWatchEnabled = "disabled";
-
-    /** 文件夹监听路径 */
-    fileWatchPath = "data/snippets";
-
-    /** 文件夹监听间隔（秒） */
-    fileWatchInterval = 5;
-
-    /** 顶栏按钮位置 */
-    topBarPosition: "left" | "right" = "right";
-
-    /** “修改 JS 后重新加载界面”通知开关（feedback.ts 按 i18n 键动态读取 *Notice 字段） */
-    reloadUIAfterModifyJSNotice = true;
-
-
     // ================================ 运行态 ================================
     // 运行期会话状态（供菜单/文件监听/编辑对话框等各模块读取；插件重载后以内核数据或配置默认值重建）。
+    // 插件配置字段已收敛到 config 对象（src/config/config.ts），不再挂在插件根上。
 
     /**
      * 是否需要重新加载界面（JS 修改后提示用户重载的呼吸标志；属菜单 UI 运行态，界面刷新后自然复位）
@@ -177,7 +120,7 @@ export default class PluginSnippets extends Plugin {
      * 当前代码片段类型（用户切换过则用缓存值，否则用配置默认值）
      */
     get snippetsType(): SnippetType {
-        const type = this.snippetsTypeCache ?? this.defaultSnippetsType;
+        const type = this.snippetsTypeCache ?? this.config.defaultSnippetsType;
         if (type !== "css" && type !== "js") {
             return "css";
         }
@@ -190,7 +133,7 @@ export default class PluginSnippets extends Plugin {
      */
     console = {
         log: (...args: any[]) => {
-            if (this.consoleDebug) {
+            if (this.config?.consoleDebug) {
                 console.log(...args);
             }
         },
@@ -203,6 +146,9 @@ export default class PluginSnippets extends Plugin {
      * 启用插件
      */
     public async onload() {
+        // 初始化配置对象（字段默认值见 config.ts，装配/持久化经 ConfigService）
+        this.config = new SnippetsConfig();
+
         // 初始化代码片段列表 Store（后端为插件实例 snippetsList 缓存：以内核为权威，菜单打开/保存后自拉刷新；
         // 变更后统一经 Store 刷新菜单计数）
         this.snippetStore = new SnippetStore(this);
@@ -236,28 +182,20 @@ export default class PluginSnippets extends Plugin {
 
         // 初始化对话框管理器（代码片段编辑对话框/确认对话框/按元素关闭等）
         this.snippetsDialog = new SnippetsDialog(this);
-    }
 
-    /**
-     * 思源布局就绪
-     */
-    public async onLayoutReady() {
-        const frontEnd = getFrontend();
-        this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
+        // ================================ 布局无关装配 ================================
+        // 以下初始化只依赖内核 HTTP / window.siyuan.config / window.Lute / document.body 静态骨架，
+        // 不依赖布局就绪后的 DOM（顶栏 #barPlugins 等）；思源保证 onload 先于 onLayoutReady 完成，
+        // 因此前移到 onload，让配置与跨窗口服务尽早可用。
 
-        // 优先初始化插件设置，因为顶栏按钮位置需要根据插件设置来决定
-        await this.configService.init();
-        // 插件设置加载之后启动文件监听
-        if (this.fileWatchEnabled && this.fileWatchEnabled !== "disabled") {
-            this.fileWatchService.start();
-        }
+        // 是否为移动端（getFrontend 只读 UA 与静态骨架，官方样例即在 onload 调用）
+        this.isMobile = ["mobile", "browser-mobile"].includes(getFrontend());
 
-        // 顶栏按钮图标（iconJcsm symbol 注册见 SnippetsMenu.initIcons，src/ui/menu.ts）
+        // 顶栏按钮图标（iconJcsm symbol 注册见 SnippetsMenu.initIcons，src/ui/menu.ts；
+        // addIcons 仅向 body 注入隐藏 svg defs，须先于 initTopBar 调用）
         this.menuView.initIcons();
 
-        this.menuView.initTopBar().then();
-
-        // 注册快捷键（都默认置空）
+        // 注册快捷键（都默认置空；addCommand 只写 window.siyuan.config.keymap，无布局依赖）
         this.addCommand({
             langKey: "openSnippetsManager", // 打开代码片段管理器
             hotkey: "",
@@ -275,7 +213,14 @@ export default class PluginSnippets extends Plugin {
             },
         });
 
-        // 初始化跨窗口同步服务用于跨窗口通信（需要等插件设置加载完成；传输 + 窗口保活收敛于 services/sync.ts）
+        // 初始化插件设置（loadData 走内核 HTTP，不依赖布局 DOM；顶栏按钮位置等运行期再读取配置）
+        await this.configService.init();
+        // 插件设置加载之后启动文件监听
+        if (this.config.fileWatchEnabled && this.config.fileWatchEnabled !== "disabled") {
+            this.fileWatchService.start();
+        }
+
+        // 初始化跨窗口同步服务用于跨窗口通信（传输 + 窗口保活收敛于 services/sync.ts）
         this.syncService = new BroadcastService({
             logger: this.console,
             // 业务分发注册表见 SnippetManager.buildSyncHandlers（src/services/snippet-manager.ts）：
@@ -285,6 +230,15 @@ export default class PluginSnippets extends Plugin {
         await this.syncService.start();
 
         console.log(this.displayName, "plugin onloaded");
+    }
+
+    /**
+     * 思源布局就绪
+     */
+    public async onLayoutReady() {
+        // 初始化顶栏按钮（addTopBar 依赖布局就绪后的顶栏 DOM #barPlugins，须在 onLayoutReady 中调用；
+        // 按钮位置取自已加载完成的插件设置）
+        this.menuView.initTopBar().then();
     }
 
     /**
@@ -298,12 +252,22 @@ export default class PluginSnippets extends Plugin {
 
     /**
      * 禁用插件
+     * 运行时 DOM/资源清理统一收敛于此：对话框、编辑器注入样式、监听器、菜单、文件监听等
+     * 均属插件自理范围（宿主只清理其登记过的顶栏按钮/停靠栏等），禁用与卸载路径都必须覆盖。
      */
     public onunload() {
         // 关闭跨窗口同步服务（发送下线通知并断开连接）
         this.syncService?.stop();
 
-        // 停止主题模式监听
+        // 关闭全部插件模态对话框（含 CodeMirror 编辑器销毁、对话框监听器移除；
+        // 实现见 SnippetsDialog.closeAllDialogs，静默关闭不弹确认）
+        this.snippetsDialog.closeAllDialogs();
+
+        // 移除 CodeMirror 编辑器样式（编辑对话框运行中向 document.head 注入的 .cm-content 样式，
+        // 实现见 EditorManager.cleanupEditorStyles）
+        this.editorManager?.cleanupEditorStyles();
+
+        // 停止主题模式监听（对话框已关闭，observer 若仍在则兜底断开）
         this.editorManager?.stopThemeModeWatch();
 
         // 移除菜单
@@ -311,42 +275,31 @@ export default class PluginSnippets extends Plugin {
 
         // 停止文件监听
         this.fileWatchService.stop();
+
+        // 移除所有登记的监听器（兜底：含 document 级全局键盘等宿主流元素上的监听器，
+        // 实现见 listener-registry.ts ListenerRegistry.destroy）
+        this.listenerRegistry.destroy();
 
         console.log(this.displayName, "plugin unloaded");
     }
 
     /**
      * 卸载插件
+     * 思源卸载流程先执行 onunload 再执行本方法，因此这里只保留卸载专属逻辑：删除配置文件。
      */
-    public uninstall() {
-        // 关闭跨窗口同步服务（发送下线通知并断开连接）
-        this.syncService?.stop();
-
-        // 移除配置文件
-        const response = this.removeData(STORAGE_NAME) as any;
-        if (!isPromiseFulfilled(response)) {
+    public async uninstall() {
+        // 移除配置文件：removeData 在只读模式/插件已销毁等场景会 reject，内核返回的业务响应 code 非 0 也视为失败
+        let removeResponse: any;
+        try {
+            removeResponse = await this.removeData(STORAGE_NAME);
+        } catch (e) {
+            removeResponse = e;
+        }
+        if (removeResponse?.code !== 0) {
             // 写入失败
-            this.showErrorMessage(this.i18n.removeConfigFailed + " [" + response?.code + ": " + response?.msg + "]", 20000, "error");
+            this.showErrorMessage(this.i18n.removeConfigFailed + " [" + removeResponse?.code + ": " + removeResponse?.msg + "]", 20000, "error");
             return;
         }
-
-        // 移除所有 Dialog（关闭全部插件模态对话框，实现见 SnippetsDialog.closeAllDialogs）
-        this.snippetsDialog.closeAllDialogs();
-
-        // 移除 CodeMirror 编辑器样式（实现见 EditorManager.cleanupEditorStyles）
-        this.editorManager?.cleanupEditorStyles();
-
-        // 移除菜单
-        this.menuView.close();
-
-        // 停止文件监听
-        this.fileWatchService.stop();
-
-        // 停止主题模式监听
-        this.editorManager?.stopThemeModeWatch();
-
-        // 移除所有监听器
-        this.listenerRegistry.destroy();
 
         console.log(this.displayName, "plugin uninstalled");
     }

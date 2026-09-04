@@ -311,7 +311,7 @@ export class EditorManager {
             const snippetType = dialogElement.getAttribute("data-snippet-type") || "css";
             const newState = EditorState.create({
                 doc: currentState.doc,
-                extensions: createEditorExtensions(newTheme, snippetType, getEditorIndentUnit(this.plugin.editorIndentUnit), this.plugin.i18n),
+                extensions: createEditorExtensions(newTheme, snippetType, getEditorIndentUnit(this.plugin.config.editorIndentUnit), this.plugin.i18n),
             });
 
             // 更新编辑器状态，保留滚动位置和光标位置
@@ -350,14 +350,14 @@ export class EditorManager {
         contentContainer.innerHTML = "";
 
         // 重新创建编辑器
-        createCodeMirrorEditor(contentContainer, currentContent, snippetType, this.plugin.editorIndentUnit, this.plugin.i18n);
+        createCodeMirrorEditor(contentContainer, currentContent, snippetType, this.plugin.config.editorIndentUnit, this.plugin.i18n);
 
         this.plugin.console.log(`recreateEditor: editor recreated: ${dialogElement}`);
     }
 
     /**
-     * 移除全局 CodeMirror 样式（卸载插件时使用）
-     * 编辑器在运行中可能向 document.head 注入含 .cm-content 的 style，卸载时清理之。
+     * 移除全局 CodeMirror 样式（禁用插件时使用）
+     * 编辑器在运行中可能向 document.head 注入含 .cm-content 的 style，禁用时清理之。
      */
     cleanupEditorStyles() {
         const styleElements = Array.from(document.head.querySelectorAll("style")) as HTMLStyleElement[];

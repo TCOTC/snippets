@@ -14,8 +14,8 @@ const PLUGIN_NAME = "snippets";                    // 插件名
 /**
  * 顶栏菜单管理器
  * 菜单状态（menu/menuItems/呼吸标志）为本类内部状态，拖拽交互与拖拽状态见 MenuDragSort（src/ui/menu-drag-sort.ts）；
- * 展示配置（snippetSearchType/snippetSortType/snippetOptionClickBehavior/show* 等）为插件实例字段，
- * 经 plugin 延迟读取；业务动作调用 plugin.snippetManager/plugin.snippetsDialog 等模块方法。
+ * 展示配置（snippetSearchType/snippetSortType/snippetOptionClickBehavior/show* 等）收敛在插件 config 对象
+ * （src/config/config.ts），经 plugin.config 类型化读取；业务动作调用 plugin.snippetManager/plugin.snippetsDialog 等模块方法。
  */
 export class SnippetsMenu {
     private readonly plugin: PluginSnippets;
@@ -98,7 +98,7 @@ export class SnippetsMenu {
         this.topBarElement = this.plugin.addTopBar({
             icon: "iconJcsm",
             title: title,
-            position: this.plugin.topBarPosition || "right",
+            position: this.plugin.config.topBarPosition || "right",
             callback: () => {
                 this.openSnippetsManager();
             }
@@ -164,7 +164,7 @@ export class SnippetsMenu {
     <span class="jcsm-glider"></span>
 </div>
 <span class="fn__flex-1"></span>
-<button class="block__icon block__icon--show fn__flex-center ariaLabel${this.plugin.snippetSearchType === 0 ? " fn__none" : ""}" data-type="search" data-position="north" aria-label="${this.plugin.i18n.search}"><svg><use xlink:href="#iconSearch"></use></svg></button>
+<button class="block__icon block__icon--show fn__flex-center ariaLabel${this.plugin.config.snippetSearchType === 0 ? " fn__none" : ""}" data-type="search" data-position="north" aria-label="${this.plugin.i18n.search}"><svg><use xlink:href="#iconSearch"></use></svg></button>
 <button class="block__icon block__icon--show fn__flex-center ariaLabel" data-type="config" data-position="north"><svg><use xlink:href="#iconSettings"></use></svg></button>
 <button class="block__icon block__icon--show fn__flex-center ariaLabel${this.plugin.isReloadUIRequired ? " jcsm-breathing" : ""}" data-type="reload" data-position="north"><svg><use xlink:href="#iconRefresh"></use></svg></button>
 <button class="block__icon block__icon--show fn__flex-center ariaLabel" data-type="new" data-position="north"><svg><use xlink:href="#iconAdd"></use></svg></button>
@@ -208,7 +208,7 @@ export class SnippetsMenu {
             const tagName = target.tagName.toLowerCase();
             if (tagName === "input" && target.dataset.action === "search") {
                 // 筛选代码片段（过滤逻辑见 domain/snippet.ts filterSnippetsByKeyword）
-                const filterSnippetsIds = filterSnippetsByKeyword(this.plugin.snippetsList, this.plugin.snippetSearchType, target.value);
+                const filterSnippetsIds = filterSnippetsByKeyword(this.plugin.snippetsList, this.plugin.config.snippetSearchType, target.value);
                 if (filterSnippetsIds) {
                     this.menuItems.querySelectorAll(".jcsm-snippet-item").forEach((item: HTMLElement) => {
                         if (filterSnippetsIds.includes(item.dataset.id!)) {
@@ -285,7 +285,7 @@ export class SnippetsMenu {
         }
 
         // this.topBarPosition 不存在的时候就默认为 right
-        const dock = this.plugin.topBarPosition === "left" ? document.querySelector("#dockLeft") : document.querySelector("#dockRight");
+        const dock = this.plugin.config.topBarPosition === "left" ? document.querySelector("#dockLeft") : document.querySelector("#dockRight");
         const dockRect = dock?.getBoundingClientRect();
         const dockWidth = ((dockRect?.width || 0) + 1).toString() + "px";
 
@@ -298,7 +298,7 @@ export class SnippetsMenu {
         }
         // 不要用鼠标位置、菜单要固定宽度，否则切换 CSS 和 JS 时，菜单可能会大幅抖动或者超出窗口边界
         this.menu.element.style.width = "min(400px, 90vw)";
-        if (this.plugin.topBarPosition === "left") {
+        if (this.plugin.config.topBarPosition === "left") {
             this.menu.element.style.right = "";
             this.menu.element.style.left = dockWidth;
         } else {
@@ -334,7 +334,7 @@ export class SnippetsMenu {
         this.destroyGlobalKeyDownHandler();
 
         // 自动重新加载界面（无打开的编辑对话框时才重载）
-        if (this.plugin.autoReloadUIAfterModifyJS && this.plugin.isReloadUIRequired && !this.plugin.editorManager.hasEditorDialogsOpen()) {
+        if (this.plugin.config.autoReloadUIAfterModifyJS && this.plugin.isReloadUIRequired && !this.plugin.editorManager.hasEditorDialogsOpen()) {
             this.plugin.postReloadUI();
         }
     }
@@ -501,7 +501,7 @@ export class SnippetsMenu {
                 if (type === "search") {
                     // 显示或隐藏搜索输入框
                     const searchInput = this.menuItems.querySelector("input[data-action='search']") as HTMLInputElement;
-                    if (this.plugin.snippetSearchType !== 0 && searchInput) {
+                    if (this.plugin.config.snippetSearchType !== 0 && searchInput) {
                         const isOpen = !searchInput.classList.contains("fn__none");
                         if (isOpen) {
                             // 隐藏搜索输入框
@@ -513,8 +513,8 @@ export class SnippetsMenu {
                         } else {
                             // 显示搜索输入框
                             target.classList.add("jcsm-active");
-                            const placeholderText = this.plugin.snippetSearchType === 0 ? this.plugin.i18n.search :
-                                this.plugin.i18n[["snippetSearchTypeName", "snippetSearchTypeContent", "snippetSearchTypeNameAndContent"][this.plugin.snippetSearchType - 1]];
+                            const placeholderText = this.plugin.config.snippetSearchType === 0 ? this.plugin.i18n.search :
+                                this.plugin.i18n[["snippetSearchTypeName", "snippetSearchTypeContent", "snippetSearchTypeNameAndContent"][this.plugin.config.snippetSearchType - 1]];
                             searchInput.setAttribute("placeholder", placeholderText);
                             searchInput.classList.remove("fn__none");
                             searchInput.focus();
@@ -587,7 +587,7 @@ export class SnippetsMenu {
                 this.plugin.snippetManager.createSnippet();
             } else {
                 // 点击代码片段的菜单项
-                if (this.plugin.snippetOptionClickBehavior === 1) {
+                if (this.plugin.config.snippetOptionClickBehavior === 1) {
                     // 切换代码片段的开关状态
                     const snippetSwitchCheckBox = snippetMenuItem.querySelector("input[data-type='snippetSwitch']") as HTMLInputElement;
                     snippetSwitchCheckBox.checked = !snippetSwitchCheckBox.checked;
@@ -595,7 +595,7 @@ export class SnippetsMenu {
                     if (snippet) {
                         void this.plugin.snippetManager.toggleSnippet(snippet, snippetSwitchCheckBox.checked);
                     }
-                } else if (this.plugin.snippetOptionClickBehavior === 2) {
+                } else if (this.plugin.config.snippetOptionClickBehavior === 2) {
                     // 打开代码片段编辑器
                     const snippet = await this.plugin.snippetManager.getSnippetById(snippetMenuItem.dataset.id!);
                     if (snippet === undefined) {
@@ -621,7 +621,7 @@ export class SnippetsMenu {
      * 是否显示发布服务开关
      */
     isShowPublishCheckbox() {
-        return this.plugin.showPublishCheckbox === 0 ? window.siyuan.config!.publish.enable === true : this.plugin.showPublishCheckbox === 1;
+        return this.plugin.config.showPublishCheckbox === 0 ? window.siyuan.config!.publish.enable === true : this.plugin.config.showPublishCheckbox === 1;
     }
 
     /**
@@ -632,7 +632,7 @@ export class SnippetsMenu {
     genMenuSnippetsItems(argSnippetsList?: Snippet[]): string {
         // 传入指定列表（如新增副本的单个菜单项）时不排序；默认按插件排序方式处理全量列表
         // （含深拷贝与按键排序，见 domain/snippet.ts sortSnippets）
-        const snippetsList = argSnippetsList ?? sortSnippets(this.plugin.snippetsList ?? [], this.plugin.snippetSortType);
+        const snippetsList = argSnippetsList ?? sortSnippets(this.plugin.snippetsList ?? [], this.plugin.config.snippetSortType);
 
         const isTouch = this.plugin.isMobile || this.isTouchDevice;
         const showPublishCheckbox = this.isShowPublishCheckbox();
@@ -647,9 +647,9 @@ export class SnippetsMenu {
 <div class="jcsm-snippet-item b3-menu__item" data-type="${snippet.type}" data-id="${snippet.id}">
     <span class="jcsm-snippet-name fn__flex-1" placeholder="${this.plugin.i18n.emptySnippet}">${safeSnippetName.innerHTML}</span>
     <span class="fn__space"></span>
-    <button class="block__icon block__icon--show fn__flex-center${ isTouch ? " jcsm-touch" : ""}${this.plugin.showDeleteButton    ? "" : " fn__none"}" data-type="delete"><svg><use xlink:href="#iconTrashcan"></use></svg></button>
-    <button class="block__icon block__icon--show fn__flex-center${ isTouch ? " jcsm-touch" : ""}${this.plugin.showDuplicateButton ? "" : " fn__none"}" data-type="duplicate"><svg><use xlink:href="#iconCopy"></use></svg></button>
-    <button class="block__icon block__icon--show fn__flex-center${ isTouch ? " jcsm-touch" : ""}${this.plugin.showEditButton      ? "" : " fn__none"}" data-type="edit"><svg><use xlink:href="#iconEdit"></use></svg></button>
+    <button class="block__icon block__icon--show fn__flex-center${ isTouch ? " jcsm-touch" : ""}${this.plugin.config.showDeleteButton    ? "" : " fn__none"}" data-type="delete"><svg><use xlink:href="#iconTrashcan"></use></svg></button>
+    <button class="block__icon block__icon--show fn__flex-center${ isTouch ? " jcsm-touch" : ""}${this.plugin.config.showDuplicateButton ? "" : " fn__none"}" data-type="duplicate"><svg><use xlink:href="#iconCopy"></use></svg></button>
+    <button class="block__icon block__icon--show fn__flex-center${ isTouch ? " jcsm-touch" : ""}${this.plugin.config.showEditButton      ? "" : " fn__none"}" data-type="edit"><svg><use xlink:href="#iconEdit"></use></svg></button>
     <span class="fn__space"></span>
     <input data-type="publishSwitch" class="jcsm-switch b3-switch fn__flex-center ariaLabel${ showPublishCheckbox ? "" : " fn__none"}" aria-label="${this.plugin.i18n.snippetDisabledInPublish}" data-position="north" type="checkbox"${snippet.disabledInPublish ? "" : " checked"}>
     <span class="fn__space"></span>

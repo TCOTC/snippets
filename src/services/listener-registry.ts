@@ -1,6 +1,6 @@
 // 事件监听器统一簿记
-// 职责：插件内 addListener/removeListener 统一登记，实例卸载（uninstall）时经 destroy 移除全部监听器。
-// 监听器绑定在插件自建元素上，元素生命周期（对话框/菜单关闭、插件卸载）均显式 removeListener 清理，
+// 职责：插件内 addListener/removeListener 统一登记，插件禁用（onunload）时经 destroy 移除全部监听器。
+// 监听器绑定在插件自建元素上，元素生命周期（对话框/菜单关闭、插件禁用）均显式 removeListener 清理，
 // 登记记录同步摘除，无需后台轮询检查 DOM。
 import type PluginSnippets from "../index";
 

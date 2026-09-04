@@ -205,7 +205,7 @@ export class MenuDragSort {
      * @param event 鼠标事件
      */
     handleMenuMousedown(event: MouseEvent) {
-        if (this.plugin.snippetSortType !== "customSort") {
+        if (this.plugin.config.snippetSortType !== "customSort") {
             return;
         }
 
@@ -296,7 +296,7 @@ export class MenuDragSort {
      * @param event 触摸事件
      */
     handleMenuTouchstart(event: TouchEvent) {
-        if (this.plugin.snippetSortType !== "customSort") {
+        if (this.plugin.config.snippetSortType !== "customSort") {
             return;
         }
 

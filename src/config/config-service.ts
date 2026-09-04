@@ -1,12 +1,12 @@
 // 插件配置：声明式配置项定义 + 装配、持久化与热应用
 // 本模块统一承载：配置项类型与条目构建（SnippetsConfigItem/createSnippetsConfigItems，条目持有插件实例
-// 引用，运行态属性在调用时才求值）、ConfigService（配置读取与版本校验 → 逐项写入插件实例
-// 字段 → 构建 Setting 项；对话框保存 saveFromDialog；配置热应用 applyConfig（onDataChanged 同源）；
+// 引用，运行态属性在调用时才求值）、ConfigService（配置读取并与默认值合并 → 写入插件 config
+// 对象字段 → 构建 Setting 项；对话框保存 saveFromDialog；配置热应用 applyConfig（onDataChanged 同源）；
 // 通知禁用持久化 disableNotification）。
-// 配置值存于插件实例同名字段（配置每次 init 从磁盘重新加载、写配置即落盘，无需外部全局仓库）；
+// 配置值存于插件 config 对象（SnippetsConfig 字段默认值为事实源，见 config.ts；init 从磁盘合并、写配置即落盘）；
 // 配置文件读写经插件生命周期方法（loadData/saveData/removeData）与本模块自持的存储键名。
 import {hideMessage, Setting} from "siyuan";
-import {htmlToElement, isPromiseFulfilled} from "../utils";
+import {htmlToElement} from "../utils";
 import type PluginSnippets from "../index";
 import type {SettingItem} from "../types";
 
@@ -25,7 +25,6 @@ export interface SnippetsConfigItem {
     key: string;
     description?: string;
     type?: "boolean" | "string" | "number" | "selectString" | "selectNumber" | "createActionElement";
-    defaultValue?: any;
     direction?: "row" | "column";
     createActionElement?: () => HTMLElement;
     options?: SnippetsConfigOption[];
@@ -39,11 +38,6 @@ const PLUGIN_NAME = "snippets";                    // 插件名（通知消息 i
 export const STORAGE_NAME = "plugin-config.json";  // 配置文件名（index 侧 removeData 亦使用）
 
 /**
- * 当前插件配置结构版本（配置结构有变化时升级）
- */
-const CONFIG_VERSION = 1;
-
-/**
  * 配置服务
  */
 export class ConfigService {
@@ -55,7 +49,7 @@ export class ConfigService {
     private configItems: SnippetsConfigItem[] = [];
 
     /**
-     * 插件设置对象（仅 init 通过版本校验后创建并填充；失败时保持未初始化）
+     * 插件设置对象（init 装配后可用）
      */
     private settingInstance: Setting | undefined;
 
@@ -64,7 +58,7 @@ export class ConfigService {
     }
 
     /**
-     * 插件设置对象（init 通过版本校验后才可用）
+     * 插件设置对象（init 完成后可用）
      */
     get setting(): Setting | undefined {
         return this.settingInstance;
@@ -79,13 +73,6 @@ export class ConfigService {
     }
 
     /**
-     * 删除配置文件（版本异常时调用）
-     */
-    private async removeStoredConfig(): Promise<void> {
-        await this.plugin.removeData(STORAGE_NAME);
-    }
-
-    /**
      * 写入配置文件
      */
     private async saveStoredConfig(content: any): Promise<void> {
@@ -93,17 +80,18 @@ export class ConfigService {
     }
 
     /**
-     * 读取配置项当前值（存于插件实例对应字段，键与 configItems 条目 key 一致）
+     * 读取配置项当前值（存于插件 config 对象对应字段，键与 configItems 条目 key 一致）
+     * configItems 以字符串 key 声明式驱动，字符串索引必然经过 any，边界收在本方法内
      */
     private read(key: string): any {
-        return (this.plugin as any)[key];
+        return (this.plugin.config as any)[key];
     }
 
     /**
-     * 写配置项到插件实例对应字段
+     * 写配置项到插件 config 对象对应字段
      */
     private write(key: string, value: any) {
-        (this.plugin as any)[key] = value;
+        (this.plugin.config as any)[key] = value;
     }
 
     /**
@@ -130,38 +118,20 @@ export class ConfigService {
 
     /**
      * 初始化插件设置
-     * 加载配置文件 → 版本校验（异常移除配置/高版本提示后中止）→ 写默认值 → 挂载实例属性 → 装配 Setting
+     * 加载配置文件 → 与默认配置合并（存储有值的键覆盖 config 对象字段默认值）→ 装配 Setting
      */
     public async init() {
-        // TODO测试: 需要测试会不会在同步完成之前加载数据，然后同步修改数据之后插件没有重载。如果有这种情况的话提 issue、试试把 loadData() 和 this.setting 相关的逻辑放在 onLayoutReady 中有没有问题
-        const config = await this.loadStoredConfig();
-        // 配置不存在时 config === ""
-        if (config !== "") {
-            // 版本处理
-            if (!config.version || typeof config.version !== "number" || isNaN(config.version)) {
-                // 判断 config.version 是否不存在或不是数字
-                // 配置文件异常，移除配置文件、弹出错误消息
-                await this.removeStoredConfig();
-                this.plugin.showErrorMessage(this.plugin.i18n.loadConfigError);
-            } else if (config.version > CONFIG_VERSION) {
-                // 当前配置文件是更高版本的，与当前版本不兼容，弹出消息提示用户升级插件（可以不升级）
-                // 如果用户不升级插件，还保存了设置，则直接覆盖掉高版本配置，这样也没有问题，因为高版本加载的时候又会自动调整配置结构
-                this.plugin.showErrorMessage(this.plugin.i18n.loadConfigIncompatible, 15000);
-                return;
-            }
-            // else if (config.version < this.version) {
-            //     // 预留逻辑
-            //     // 当前配置文件是更低版本的，需要调整结构
-            //     this.updateConfig(config);
-            //     return
-            // }
-        }
+        const stored = await this.loadStoredConfig();
+        // 配置文件不存在时 loadData 返回空串，视为无历史配置
+        const config = (typeof stored === "object" && stored !== null) ? stored : {};
 
-        // 读取配置或者设置默认值
+        // 从配置文件合并到 config 对象（值缺失/新增键时保持字段默认值，默认值事实源见 config.ts）
         this.initConfigItems();
         this.configItems.forEach(item => {
-            // 写配置到实例字段（缺失时用默认值；无默认值的按钮类条目写 undefined，不参与持久化）
-            this.write(item.key, config[item.key] ?? item.defaultValue);
+            if (item.type === "createActionElement") return;
+            if (Object.prototype.hasOwnProperty.call(config, item.key)) {
+                this.write(item.key, config[item.key]);
+            }
         });
 
         this.settingInstance = new Setting({});
@@ -177,7 +147,7 @@ export class ConfigService {
      * 从对话框元素读取控件值并保存（值有变化时写入并应用对应 UI 副作用）
      * @param dialogElement 对话框元素
      */
-    public saveFromDialog(dialogElement: HTMLElement) {
+    public async saveFromDialog(dialogElement: HTMLElement) {
         this.configItems.forEach(async item => {
             let newValue;
             let element: HTMLInputElement | HTMLSelectElement | null = null;
@@ -208,7 +178,7 @@ export class ConfigService {
                 case "number":
                     element = dialogElement.querySelector(`input[data-type='${item.key}']`);
                     if (!element) return;
-                    newValue = parseInt((element as HTMLInputElement).value) || item.defaultValue || 0;
+                    newValue = parseInt((element as HTMLInputElement).value) || this.read(item.key) || 0;
                     break;
             }
 
@@ -218,11 +188,17 @@ export class ConfigService {
             }
         });
 
-        const saveResponse = this.persistConfig();
-        if (!isPromiseFulfilled(saveResponse)) {
-            // 写入失败
-            const response = saveResponse as any;
-            this.plugin.showErrorMessage(this.plugin.i18n.saveConfigFailed + " [" + response?.code + ": " + response?.msg + "]", 20000, "error");
+        // 等待写入完成后再决定是否关闭对话框：
+        // saveData 在只读模式/插件已销毁等场景会 reject，内核返回的业务响应 code 非 0 也视为写入失败
+        let saveResponse: any;
+        try {
+            saveResponse = await this.persistConfig();
+        } catch (e) {
+            saveResponse = e;
+        }
+        if (saveResponse?.code !== 0) {
+            // 写入失败：提示并保持对话框打开，用户可重试或取消
+            this.plugin.showErrorMessage(this.plugin.i18n.saveConfigFailed + " [" + saveResponse?.code + ": " + saveResponse?.msg + "]", 20000, "error");
             return;
         }
 
@@ -239,7 +215,9 @@ export class ConfigService {
             return;
         }
         // 逐个配置项与当前值比较，有变化时写入并触发对应 UI 更新
+        // 按钮类条目无对应字段，不参与热应用
         this.configItems.forEach(item => {
+            if (item.type === "createActionElement") return;
             if (config.hasOwnProperty(item.key)) {
                 const newValue = config[item.key];
                 if (this.read(item.key) !== newValue) {
@@ -294,11 +272,13 @@ export class ConfigService {
 
     /**
      * 将全部配置项收集为配置对象并写入文件
-     * @returns saveData 的返回（调用方用 isPromiseFulfilled 判断是否成功）
+     * @returns saveData 的返回（调用方 await 后检查响应 code 是否为 0 判断是否成功）
      */
     private persistConfig(): any {
-        const config: any = { version: CONFIG_VERSION };
+        const config: any = {};
         this.configItems.forEach(item => {
+            // 按钮类条目无配置值，不参与持久化
+            if (item.type === "createActionElement") return;
             config[item.key] = this.read(item.key);
         });
         return this.saveStoredConfig(config);
@@ -326,7 +306,7 @@ export class ConfigService {
                     );
                 } else if ((item.type === "selectString" || item.type === "selectNumber") && item.options) {
                     // 创建下拉框
-                    const currentValue = this.read(item.key) ?? item.defaultValue;
+                    const currentValue = this.read(item.key);
                     const optionsHtml = item.options.map(option => {
                         // 由于 HTML 的 value 属性最终都会被转为字符串，这里直接用字符串比较即可
                         const isSelected = String(currentValue) === String(option.value);
@@ -337,16 +317,16 @@ export class ConfigService {
                         `<select class="b3-select fn__flex-center" data-type="${item.key}">${optionsHtml}</select>`
                     );
                 } else if (item.type === "string") {
-                    // 创建文本输入框
-                    const currentValue = this.read(item.key) ?? item.defaultValue ?? "";
+                    // 创建文本输入框（无 placeholder：输入框恒有当前值，placeholder 永不可见）
+                    const currentValue = this.read(item.key) ?? "";
                     return htmlToElement(
-                        `<input class="b3-text-field fn__flex-center" type="text" data-type="${item.key}" value="${currentValue}"${item.defaultValue ? ` placeholder="${item.defaultValue}"` : ""}>`
+                        `<input class="b3-text-field fn__flex-center" type="text" data-type="${item.key}" value="${currentValue}">`
                     );
                 } else if (item.type === "number") {
-                    // 创建数字输入框
-                    const currentValue = this.read(item.key) ?? item.defaultValue ?? 0;
+                    // 创建数字输入框（无 placeholder：输入框恒有当前值，placeholder 永不可见）
+                    const currentValue = this.read(item.key) ?? 0;
                     return htmlToElement(
-                        `<input class="b3-text-field fn__flex-center" type="number" data-type="${item.key}" value="${currentValue}" min="1" max="300" step="1"${item.defaultValue ? ` placeholder="${item.defaultValue}"` : ""}>`
+                        `<input class="b3-text-field fn__flex-center" type="number" data-type="${item.key}" value="${currentValue}" min="1" max="300" step="1">`
                     );
                 } else if (item.type === "createActionElement" || item.createActionElement) {
                     return item.createActionElement?.() as HTMLElement;
@@ -382,14 +362,12 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "multipleSnippetEditors",
         description: "multipleSnippetEditorsDescription",
         type: "boolean",
-        defaultValue: true,
         ignore: plugin.isMobile,
     },
     {
         key: "realTimePreview",
         description: "realTimePreviewDescription",
         type: "boolean",
-        defaultValue: true,
         // 修改 realTimePreview 之后，显示/隐藏已打开 CSS 编辑对话框中的手动预览按钮
         // （启用实时预览时由输入事件驱动预览，手动按钮隐藏；禁用后恢复手动按钮）
         onApply: (newValue) => {
@@ -417,18 +395,15 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "autoReloadUIAfterModifyJS",
         description: "autoReloadUIAfterModifyJSDescription",
         type: "boolean",
-        defaultValue: true,
     },
     {
         key: "newSnippetEnabled",
         type: "boolean",
-        defaultValue: true,
     },
     {
         key: "showDuplicateButton",
         description: "showDuplicateButtonDescription",
         type: "boolean",
-        defaultValue: false,
         // 修改 showDuplicateButton 之后，查询所有菜单项修改创建副本按钮的 fn__none
         onApply: (newValue) => {
             const duplicateButtons = plugin.menuView.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='duplicate']") as NodeListOf<HTMLButtonElement>;
@@ -445,7 +420,6 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "showDeleteButton",
         description: "showDeleteButtonDescription",
         type: "boolean",
-        defaultValue: true,
         // 修改 showDeleteButton 之后，查询所有菜单项修改删除按钮的 fn__none
         onApply: (newValue) => {
             const deleteButtons = plugin.menuView.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='delete']") as NodeListOf<HTMLButtonElement>;
@@ -462,7 +436,6 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "showEditButton",
         description: "showEditButtonDescription",
         type: "boolean",
-        defaultValue: true,
         // 修改 showEditButton 之后，查询所有菜单项修改编辑按钮的 fn__none
         onApply: (newValue) => {
             const editButtons = plugin.menuView.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='edit']") as NodeListOf<HTMLButtonElement>;
@@ -479,7 +452,6 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "showPublishCheckbox",
         description: "showPublishCheckboxDescription",
         type: "selectNumber",
-        defaultValue: 0,
         options: [
             { value: 0, text: "showPublishCheckboxWithPublish" },
             { value: 1, text: "showPublishCheckboxShowAlways" },
@@ -505,7 +477,6 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "defaultSnippetsType",
         description: "defaultSnippetsTypeDescription",
         type: "selectString",
-        defaultValue: "css",
         options: [
             { value: "css", text: "defaultSnippetsTypeCSS" },
             { value: "js", text: "defaultSnippetsTypeJS" }
@@ -515,7 +486,6 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "snippetOptionClickBehavior",
         description: "snippetOptionClickBehaviorDescription",
         type: "selectNumber",
-        defaultValue: 1,
         options: [
             { value: 0, text: "snippetOptionClickBehaviorNone" },
             { value: 1, text: "snippetOptionClickBehaviorToggle" },
@@ -526,7 +496,6 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "snippetSortType",
         description: "snippetSortTypeDescription",
         type: "selectString",
-        defaultValue: "customSort",
         options: [
             { value: "fixedSort", text: "fixedSort" },             // 固定排序
             { value: "customSort", text: "customSort" },           // 自定义排序
@@ -555,7 +524,6 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "snippetSearchType",
         description: "snippetSearchTypeDescription",
         type: "selectNumber",
-        defaultValue: 1,
         options: [
             { value: 0, text: "snippetSearchTypeDisabled" },
             { value: 1, text: "snippetSearchTypeName" },
@@ -585,7 +553,6 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "editorIndentUnit",
         description: "editorIndentUnitDescription",
         type: "selectString",
-        defaultValue: "followSiyuan",
         options: [
             { value: "followSiyuan", text: "editorIndentUnitFollowSiyuan" },
             { value: "tab1", text: "editorIndentUnitTab1" },
@@ -606,7 +573,6 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "fileWatchEnabled",
         description: "fileWatchEnabledDescription",
         type: "selectString",
-        defaultValue: "disabled",
         options: [
             { value: "disabled", text: "fileWatchModeDisabled" },
             { value: "enabled", text: "fileWatchModeEnabled" },
@@ -625,7 +591,6 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "fileWatchPath",
         description: "fileWatchPathDescription",
         type: "string",
-        defaultValue: "data/snippets",
         // 修改 fileWatchPath 之后，重载监听文件（方法内部会按当前监听模式判断是否可执行）
         onApply: () => plugin.fileWatchService.handlePathChange(),
     },
@@ -633,7 +598,6 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "fileWatchInterval",
         description: "fileWatchIntervalDescription",
         type: "number",
-        defaultValue: 5,
         // 修改 fileWatchInterval 之后，按新间隔重置监听定时器
         onApply: () => plugin.fileWatchService.handleIntervalChange(),
     },
@@ -641,7 +605,6 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "topBarPosition",
         description: "topBarPositionDescription",
         type: "selectString",
-        defaultValue: "right",
         options: [
             { value: "left", text: "topBarPositionLeft" },
             { value: "right", text: "topBarPositionRight" }
@@ -701,12 +664,10 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "consoleDebug",
         description: "consoleDebugDescription",
         type: "boolean",
-        defaultValue: false,
     },
     {
         key: "reloadUIAfterModifyJSNotice",
         description: !plugin.isMobile ? "reloadUIAfterModifyJSNoticeDescription" : "reloadUIAfterModifyJSNoticeDescriptionMobile",
         type: "boolean",
-        defaultValue: true,
     }
 ];

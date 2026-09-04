@@ -28,7 +28,7 @@ export class SnippetManager {
             id: genNewSnippetId(this.plugin.snippetsList),
             name: "",
             type: this.plugin.snippetsType as "css" | "js",
-            enabled: this.plugin.newSnippetEnabled,
+            enabled: this.plugin.config.newSnippetEnabled,
             content: "",
         };
         // 不直接添加代码片段
@@ -209,7 +209,7 @@ export class SnippetManager {
                 type: "snippet_delete",
                 snippetId: id,
                 snippetType: snippetType,
-                previewState: isPreviewingSnippet(id, snippetType, this.plugin.realTimePreview),
+                previewState: isPreviewingSnippet(id, snippetType, this.plugin.config.realTimePreview),
             });
             return;
         }
@@ -342,7 +342,7 @@ export class SnippetManager {
             this.plugin.showErrorMessage(this.plugin.i18n.updateSnippetElementParamError);
             return;
         }
-        if (previewState === undefined && isPreviewingSnippet(snippet.id, snippet.type, this.plugin.realTimePreview)) {
+        if (previewState === undefined && isPreviewingSnippet(snippet.id, snippet.type, this.plugin.config.realTimePreview)) {
             // 如果开启了实时预览，并且打开了对应的 CSS 代码片段对话框，则在菜单项上开关代码片段的操作需要忽略
             // 问题案例：全局禁用 CSS，预览一个 CSS 片段，启用片段，在菜单禁用片段会导致预览元素被移除
             //  这是因为从菜单关闭时没有 previewState 参数，此时需要通过是否有实时预览中的代码片段对话框来判断
@@ -415,7 +415,7 @@ export class SnippetManager {
     async removeSnippetElement(snippetId: string, snippetType: string) {
         if (!snippetId || !snippetType) return;
         // 如果当前窗口正在预览代码片段，则不移除元素
-        if (isPreviewingSnippet(snippetId, snippetType, this.plugin.realTimePreview)) return;
+        if (isPreviewingSnippet(snippetId, snippetType, this.plugin.config.realTimePreview)) return;
 
         const elementId = `snippet${snippetType.toUpperCase()}${snippetId}`;
         const element = document.getElementById(elementId);
@@ -465,7 +465,7 @@ export class SnippetManager {
         void this.saveSnippetsList(this.plugin.snippetsList);
         void this.updateSnippetElement(snippet);
 
-        if (snippet.type === "css" && this.plugin.realTimePreview && document.querySelector(`.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id="${snippet.id}"]`)) {
+        if (snippet.type === "css" && this.plugin.config.realTimePreview && document.querySelector(`.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id="${snippet.id}"]`)) {
             // 如果开启了实时预览，并且打开了对应的 CSS 代码片段对话框，则在菜单项上开关代码片段的操作需要忽略，不广播开关状态变更到其他窗口
             return;
         }
@@ -598,7 +598,7 @@ export class SnippetManager {
             // 更新代码片段元素
             // 切换全局开关只会影响已启用的代码片段，所以过滤出来
             let filteredSnippets = this.plugin.snippetsList.filter((snippet: Snippet) => snippet.type === snippetType && snippet.enabled === true);
-            if (this.plugin.realTimePreview) {
+            if (this.plugin.config.realTimePreview) {
                 // 忽略在广播的窗口中正在实时预览的 CSS 代码片段元素更新
                 filteredSnippets = filteredSnippets.filter(snippet => !remotePreviewingSnippetIds.includes(snippet.id));
             }
@@ -628,7 +628,7 @@ export class SnippetManager {
         });
 
         let previewingSnippetIds: string[] = [];
-        if (this.plugin.realTimePreview) {
+        if (this.plugin.config.realTimePreview) {
             // 收集正在实时预览的代码片段 ID
             previewingSnippetIds = Array.from(document.querySelectorAll('.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id]')).map(item => item.getAttribute("data-snippet-id") as string);
         }

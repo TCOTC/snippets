@@ -51,7 +51,7 @@ export class SnippetsDialog {
     <div class="b3-dialog__action">
         <button data-action="cancel" class="b3-button b3-button--cancel">${this.plugin.i18n.cancel}</button>
         <div class="fn__space"></div>
-        <button data-action="preview" class="b3-button b3-button--text${snippet.type === "js" || this.plugin.realTimePreview ? " fn__none" : ""}">${this.plugin.i18n.preview}</button>
+        <button data-action="preview" class="b3-button b3-button--text${snippet.type === "js" || this.plugin.config.realTimePreview ? " fn__none" : ""}">${this.plugin.i18n.preview}</button>
         <div class="fn__space"></div>
         <button data-action="confirm" class="b3-button b3-button--text">${confirmText}</button>
     </div>
@@ -115,7 +115,7 @@ export class SnippetsDialog {
             deleteButton?.classList.remove("fn__none");
         }
 
-        if (!this.plugin.isMobile && this.plugin.multipleSnippetEditors) {
+        if (!this.plugin.isMobile && this.plugin.config.multipleSnippetEditors) {
             // 桌面端支持同时打开多个 Dialog，需要设置 Dialog 样式
             dialog.element.style.zIndex = (++window.siyuan.zIndex).toString();
             dialog.element.querySelector(".b3-dialog__scrim")?.remove();
@@ -141,7 +141,7 @@ export class SnippetsDialog {
 
         // 创建 CodeMirror 编辑器
         const contentContainer = dialog.element.querySelector(".jcsm-dialog-content") as HTMLElement;
-        const codeMirrorView = createCodeMirrorEditor(contentContainer, snippet.content, snippet.type, this.plugin.editorIndentUnit, this.plugin.i18n);
+        const codeMirrorView = createCodeMirrorEditor(contentContainer, snippet.content, snippet.type, this.plugin.config.editorIndentUnit, this.plugin.i18n);
         // codeMirrorView.contentDOM.focus();
 
         const publishSwitchInput = dialog.element.querySelector("input[data-type='publishSwitch']") as HTMLInputElement;
@@ -270,7 +270,7 @@ export class SnippetsDialog {
             // 需要等待 saveSnippet 完成之后才能确认 isReloadUIRequired 的状态
             await this.plugin.snippetManager.saveSnippet(snippet);
             // 自动重新加载界面（无打开的编辑对话框时才重载）
-            if (this.plugin.autoReloadUIAfterModifyJS && this.plugin.isReloadUIRequired && !this.plugin.editorManager.hasEditorDialogsOpen()) {
+            if (this.plugin.config.autoReloadUIAfterModifyJS && this.plugin.isReloadUIRequired && !this.plugin.editorManager.hasEditorDialogsOpen()) {
                 this.plugin.postReloadUI();
             }
         };
@@ -324,7 +324,7 @@ export class SnippetsDialog {
             }
             // 监听输入框内容变化，实时预览
             // 用了代码编辑器之后，按 Backspace、Ctrl+X 等操作都监听不到 input 事件，所以改成监听 keydown 事件
-            if (snippet.type === "css" && this.plugin.realTimePreview) {
+            if (snippet.type === "css" && this.plugin.config.realTimePreview) {
                 const isDispatch = typeof (event as CustomEvent).detail === "string";
                 // 仅在代码编辑器区域内按键或自定义事件触发时处理实时预览
                 if (target === codeMirrorView.contentDOM || (isDispatch && (event as CustomEvent).detail === "realTimePreview")) {
@@ -400,7 +400,7 @@ export class SnippetsDialog {
             const isDispatch = typeof event.detail === "string";
             if (tagName === "input" && target === snippetSwitchInput) {
                 // 切换代码片段的开关状态
-                if (this.plugin.realTimePreview && snippet.type === "css") {
+                if (this.plugin.config.realTimePreview && snippet.type === "css") {
                     previewHandler();
                 }
             } else if (tagName === "button") {
@@ -450,7 +450,7 @@ export class SnippetsDialog {
         });
 
         // 打开对话框时先执行一次预览
-        if (snippet.type === "css" && this.plugin.realTimePreview) {
+        if (snippet.type === "css" && this.plugin.config.realTimePreview) {
             previewHandler();
         }
 
@@ -720,7 +720,7 @@ export class SnippetsDialog {
     }
 
     /**
-     * 关闭全部插件模态对话框（卸载插件时使用）
+     * 关闭全部插件模态对话框（禁用插件时使用）
      * 含代码片段编辑/设置/确认等所有 data-key 以 jcsm- 开头的已打开对话框。
      */
     closeAllDialogs() {

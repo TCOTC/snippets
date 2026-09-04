@@ -1,6 +1,4 @@
 {
-  "loadConfigError": "Configuration file error, configuration file has been removed",
-  "loadConfigIncompatible": "The plugin configuration file is of a higher version, please upgrade the plugin, or save once plugin settings to overwrite the current configuration",
   "getSnippetsListFailed": "Failed to get snippets list",
   "getSnippetFailed": "Failed to get snippet",
   "saveSnippetsListFailed": "Failed to save snippets list",

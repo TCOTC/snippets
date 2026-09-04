@@ -1,6 +1,6 @@
 // 通知与错误提示
 // 职责：showNotification（仅弹出设置中存在的通知，含"不再提示"按钮）；showErrorMessage（错误提示）。
-// 通知开关等配置存于插件实例对应字段（含 *Notice 通知开关，键与 configItems 条目一致）。
+// 通知开关等配置存于插件 config 对象对应字段（含 *Notice 通知开关，键与 configItems 条目一致）。
 import {showMessage} from "siyuan";
 import type PluginSnippets from "../index";
 
@@ -28,7 +28,7 @@ export class FeedbackService {
      * @param timeout 消息显示时间（毫秒）；-1 永不关闭；0 永不关闭，添加一个关闭按钮；undefined 默认 6000 毫秒
      */
     showNotification(messageI18nKey: string, timeout: number | undefined = undefined) {
-        if (this.notificationSwitch && (this.plugin as any)[messageI18nKey + "Notice"] && this.plugin.i18n[messageI18nKey]) {
+        if (this.notificationSwitch && (this.plugin.config as any)[messageI18nKey + "Notice"] && this.plugin.i18n[messageI18nKey]) {
             // 全局通知开关开启、该通知选项开启、i18n 键存在 → 弹出通知
             const ignoreNoticeButton = `<button class='jscm-snackbar-ignore-notice-button b3-button ariaLabel' aria-label='${this.plugin.i18n.ignoreNoticeButtonAriaLabel}'>${this.plugin.i18n.noLongerShow}</button>`;
             const message = this.plugin.i18n[messageI18nKey].replace("${ignoreNoticeButton}", ignoreNoticeButton);
