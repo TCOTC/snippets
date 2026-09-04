@@ -19,6 +19,15 @@
 ### 已完成提交（main，自下而上）
 | commit | 内容 |
 |---|---|
+| `b7718de` | docs: 记录广播协议禁传 snippet 原文的约束 |
+| `a60214f` | feat: SnippetStore 支持整表替换，清理两处漏网列表写点 |
+| `bcd8a2c` | feat: SnippetStore 支持拖拽排序移动，executeDragSort 改走统一写路径 |
+| `3de8cf0` | feat: SnippetStore 支持锚点插入，复制分支改走统一写路径 |
+| `ed90857` | feat: saveSnippet 新增/更新改走 SnippetStore 统一写路径 |
+| `df49c78` | feat: SnippetStore 支持新增/更新，saveSnippetSync 改走统一写路径 |
+| `5cc6361` | feat: 覆盖 onDataChanged 热应用同步配置，避免整插件 reload |
+| `4da4ee2` | feat: 新增 SnippetStore 统一代码片段列表删除写路径 |
+| `bfb351c` | docs: 记录架构重构设计及会话进度 |
 | `ff0a40f` | fix: 跨窗口删除后菜单计数顺序 bug（`deleteSnippetSync` 计数在列表 filter 后才刷新） |
 | `40b86f1` | refactor: 抽取 `moveElementToTop` 到 `utils.ts` |
 | `594e7da` | refactor: 接入 `event-bus`——删除片段经 `SNIPPETS_CHANGED` 事件刷新菜单计数，禁用时 `internalEventBus.clear()` |
@@ -33,19 +42,20 @@
 | `dd296e9` | refactor: 抽取纯工具函数到 `utils.ts` |
 | `4f2773e` | refactor: 抽取 `isValidJavaScriptCode` 到 `domain/snippet.ts` |
 
-当前工作区：仅 `docs/`（本文档）未跟踪；`index.ts` 已随各批提交、处于干净状态。
+当前工作区：`docs/`（本文档）未跟踪，`src/` 已随各批提交、处于干净状态（Store 收敛尚未完成的部分见下方待办）。
 
 ### 已建模块
 - `src/core/event-bus.ts`（类型化 pub/sub，`on/off/emit/clear`；注意：勿用字段名 `eventBus`，会与 siyuan `Plugin` 基类成员冲突，内部用 `internalEventBus`）
 - `src/services/storage.ts`（`getFile`/`putFile`/`renameFile`）
 - `src/utils.ts`（含 `isPromiseFulfilled`/`hideTooltip`/`showElementTooltip`/`isInputElementActive`/`htmlToElement`/`moveElementToTop`）
 - `src/domain/snippet.ts`（`isValidJavaScriptCode`/`isSnippetsTypeEnabled`）
+- `src/domain/snippet-store.ts`（`SnippetStore`：`remove`/`upsert`/`insertBefore`/`move`/`replaceAll`，单一写路径 + 统一发 `SNIPPETS_CHANGED`）
 - `types.d.ts` 新增导出 `SnippetType = "css" | "js"`
 
-### 事件化模式（已建立，尚处 1:1 阶段）
-- 事件名常量 `SNIPPETS_CHANGED`（index.ts）；订阅刷新菜单计数；delete 本地(`deleteSnippet`)与 sync(`deleteSnippetSync`) 两条路径均已 emit。
-- **注意**：不要为了"为模式而模式"把顺序正确、意图清晰的直接 `setMenuSnippetCount()` 改 emit——单个正确直接调用无需改；真正消去这些调用要等 Store 统一（见阶段 2/3），届时再集中收敛。
-- 已知未处理：`saveSnippet`/`saveSnippetSync` 里 4 处"新增/复制后 `setMenuSnippetCount()`"文本高度对称、顺序均正确，留待 Store 批次统一（文本歧义高，不宜逐点硬改）。
+### 事件化模式（已建立）
+- 事件名常量 `SNIPPETS_CHANGED`（现位于 `domain/snippet-store.ts`）；订阅刷新菜单计数。
+- 已收敛：片段列表的增/删/改/复制/拖拽排序/整表替换（导入）均改走 `SnippetStore`（`upsert`/`remove`/`insertBefore`/`move`/`replaceAll`），写后统一 emit；`saveSnippet`/`saveSnippetSync` 内手写列表修改与 `setMenuSnippetCount()` 已随各批移除，计数刷新完全由事件驱动。
+- 已知未收敛（语义非本地结构写，留待 sync/后续阶段）：`openMenu`/`getSnippetById`/`executeDragSort` 前置、`snippetsSortSync`、`saveSnippetSync` 复制分支等处“从服务端全量重拉列表”的赋值属读取权威态语义；toggle 类就地字段修改不改变列表结构。
 
 ### 已报告 issue
 - siyuan-note/siyuan **#19130**：文件写入类 API（putFile/removeFile/renameFile/copyFile）对不参与同步的目录（如 `temp/`）也会 `IncSync()`；并补充 comment 说明 `data/.siyuan/syncignore` 忽略的路径同理。
@@ -54,15 +64,41 @@
 - 前缀是思源内核 `exportResources`/`ExportResources` 为隔离/令牌下载故意加的随机 exportID（`kernel/model/export.go`），非 bug；思源原生导出不走该接口故不带。
 - 已通过 `renameFile` 把导出产物在 `temp/export` 内改名为干净名后 `saveExportFile`（zip 结构不变，新旧版本导入兼容）。跨平台可用性已核实（桌面 copy / 移动端+浏览器 均解析同一 `/export/` 实体 `temp/export`）。
 
+### 思源内核自动同步机制与广播取舍（2026-09-04 源码实证，二次修正）
+背景：这里说的“跨窗口”是**同一内核的不同前端实例**（多 Electron 窗口 / 浏览器标签页 / 移动端均连同一内核 WebSocket），与跨设备云/LAN 同步是两回事。
+用户观察：思源本身修改代码片段后会自行同步到其他前端实例。源码核实：**正确，且即时**——因为思源原生保存流程总是**成对调用**两个 API：
+1. `/api/snippet/setSnippet`（写 `data/snippets/conf.json`，本身**不广播**，见 `kernel/api/snippet.go`）；
+2. `/api/setting/setSnippet`（`setConfSnippet`，更新全局 enabledCSS/enabledJS）→ `PushReloadSnippet` → `BroadcastByType("main", "setSnippet")`（`kernel/api/setting.go`）。
+`BroadcastByType` 遍历同内核**所有实例**的 main WebSocket 会话**进程内即时写入**（`kernel/util/websocket.go`），与是否启用云/LAN 同步无关。各实例收到 `setSnippet` 后置 `config.snippet` 并 `renderSnippet()` 全量重拉重注入（桌面 `app/src/index.ts`、移动 `mobile/util/onMessage.ts`、独立窗 `window/index.ts` 均有该 case）。
+
+**内核 repo 合并路径（`repository.go` `processSyncMergeResult` → `PushReloadSnippet`）是另一回事**：那是**跨设备**场景——其他设备写的 conf.json 经数据同步拉回本机后，通知本机所有实例刷新。**不是**同内核多实例即时同步的前提。
+
+**对插件的影响（关键）**：插件自己的写库（保存/删除/开关/排序，均只调 `/api/snippet/setSnippet`，不伴随 `/api/setting/setSnippet`）**不会**触发内核广播，因此插件**仍必须**用自定义广播来即时同步其他插件实例（这点此前结论有误，已撤销“可删”建议）。例外：插件全局开关 `globalToggleSnippet` 走 `/api/setting/setSnippet` → 内核即时广播 setSnippet → 其他实例原生 `renderSnippet` 全量重渲染注入元素（会覆盖“已保存片段”的注入）；但插件 Sync 仍需处理“正在实时预览的片段保护”与“其他窗口菜单开关 UI 刷新”，故 `snippet_toggle_global` 不能整删、只可后续精简。
+- 插件写入 `/data/storage/petal/<name>/`（插件配置）不参与上述任何广播：本地写只在本实例生效；跨设备云同步合并时才走 `dataChangePlugins`（需插件覆盖 `onDataChanged`，已实现）。
+
+**广播消息取舍清单（据此阶段 3 sync 收敛）**：
+| 消息 | 现状 | 建议 |
+|---|---|---|
+| `snippet_save` / `snippet_delete` / `snippet_toggle` / `snippet_toggle_publish` / `snippets_sort` | 已保存内容/开关/排序 | **保留**：插件写库只调 snippet API、内核不广播，需自定义广播同步其他插件实例；已去原文化（只发元数据 + ID） |
+| `snippet_toggle_global` | 全局开关 | **保留（可精简）**：`/api/setting/setSnippet` 已即时广播使其他实例原生全量重渲染；Sync 仅保留“预览片段保护”与“菜单开关刷新” |
+| `snippet_element_update` / `snippet_element_remove`（预览态） | 实时预览/退出预览 | **保留**：临时内容未保存，内核无法同步，这是插件唯一必须自理的跨窗口状态；其中 `previewState: true` 预览已豁免原文，`previewState: false` 退出预览应去原文化（自拉已保存片段恢复） |
+| `setting_apply` | 插件配置 | **保留**：petal 配置本地写不跨窗口，内核不广播 |
+| `window_online` / `window_offline` / `window_online_feedback` | 窗口保活发现 | 保留（消息广播前需确认有其他窗口在线） |
+
+**已决问题**：
+1. ~~是否确认删除“可删”消息~~（已撤销：同内核多实例下插件写库不经内核广播，插件广播不能删）。
+2. **CSS 实时预览放行原文（2026-09-04 用户拍板，方案 a）**：编辑中的 CSS 实时预览（`previewState: true`）广播豁免“禁原文”，允许携带编辑中的 CSS 文本——预览内容未保存、接收窗口无法自拉，且预览由本窗口显式操作触发、受众是同内核可信实例。豁免范围严格限定：仅 CSS 编辑中预览；**退出预览**（`previewState: false`）恢复用的是已保存片段，应去原文化（接收窗口自拉）。
+
 ### 广播协议约束：消息不得携带代码片段原文（敏感信息）
 - **硬性约束（用户要求）**：跨窗口广播消息体中不允许包含 snippet 的 `content` 原文（代码可能含密钥、内网地址等敏感信息），只允许携带非敏感元数据（`snippetId`、`snippetType`、`name`、开关状态等）。
 - 接收窗口需要片段内容时，一律自行调用 `/api/snippet/getSnippet` 获取权威数据，禁止依赖消息中的原文。
-- **现状违规点（待阶段 3 sync 收敛时一并改造）**：`snippet_save`（saveSnippet）广播携带完整 `snippet` 与 `copySnippet`（含 `content`）；`snippet_element_update`（实时预览同步）广播携带完整 snippet（含 `content`）。其余消息（`snippet_toggle`、`snippet_toggle_publish`、`snippet_delete`、`snippet_element_remove`、`snippets_sort`、`setting_apply`）均只含元数据，合规。
-- **与实时预览的冲突（待议）**：CSS 实时预览的内容可能尚未保存，远程窗口无法从内核取回，跨窗口预览同步本质上需要传输原文；若坚持禁传原文，需决定多窗口实时预览的取舍（如改为仅本窗口预览），此冲突留待 sync 阶段与用户确认。
+- **豁免项（2026-09-04 用户拍板）**：编辑中的 CSS 实时预览同步（`snippet_element_update` 且 `previewState: true`）允许携带原文（content），因为内容未保存、接收窗口无法自拉；范围仅限此预览场景。
+- **现状违规点（待改造）**：`snippet_element_update` 的退出预览用法（`previewState: false`，携带已保存的 realSnippet）含原文但可自拉，应去原文化（只发 `snippetId` + `previewState: false`，接收窗口自拉后恢复）。`snippet_save`（saveSnippet）已去原文化（见下）；其余消息（`snippet_toggle`、`snippet_toggle_publish`、`snippet_delete`、`snippet_element_remove`、`snippets_sort`、`setting_apply`）均只含元数据，合规。
+- **snippet_save 已去原文化（2026-09-04，暂未提交）**：本地 `saveSnippet` 广播只发 `{ snippetId, isCopy, copySnippetId }`（写入已 `await saveSnippetsList` 落库，接收窗口按 ID 自拉即可）；`saveSnippetSync` 改为先记录本窗口旧片段、再 `getSnippetById` 自拉权威数据后走 store（复制：自拉副本后镜像菜单/对话框更新；非复制：与旧片段比较后按需更新注入元素）。
 
 ### 下一步建议（朝目标架构，拆可验证子批推进）
-1. 建 `core/state.ts` + `domain/snippet-store.ts`（阶段 2）：把 snippetsList 增/删/改收敛为单一 `apply` 并统一发 `SNIPPETS_CHANGED`，让 `saveSnippet`/`saveSnippetSync`/`deleteSnippet(Sync)`/`toggleSnippet(Sync)`/排序等散落写点逐步改走 store。
-2. 阶段 3：`services/sync.ts` 类型化广播协议并让远程消息映射到 store `apply`，消除 `*Sync` 镜像。
+1. 阶段 2（Store 收敛）已完成：`domain/snippet-store.ts` 的 `remove`/`upsert`/`insertBefore`/`move`/`replaceAll` 已承接全部本地结构写，计数统一由 `SNIPPETS_CHANGED` 事件驱动。
+2. 阶段 3：`services/sync.ts` 类型化广播协议并让远程消息映射到 store，消除 `*Sync` 镜像；广播仅发非敏感元数据与 ID（禁原文），CSS 编辑中实时预览（`previewState: true`）豁免；`snippet_element_update` 退出预览用法去原文化。
 3. 之后：config 声明式（阶段 4）、UI 视图化（阶段 5）、jcsm 收敛（阶段 6）。
 
 ---
@@ -166,7 +202,7 @@ src/
   - *持久配置*：落盘，由 `ConfigService` 读写；
   - *跨 reload 存活性句柄*：仅保留少数必须存活引用（已打开 Dialog / CodeMirror 实例）；
   - *跨窗口同步*：一律走 `sync.ts` 的消息协议，不再把状态塞进 jcsm 当"共享变量"。
-- **广播协议类型化**：定义消息联合类型，`handleBroadcastMessage` 的 switch 由 `sync.ts` 收敛；远程事件与本地变更统一映射到同一个 store `apply`，从根上消灭 `*Sync` 镜像代码。协议只传非敏感元数据、不传 snippet `content` 原文（见会话进度节「广播协议约束」）。
+- **广播协议类型化**：定义消息联合类型，`handleBroadcastMessage` 的 switch 由 `sync.ts` 收敛；远程事件与本地变更统一映射到同一个 store `apply`，从根上消灭 `*Sync` 镜像代码。协议只传非敏感元数据、不传 snippet `content` 原文（见会话进度节「广播协议约束」）；唯一豁免为 CSS 编辑中实时预览（`previewState: true`，内容未保存无法自拉）。
 - **设置声明式**：`schema.ts` 里一份配置项（key / 类型 / 默认 / 选项 / `onApply` 回调），自动派生设置对话框控件、defineProperty、持久化、变更处理；删除 `applySetting` 大 switch。
 - **UI 按视图封装**：每个视图自己持有 DOM 构建与更新逻辑，从 store 拉取数据渲染；不同视图之间不再通过 querySelector 互戳。
 
