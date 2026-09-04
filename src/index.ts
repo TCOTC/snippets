@@ -3068,18 +3068,26 @@ export default class PluginSnippets extends Plugin {
 
     /**
      * 处理代码片段元素更新同步
-     * @param data 同步数据，包含 snippet 和 previewState
+     * 预览放行原文（豁免）：previewState 为 true 时 snippet 来自消息体（编辑中内容未保存、无法自拉）；
+     * previewState 为 false 时消息不携带 snippet，需按 snippetId 自拉已保存片段恢复。
+     * @param data 同步数据，包含 snippet（可选）与 previewState
      */
-    private async updateSnippetElementSync(data: { snippet: Snippet; previewState?: boolean }) {
-        const { snippet, previewState } = data;
-        if (!snippet) {
-            this.console.error("updateSnippetElementSync: snippet is required");
-            return;
+    private async updateSnippetElementSync(data: { snippet?: Snippet; snippetId?: string; previewState?: boolean }) {
+        const { snippet, snippetId, previewState } = data;
+        let realSnippet = snippet;
+        if (!realSnippet) {
+            // 未携带原文（退出预览），按 ID 自拉已保存片段
+            const fetchedSnippet = await this.getSnippetById(snippetId!);
+            if (fetchedSnippet === false || fetchedSnippet === undefined) {
+                this.console.error("updateSnippetElementSync: Snippet not found:", snippetId);
+                return;
+            }
+            realSnippet = fetchedSnippet;
         }
 
         // 调用原有的 updateSnippetElement 方法更新元素
-        await this.updateSnippetElement(snippet, undefined, previewState);
-        this.console.log("updateSnippetElementSync: updated snippet element for", snippet.id);
+        await this.updateSnippetElement(realSnippet, undefined, previewState);
+        this.console.log("updateSnippetElementSync: updated snippet element for", realSnippet.id);
     }
 
     /**
@@ -3571,9 +3579,9 @@ export default class PluginSnippets extends Plugin {
                         if (!realSnippet) return;
                         this.updateSnippetElement(realSnippet, undefined, false);
                         // 发送广播消息，在其他窗口调用 this.updateSnippetElementSync() 更新代码片段元素
-                        // TODO去原文化: 此处 realSnippet 为已保存片段（可自拉），应只发 snippetId + previewState: false
+                        // 退出预览用的是已保存片段（可自拉），不携带原文，只发 snippetId + previewState: false
                         this.broadcastMessage("snippet_element_update", {
-                            snippet: realSnippet,
+                            snippetId: snippet.id,
                             previewState: false
                         });
                     }
