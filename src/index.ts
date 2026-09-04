@@ -3823,6 +3823,13 @@ export default class PluginSnippets extends Plugin {
         });
 
         // 添加右键菜单 https://github.com/TCOTC/snippets/issues/22
+        // 思源 3.8.3+ 起，浏览器原生输入框的右键菜单内容完全由渲染进程控制，
+        // IPC 载荷由一组语言字段改为 items 数组，主进程只渲染数组中列出的项。
+        // https://github.com/siyuan-note/siyuan/issues/15810
+        // https://github.com/siyuan-note/siyuan/issues/17526
+        // https://github.com/siyuan-note/siyuan/pull/19100
+        // CodeMirror 编辑器中撤销 undo 和重做 redo 无法使用，因此这里直接不发送这两项，
+        // 菜单中就不会再出现它们和多余的分隔线。
         this.addListener(dialog.element, "contextmenu", (event: MouseEvent) => {
             if (!(event.target as HTMLElement).closest(".cm-content[contenteditable='true']")) return;
             event.stopPropagation();
@@ -3834,14 +3841,17 @@ export default class PluginSnippets extends Plugin {
                     this.console.log("electron:", electron);
                     this.console.log("showContextMenu: use ipcRenderer");
                     electron.ipcRenderer.send(Constants.SIYUAN_CONTEXT_MENU, {
-                        // undo: window.siyuan.languages.undo, // TODO跟进: 撤销 undo 和重做 redo 用不了，需要去掉 https://github.com/siyuan-note/siyuan/issues/15810
-                        // redo: window.siyuan.languages.redo,
-                        copy: window.siyuan.languages.copy,
-                        cut: window.siyuan.languages.cut,
-                        delete: window.siyuan.languages.delete,
-                        paste: window.siyuan.languages.paste,
-                        pasteAsPlainText: window.siyuan.languages.pasteAsPlainText,
-                        selectAll: window.siyuan.languages.selectAll,
+                        x: event.clientX,
+                        y: event.clientY,
+                        requestedAt: Date.now(),
+                        items: [
+                            {role: "copy", label: window.siyuan.languages.copy},
+                            {role: "cut", label: window.siyuan.languages.cut},
+                            {role: "delete", label: window.siyuan.languages.delete},
+                            {role: "paste", label: window.siyuan.languages.paste},
+                            {role: "pasteAndMatchStyle", label: window.siyuan.languages.pasteAsPlainText},
+                            {role: "selectAll", label: window.siyuan.languages.selectAll},
+                        ],
                     });
                     return;
                 }
