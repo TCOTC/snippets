@@ -1,6 +1,6 @@
 import "./index.scss";
 import {FileState, ListenersArray, Snippet} from "./types";
-import {parse as acornParse} from "acorn";
+import {isValidJavaScriptCode} from "./domain/snippet";
 
 // 思源插件 API
 import {
@@ -3054,7 +3054,7 @@ export default class PluginSnippets extends Plugin {
                     newElement.textContent = snippet.content;
                     document.head.appendChild(newElement);
                 } else if (snippet.type === "js") {
-                    if (!this.isValidJavaScriptCode(snippet.content)) {
+                    if (!isValidJavaScriptCode(snippet.content)) {
                         this.showErrorMessage(this.i18n.invalidJavaScriptCode);
                     }
                     newElement = document.createElement("script");
@@ -3083,7 +3083,7 @@ export default class PluginSnippets extends Plugin {
         // 2. 删除：有旧代码 && 旧代码有效 && 没有新代码
         // 3. 禁用：有旧代码 && 旧代码有效 && 没有新代码
         // 以上合并为：有旧代码 && 旧代码有效 → 本质上是旧 JS 被修改/删除/禁用时无法立即生效
-        if (snippet.type === "js" && element && element.innerHTML && this.isValidJavaScriptCode(element.innerHTML)) {
+        if (snippet.type === "js" && element && element.innerHTML && isValidJavaScriptCode(element.innerHTML)) {
             // JS 代码片段元素更新需要弹出消息提示
             this.showNotification("reloadUIAfterModifyJS", 4000);
             // 高亮菜单上的重新加载界面按钮
@@ -3120,7 +3120,7 @@ export default class PluginSnippets extends Plugin {
         const elementId = `snippet${snippetType.toUpperCase()}${snippetId}`;
         const element = document.getElementById(elementId);
         // 删除 JS 代码片段需要弹出消息提示：有旧代码 && 旧代码有效
-        if (snippetType === "js" && element && element.innerHTML && this.isValidJavaScriptCode(element.innerHTML)) {
+        if (snippetType === "js" && element && element.innerHTML && isValidJavaScriptCode(element.innerHTML)) {
             this.showNotification("reloadUIAfterModifyJS", 4000);
             await this.setReloadUIButtonBreathing();
         }
@@ -3134,55 +3134,6 @@ export default class PluginSnippets extends Plugin {
     private removeSnippetElementSync(data: { snippetId: string; snippetType: string }) {
         const { snippetId, snippetType } = data;
         void this.removeSnippetElement(snippetId, snippetType);
-    }
-
-    /**
-     * 简单判断内容是否为有效的 JavaScript 代码
-     * @param code 代码
-     * @returns 是否为有效的 JavaScript 代码
-     */
-    private isValidJavaScriptCode(code: string): boolean {
-        code = code.trim();
-        if (code === "") return false;
-        // 使用 acorn 解析代码，判断是否为有效的 JavaScript 代码
-        try {
-            // https://github.com/acornjs/acorn/tree/master/acorn/
-            const ast = acornParse(code, { ecmaVersion: "latest" }) as any;
-            const length = ast.body.length;
-            if (length === 0) {
-                return false;
-            } else if (
-                length === 1 &&                            // 代码只包含一个顶级语句或表达式
-                ast.body[0].type === "ExpressionStatement" // 代码是一行表达式
-            ) {
-                const type = ast.body[0].expression.type;
-                if (
-                    type === "Literal" ||          // 字面量（Literal）是值本身，比如数字、字符串、布尔值等。只有一个值，没有其他语法结构
-                    type === "Identifier" ||       // 标识符（Identifier）是变量名、函数名等标识。只是引用一个变量，没有做赋值、调用、声明等操作
-                    type === "MemberExpression" || // 成员表达式（MemberExpression）是访问对象属性的表达式，比如 obj.prop 或 arr[index]
-                    type === "ThisExpression" ||   // 懒得写注释了
-                    type === "Super" ||
-                    type === "ArrayExpression" ||
-                    type === "ObjectExpression" ||
-                    type === "TemplateLiteral" ||
-                    type === "FunctionExpression" ||
-                    type === "ArrowFunctionExpression" ||
-                    type === "UpdateExpression" ||
-                    type === "UnaryExpression" ||
-                    type === "BinaryExpression" ||
-                    type === "LogicalExpression" ||
-                    type === "ConditionalExpression" ||
-                    // 立即执行函数是这个类型，需要排除 type === 'CallExpression' ||
-                    type === "NewExpression" ||
-                    type === "SequenceExpression"
-                ) {
-                    return false;
-                }
-            }
-            return true;
-        } catch {
-            return false;
-        }
     }
 
 
@@ -5146,7 +5097,7 @@ export default class PluginSnippets extends Plugin {
             // 检查是否是 JS 文件被移除
             if (element.id.startsWith("snippetJsJcsmWatch") &&
                 element.textContent &&
-                this.isValidJavaScriptCode(element.textContent)) {
+                isValidJavaScriptCode(element.textContent)) {
                 hasJSRemoved = true;
             }
             element.remove();
@@ -5472,7 +5423,7 @@ export default class PluginSnippets extends Plugin {
      */
     private async applyJSFile(filePath: string, content: string) {
         try {
-            if (!this.isValidJavaScriptCode(content)) {
+            if (!isValidJavaScriptCode(content)) {
                 // 不应用无效的 JS 代码
                 this.console.warn("applyJSFile: Invalid JS code", filePath);
                 return;
@@ -5509,7 +5460,7 @@ export default class PluginSnippets extends Plugin {
             const fileName = filePath.split("/").pop() || "";
             const fileExtension = fileName.split(".").pop()?.toLowerCase();
 
-            if (fileExtension === "js" && existingElement.textContent && this.isValidJavaScriptCode(existingElement.textContent)) {
+            if (fileExtension === "js" && existingElement.textContent && isValidJavaScriptCode(existingElement.textContent)) {
                 // JS 代码片段元素被移除需要弹出消息提示
                 this.showNotification("reloadUIAfterModifyJS", 2000);
                 // 高亮菜单上的重新加载界面按钮
