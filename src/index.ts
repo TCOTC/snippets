@@ -470,11 +470,17 @@ export default class PluginSnippets extends Plugin {
     set snippetsList(value: Snippet[]) { (window.siyuan.jcsm ??= {}).snippetsList = value; }
 
     /**
+     * 默认代码片段类型（配置镜像 defaultSnippetsType：ConfigService 内部缓存 + defineProperty 代理）
+     */
+    declare defaultSnippetsType: SnippetType;
+
+    /**
      * 代码片段类型
      */
-    get snippetsType(): SnippetType { 
-        // 如果已经有值（用户切换过标签），使用该值，否则使用配置中的默认值
-        const type = window.siyuan.jcsm?.snippetsType ?? window.siyuan.jcsm?.defaultSnippetsType;
+    get snippetsType(): SnippetType {
+        // 如果已经有值（用户切换过标签），使用该值，否则使用配置中的默认值（defaultSnippetsType 配置镜像
+        // 已收敛为 ConfigService 内部缓存并经 defineProperty 代理，见 src/config/config-service.ts）
+        const type = window.siyuan.jcsm?.snippetsType ?? this.defaultSnippetsType;
         if (type !== "css" && type !== "js") {
             return "css";
         }

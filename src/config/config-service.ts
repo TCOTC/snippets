@@ -1,9 +1,11 @@
 // 插件配置的装配、持久化与热应用（原 index.ts 配置段外迁）
-// 职责：配置读取与版本校验 → 写入 window.siyuan.jcsm 镜像并挂到插件实例（defineProperty）→
+// 职责：配置读取与版本校验 → 缓存于服务内部镜像并挂到插件实例（defineProperty）→
 // 构建 Setting 项；对话框保存（saveFromDialog）；配置热应用（applyConfig，onDataChanged 同源）；
 // 通知禁用持久化（disableNotification）。
 // 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
 // 配置文件读写经插件生命周期方法（loadData/saveData/removeData）与本模块自持的存储键名。
+// jcsm 收敛（阶段 6）：配置镜像原存储于 window.siyuan.jcsm（(jcsm as any)[key]，跨插件 reload 存活），
+// 因配置每次 init 都会从磁盘重新加载且写配置即落盘，镜像改由本服务内部缓存承载，不再占用 jcsm 全局仓库。
 import {hideMessage, Setting} from "siyuan";
 import {htmlToElement, isPromiseFulfilled} from "../utils";
 import type PluginSnippets from "../index";
@@ -18,6 +20,12 @@ export const STORAGE_NAME = "plugin-config.json";  // 配置文件名（index �
  */
 export class ConfigService {
     private readonly plugin: PluginSnippets;
+
+    /**
+     * 配置镜像缓存：defineProperty 到插件实例的属性代理本缓存（原存储于 window.siyuan.jcsm）
+     * 配置已落盘且 init 每次从磁盘重新加载，reload 后新实例 init 即重建本缓存，无需跨 reload 全局仓库。
+     */
+    private readonly configValues = new Map<string, any>();
 
     /**
      * 插件设置对象（仅 init 通过版本校验后创建并填充；失败时保持未初始化）
@@ -58,17 +66,17 @@ export class ConfigService {
     }
 
     /**
-     * 读取配置项在全局镜像中的当前值
+     * 读取配置项当前值（定义于配置项 key，缓存于本服务内部镜像）
      */
     private readValue(key: string): any {
-        return (window.siyuan.jcsm as any)?.[key];
+        return this.configValues.get(key);
     }
 
     /**
-     * 写入配置项到全局镜像
+     * 写入配置项到内部镜像
      */
     private writeValue(key: string, value: any) {
-        (window.siyuan.jcsm as any)[key] = value;
+        this.configValues.set(key, value);
     }
 
     /**
@@ -113,11 +121,11 @@ export class ConfigService {
         // 读取配置或者设置默认值
         await this.plugin.initConfigItems();
         this.plugin.configItems.forEach(item => {
-            // 使用全局变量存储配置
+            // 缓存配置（缺失时用默认值），供 defineProperty 代理读取
             this.writeValue(item.key, config[item.key] ?? item.defaultValue);
         });
 
-        // 为每个配置项在插件实例上动态生成 getter/setter（代理到全局镜像）
+        // 为每个配置项在插件实例上动态生成 getter/setter（代理到内部配置镜像）
         const target = this.plugin;
         this.plugin.configItems.forEach(item => {
             Object.defineProperty(target, item.key, {
@@ -257,7 +265,7 @@ export class ConfigService {
     }
 
     /**
-     * 将全局镜像中的全部配置项收集为配置对象并写入文件
+     * 将内部配置镜像中的全部配置项收集为配置对象并写入文件
      * @returns saveData 的返回（调用方用 isPromiseFulfilled 判断是否成功）
      */
     private persistConfig(): any {

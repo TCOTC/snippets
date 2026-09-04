@@ -37,8 +37,8 @@ declare global {
                 // window.siyuan.jcsm 是跨插件 reload 存活的全局变量仓库；此处仅声明仍被
                 // 类型化读写（手写 getter/setter / 直接 jcsm.x）的字段。
                 // 配置类字段（realTimePreview/newSnippetEnabled/consoleDebug/snippetSearchType/
-                // fileWatch*/defaultSnippetsType 等）经 loadConfig + Object.defineProperty 以
-                // (jcsm as any)[key] 访问，不再在此重复声明（阶段 4/6 收敛 jcsm 时统一处理）。
+                // fileWatch* 等）经 ConfigService 内部缓存 + Object.defineProperty 以实例属性访问，
+                // 不再存于 jcsm（阶段 6 已收敛，见 config-service.ts）。
                 isMobile?: boolean;
                 isTouchDevice?: boolean;
                 snippetsType?: SnippetType;
@@ -49,7 +49,6 @@ declare global {
                 isReloadUIRequired?: boolean;
                 themeObserver?: MutationObserver;
                 disableNotification?: (messageI18nKey: string) => void;
-                defaultSnippetsType?: SnippetType;
             };
         };
         JSAndroid?: {
