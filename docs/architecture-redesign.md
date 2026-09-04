@@ -19,6 +19,7 @@
 ### 已完成提交（main，最新在上）
 | commit | 内容 |
 |---|---|
+| `783dec0` | refactor: 清理多余类型声明（零引用 Window 扩展/上游已含 saveExportFile 补充声明/监听器类型下沉 listener-registry） |
 | `29b9e31` | refactor: window.siyuan.jcsm 全量收敛移除（阶段 6 收官）——运行态标志/片段缓存/监听簿记/主题 observer 改由实例承载，通知按钮去全局函数 |
 | `7721307` | refactor: 配置镜像收敛出 jcsm（ConfigService 内部缓存承载，阶段 6 第一刀） |
 | `6d08340` | refactor: 自动重载前的编辑对话框判断收敛为 editorManager.hasEditorDialogsOpen() |
@@ -214,7 +215,8 @@
 10. （6d08340）重复选择器收敛：file-watch×2/menu.closeMenuCallback/snippets-dialog.saveHandler 的“无打开的编辑对话框才自动重载 UI”判断收敛为 `plugin.editorManager.hasEditorDialogsOpen()`（消除魔法选择器，语义等价）。
 11. （7721307）**阶段 6 第一刀——配置镜像收敛出 jcsm**：配置类字段（realTimePreview/newSnippetEnabled/consoleDebug/snippetSearchType/fileWatch*/defaultSnippetsType 等）镜像从 `window.siyuan.jcsm`（`(jcsm as any)[key]`）改为 `ConfigService` 内部 `Map`（配置每次 init 重新读盘、写配置即落盘，无需跨 reload 全局仓库）；defineProperty 代理/readValue/writeValue/persistConfig/applyConfig/saveFromDialog/createSettingItem 全部经该 Map；`snippetsType` getter 的默认类型读取由 `jcsm.defaultSnippetsType` 改为实例属性 `this.defaultSnippetsType`（index 补 declare，defineProperty init 时挂载）；types.d.ts jcsm 块移除 defaultSnippetsType 声明并更新注释。
 12. （29b9e31）**阶段 6 收官——jcsm 运行态全量收敛**：isMobile/isTouchDevice/isReloadUIRequired/snippetsList/snippetsType → 插件实例字段（读点不变，onLayoutReady 重算/自拉重建/重载回退默认）；disableNotification → 通知按钮改元素事件绑定（FeedbackService 直连 configService），删除 onLayoutReady 的全局挂载；themeObserver → `EditorManager` 实例字段；listeners 簿记三字段 → `ListenerRegistry` 实例字段；`types.d.ts` jcsm 类型块整体删除、index 移除 jcsm 初始化与 uninstall 的 `delete window.siyuan.jcsm`，相关注释刷新。至此 `window.siyuan.jcsm` 全量退出本插件。
-13. 之后：继续阶段 5（menu.ts 剩余区块/搜索交互细拆或视图化）与收尾清理（`data: any` 类型化、残留死声明等）。
+13. （783dec0）**类型声明清理**（对照已安装 siyuan 类型包逐一核实）：删除零引用的 Window 扩展 JSAndroid/JSHarmony/webkit（历史遗留外链桥）；删除上游 siyuan.d.ts 已含的 saveExportFile 补充声明（注释“待 petal 发布新版后可移除”已到期）；监听器簿记类型（ListenerItem/ElementListeners/ListenersArray）从 types.d.ts 下沉至唯一使用方 listener-registry.ts（文件内私有类型）；Setting 扩展的 addItem 覆盖保留（上游 title 必选、本插件 i18n 键可缺失，属有意放宽）；types.d.ts 仅保留 Snippet/SnippetType/SettingItem/FileState 与必要的 siyuan 模块扩展。
+14. 之后：继续阶段 5（menu.ts 剩余区块/搜索交互细拆或视图化）与收尾清理（`data: any` 类型化等）。
 
 ---
 
