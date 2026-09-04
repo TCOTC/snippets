@@ -36,7 +36,7 @@ declare global {
             jcsm?: {
                 isMobile?: boolean;
                 isTouchDevice?: boolean;
-                snippetsType?: string;
+                snippetsType?: SnippetType;
                 snippetsList?: Snippet[];
                 realTimePreview?: boolean;
                 newSnippetEnabled?: boolean;
@@ -55,7 +55,7 @@ declare global {
                 fileWatchIntervalId?: number | null;
                 fileWatchFileStates?: Map<string, FileState>;
                 disableNotification?: (messageI18nKey: string) => void;
-                defaultSnippetsType?: string;
+                defaultSnippetsType?: SnippetType;
             };
         };
         JSAndroid?: {
