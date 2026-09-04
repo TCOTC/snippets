@@ -1,8 +1,5 @@
 import { ISiyuan } from "siyuan/types";
 
-// 允许副作用导入 SCSS 样式文件（由 webpack/css-loader 处理）
-declare module "*.scss";
-
 declare global {
     interface Window {
         siyuan: ISiyuan & {
