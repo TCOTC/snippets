@@ -2758,12 +2758,9 @@ export default class PluginSnippets extends Plugin {
             copySnippet.id = this.genNewSnippetId();
             copySnippet.name = snippet.name + ` (${this.i18n.duplicate} ${new Date().toLocaleString()})`;
 
-            // 把副本创建在当前代码片段的上面
-            this.snippetsList.splice(this.snippetsList.indexOf(snippet), 0, copySnippet);
+            // 把副本创建在当前代码片段的上面（菜单计数由 SNIPPETS_CHANGED 事件统一刷新）
+            this.snippetStore.insertBefore(copySnippet, snippet.id);
             hasChanges = true;
-
-            // 更新菜单代码片段计数
-            this.setMenuSnippetCount();
 
             // 代码片段有可能未启用，所以不传入 enabled === true 的参数
             await this.updateSnippetElement(copySnippet);

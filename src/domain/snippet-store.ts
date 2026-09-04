@@ -56,6 +56,26 @@ export class SnippetStore {
     }
 
     /**
+     * 在指定代码片段之前插入新代码片段（复制场景：副本紧邻原片段上方）
+     * 前置条件：锚点存在于列表中（复制源来自列表）；若缺失，回退按分区插入（upsert 新增语义），
+     * 避免副本丢失，同时保证 CSS 在前、JS 在后的分区不被破坏。
+     * 列表变更后统一触发 SNIPPETS_CHANGED 事件。
+     * @param snippet 要插入的代码片段
+     * @param anchorId 锚点代码片段 ID
+     */
+    insertBefore(snippet: Snippet, anchorId: string): void {
+        const newList = [...this.storage.get()];
+        const anchorIndex = newList.findIndex((s: Snippet) => s.id === anchorId);
+        if (anchorIndex < 0) {
+            this.upsert(snippet);
+            return;
+        }
+        newList.splice(anchorIndex, 0, snippet);
+        this.storage.set(newList);
+        this.eventBus.emit(SNIPPETS_CHANGED, snippet.id);
+    }
+
+    /**
      * 新增或更新代码片段
      * 存在同 ID 片段时整体替换；不存在时按类型分区插入（CSS 保持在前、JS 保持在后，
      * 与思源原生列表的分区规则一致：JS 插入到当前首个 JS 片段之前，无 JS 片段时追加到末尾）。
