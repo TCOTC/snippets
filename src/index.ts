@@ -24,7 +24,7 @@ import {
 // 工具函数
 import {isPromiseFulfilled} from "./utils";
 
-// CodeMirror 6（编辑器扩展/视图创建/生命周期管理已外迁至 src/ui/codemirror.ts、src/ui/editor-manager.ts 与 src/ui/snippets-dialog.ts）
+// CodeMirror 编辑器工厂见 src/ui/codemirror.ts，编辑器生命周期管理见 src/ui/editor-manager.ts，编辑对话框见 src/ui/snippets-dialog.ts
 import {EditorManager} from "./ui/editor-manager";
 import {SettingDialog} from "./ui/setting-dialog";
 import {SnippetsDialog} from "./ui/snippets-dialog";
@@ -369,8 +369,8 @@ export default class PluginSnippets extends Plugin {
 
 
     // ================================ 顶栏菜单（实现见 src/ui/menu.ts SnippetsMenu） ================================
-    // 打开/绘制/事件/搜索/拖拽/高亮与菜单状态（menu/menuItems/拖拽标志等）均已外迁至 SnippetsMenu，
-    // 插件实例仅保留供 SnippetsMenu 经 defineProperty 读取的镜像属性声明。
+    // 菜单打开/绘制/事件/搜索/拖拽/高亮与菜单状态均为 SnippetsMenu 内部状态；
+    // 此处仅保留供 SnippetsMenu 经 defineProperty 读取的配置镜像属性声明。
 
     /**
      * 是否启用自动重新加载界面功能
@@ -420,8 +420,7 @@ export default class PluginSnippets extends Plugin {
     declare showPublishCheckbox: number;
 
     /**
-     * 是否需要重新加载界面（JS 修改后的呼吸提示标志；收敛自 window.siyuan.jcsm，
-     * 属菜单 UI 运行态——界面刷新/插件重载后自然复位，无需跨 reload 全局仓库）
+     * 是否需要重新加载界面（JS 修改后提示用户重载的呼吸标志；属菜单 UI 运行态，界面刷新后自然复位）
      */
     isReloadUIRequired = false;
 
@@ -430,7 +429,7 @@ export default class PluginSnippets extends Plugin {
 
     /**
      * 代码片段列表缓存（以内核 /api/snippet/getSnippet 为权威：菜单打开/保存/删除/排序等场景自拉刷新；
-     * 收敛自 window.siyuan.jcsm.snippetsList——仅作同页会话缓存，插件重载后由下一次自拉重建）
+     * 仅作同页会话缓存，插件重载后由下一次自拉重建）
      */
     snippetsList: Snippet[] = [];
 
@@ -440,13 +439,12 @@ export default class PluginSnippets extends Plugin {
     declare defaultSnippetsType: SnippetType;
 
     /**
-     * 用户会话中切换过的代码片段类型缓存（收敛自 window.siyuan.jcsm.snippetsType，
-     * 重载后回退配置默认值 defaultSnippetsType）
+     * 用户会话中切换过的代码片段类型缓存（重载后回退配置默认值 defaultSnippetsType）
      */
     private snippetsTypeCache: SnippetType | undefined;
 
     /**
-     * 当前代码片段类型（用户切换过则用缓存值，否则用配置默认值；读点语义与原 jcsm 实现一致）
+     * 当前代码片段类型（用户切换过则用缓存值，否则用配置默认值）
      */
     get snippetsType(): SnippetType {
         // 如果已经有值（用户切换过标签），使用该值，否则使用配置中的默认值（defaultSnippetsType 配置镜像
@@ -571,7 +569,7 @@ export default class PluginSnippets extends Plugin {
     })();
 
     // 全局键盘按下/移除事件监听与开合判断（globalKeyDownHandler/destroyGlobalKeyDownHandler/isDialogAndMenuOpen）
-    // 已随菜单一并外迁至 src/ui/menu.ts SnippetsMenu
+    // 见 src/ui/menu.ts SnippetsMenu
 
     // ================================ 事件监听管理 ================================
 
@@ -617,7 +615,7 @@ export default class PluginSnippets extends Plugin {
     // ================================ 跨窗口同步 ================================
 
     /**
-     * 跨窗口广播服务（阶段 3：传输 + 窗口保活收敛于 services/sync.ts）
+     * 跨窗口广播服务（传输/窗口保活/业务分发实现见 services/sync.ts）
      * onLayoutReady 中创建并启动；业务消息按 type 查表分发到 handlers 注册表（见构造处）。
      * （SnippetManager 直连访问，故公开）
      */

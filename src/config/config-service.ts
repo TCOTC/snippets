@@ -1,11 +1,9 @@
-// 插件配置的装配、持久化与热应用（原 index.ts 配置段外迁）
+// 插件配置的装配、持久化与热应用
 // 职责：配置读取与版本校验 → 缓存于服务内部镜像并挂到插件实例（defineProperty）→
 // 构建 Setting 项；对话框保存（saveFromDialog）；配置热应用（applyConfig，onDataChanged 同源）；
 // 通知禁用持久化（disableNotification）。
-// 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
+// 配置镜像存于本服务内部缓存（配置每次 init 从磁盘重新加载、写配置即落盘，无需外部全局仓库）；
 // 配置文件读写经插件生命周期方法（loadData/saveData/removeData）与本模块自持的存储键名。
-// jcsm 收敛（阶段 6）：配置镜像原存储于 window.siyuan.jcsm（(jcsm as any)[key]，跨插件 reload 存活），
-// 因配置每次 init 都会从磁盘重新加载且写配置即落盘，镜像改由本服务内部缓存承载，不再占用 jcsm 全局仓库。
 import {hideMessage, Setting} from "siyuan";
 import {htmlToElement, isPromiseFulfilled} from "../utils";
 import type PluginSnippets from "../index";
@@ -16,18 +14,19 @@ const PLUGIN_NAME = "snippets";                    // 插件名（通知消息 i
 export const STORAGE_NAME = "plugin-config.json";  // 配置文件名（index 侧 removeData 亦使用）
 
 /**
- * 当前插件配置结构版本（配置结构有变化时升级；原为插件实例字段 version，仅本模块使用故迁入）
+ * 当前插件配置结构版本（配置结构有变化时升级）
  */
 const CONFIG_VERSION = 1;
 
 /**
- * 配置服务（原 index.ts 中对应私有方法外迁，行为等价）
+ * 配置服务
  */
 export class ConfigService {
     private readonly plugin: PluginSnippets;
 
     /**
-     * 配置镜像缓存：defineProperty 到插件实例的属性代理本缓存（原存储于 window.siyuan.jcsm）
+     * 配置镜像缓存：defineProperty 到插件实例的属性代理本缓存
+     * 配置已落盘且 init 每次从磁盘重新加载，reload 后新实例 init 即重建本缓存，无需跨 reload 全局仓库。
      * 配置已落盘且 init 每次从磁盘重新加载，reload 后新实例 init 即重建本缓存，无需跨 reload 全局仓库。
      */
     private readonly configValues = new Map<string, any>();
@@ -95,7 +94,7 @@ export class ConfigService {
     }
 
     /**
-     * 初始化插件设置（原 index.ts initSetting + loadConfig 外迁，行为等价）
+     * 初始化插件设置
      * 加载配置文件 → 版本校验（异常移除配置/高版本提示后中止）→ 写默认值 → 挂载实例属性 → 装配 Setting
      */
     public async init() {
@@ -151,7 +150,7 @@ export class ConfigService {
     }
 
     /**
-     * 从对话框元素读取控件值并保存（原 index.ts saveSetting 外迁，行为等价）
+     * 从对话框元素读取控件值并保存（值有变化时写入并应用对应 UI 副作用）
      * @param dialogElement 对话框元素
      */
     public saveFromDialog(dialogElement: HTMLElement) {
@@ -228,7 +227,7 @@ export class ConfigService {
     }
 
     /**
-     * 重新读取配置并热应用（原 index.ts onDataChanged 方法体外迁）
+     * 重新读取配置并热应用（本地读取与跨窗口/跨设备同步推送的共用入口）
      */
     public async reloadFromStorage() {
         // 重新读取配置：loadData 会从内核拉取最新文件并更新插件 data
@@ -237,7 +236,7 @@ export class ConfigService {
     }
 
     /**
-     * 禁用指定通知并持久化（原 index.ts disableNotification 外迁，行为等价）
+     * 禁用指定通知并持久化
      * @param messageI18nKey 通知的 i18n 键
      */
     public disableNotification(messageI18nKey: string) {
@@ -282,7 +281,7 @@ export class ConfigService {
     }
 
     /**
-     * 创建设置项（原 index.ts createSettingItem 外迁，行为等价）
+     * 创建设置项
      * @param item 配置项
      * @returns 设置项
      */

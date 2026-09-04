@@ -1,8 +1,6 @@
-// 代码片段导入导出（原 index.ts「导出与导入功能」分节外迁，行为等价）
+// 代码片段导入导出
 // 职责：导出全部代码片段为 JSON（经 /api/export/exportResources 导出 zip 并去随机前缀后 saveExportFile 下载）；
 // 从本地文件（json/zip）导入——zip 上传解压后递归定位 json；校验、ID 去重、覆盖前备份、整表替换写库。
-// 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
-// 列表读写经 plugin.snippetManager/snippetStore、菜单刷新经 plugin.menuView 直连。
 import {fetchPost, saveExportFile, showMessage} from "siyuan";
 import {genNewSnippetId} from "../utils";
 import {getFile, putFile, renameFile} from "./storage";
@@ -13,7 +11,7 @@ const TEMP_PLUGIN_PATH = "/temp/plugin-snippets/"; // 插件临时文件路径
 const TEMP_EXPORT_PATH = "/temp/export/";          // 导入导出临时文件路径
 
 /**
- * 导入导出服务（原 index.ts「导出与导入功能」分节外迁，行为等价）
+ * 导入导出服务
  */
 export class ImportExportService {
     private readonly plugin: PluginSnippets;

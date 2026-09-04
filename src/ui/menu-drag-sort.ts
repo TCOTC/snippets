@@ -1,13 +1,12 @@
-// 顶栏菜单拖拽排序交互（原 src/ui/menu.ts SnippetsMenu 拖拽组外迁，行为等价）
+// 顶栏菜单拖拽排序交互
 // 职责：代码片段菜单项拖拽排序（桌面鼠标 + 移动端长按触摸）：幽灵元素跟随、容器边缘滚动、落点高亮、
 // 排序执行（自拉最新列表 → Store 移动 → DOM 顺序更新 → 落库 → 跨窗口广播）。
-// 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
 // 菜单列表容器经 plugin.menuView.menuItems 访问（拖拽只在菜单打开期间发生，menuItems 必然已就位）。
 import {Constants} from "siyuan";
 import type PluginSnippets from "../index";
 
 /**
- * 顶栏菜单拖拽排序交互（原 SnippetsMenu 拖拽组外迁，行为等价）
+ * 顶栏菜单拖拽排序交互
  * 拖拽状态（isDragging/dragCleanupTimer）为本类内部状态；菜单点击处理（SnippetsMenu.menuClickHandler）
  * 经本类的 isDragging/clearDragState 判断"拖拽回到原位后忽略点击"。
  */
@@ -202,7 +201,7 @@ export class MenuDragSort {
     }
 
     /**
-     * 菜单鼠标按下事件处理（用于桌面端拖拽排序；原 SnippetsMenu.menuMousedownHandler 外迁，由菜单 open 绑定）
+     * 菜单鼠标按下事件处理（用于桌面端拖拽排序，由菜单 open 绑定）
      * @param event 鼠标事件
      */
     handleMenuMousedown(event: MouseEvent) {
@@ -293,7 +292,7 @@ export class MenuDragSort {
     }
 
     /**
-     * 菜单触摸开始事件处理（用于移动端拖拽排序；原 SnippetsMenu.menuTouchstartHandler 外迁，由菜单 open 绑定）
+     * 菜单触摸开始事件处理（用于移动端拖拽排序，由菜单 open 绑定）
      * @param event 触摸事件
      */
     handleMenuTouchstart(event: TouchEvent) {

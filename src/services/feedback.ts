@@ -1,14 +1,13 @@
-// 通知与错误提示（原 index.ts「消息处理」分节外迁）
+// 通知与错误提示
 // 职责：showNotification（仅弹出设置中存在的通知，含"不再提示"按钮）；showErrorMessage（错误提示）。
-// 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
-// 配置开关经插件实例 defineProperty 代理读取（含 *Notice 通知开关镜像）。
+// 通知开关等配置经插件实例 defineProperty 代理读取（含 *Notice 通知开关镜像）。
 import {showMessage} from "siyuan";
 import type PluginSnippets from "../index";
 
 const PLUGIN_NAME = "snippets";                    // 插件名（通知消息 id 前缀用）
 
 /**
- * 通知/错误提示服务（原 index.ts「消息处理」分节外迁）
+ * 通知/错误提示服务
  * 消息 id 统一带插件名前缀（PLUGIN_NAME + "-" + messageI18nKey），反复弹出同消息不会互相覆盖。
  */
 export class FeedbackService {

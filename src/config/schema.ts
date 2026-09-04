@@ -55,13 +55,13 @@ export interface SnippetsConfigItem {
     createActionElement?: () => HTMLElement;
     options?: SnippetsConfigOption[];
     ignore?: boolean;
-    /** 应用该配置项时的 UI 副作用（原 applySetting 中对应的 switch case 迁入此处声明） */
+    /** 应用该配置项时的 UI 副作用 */
     onApply?: (newValue: any) => void | Promise<void>;
 }
 
 /**
- * 构建全部配置项（原 index.ts 中 initConfigItems 的内联数组外迁）
- * 与旧实现的求值时机保持一致：ignore/description 等属性值在构建时刻求值，
+ * 构建全部配置项
+ * 求值时机：ignore/description 等属性值在构建时刻求值，
  * 箭头函数体内的 ctx 读取器/动作在调用时才执行（由调用方以箭头函数实时转发到插件实例）。
  * @param ctx 配置项构建上下文（见 SnippetsConfigContext）
  * @returns 配置项数组

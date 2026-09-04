@@ -1,7 +1,7 @@
 import type {Snippet, SnippetType} from "../types";
 
 /**
- * 跨窗口广播协议与传输服务（services 层，阶段 3）
+// 跨窗口广播协议与传输服务
  * 广播信封统一为 { type, windowId, timestamp, ...payload }，由 BroadcastService.broadcast 自动附加。
  * 硬性约束：payload 不得携带代码片段 content 原文（可能含敏感信息）；唯一豁免为 CSS 编辑中实时预览
  * （snippet_element_update 且 previewState: true，内容未保存、接收窗口无法自拉）。
@@ -151,7 +151,7 @@ export interface BroadcastServiceOptions {
 }
 
 /**
- * 基于思源内核 broadcast API 的跨窗口广播服务（阶段 3：传输 + 窗口保活 + 类型化广播收敛于此）
+ * 基于思源内核 broadcast API 的跨窗口广播服务
  * - 统一维护当前窗口唯一标识、其他窗口在线集合与 WebSocket 连接（含自动重连与页面卸载通知）；
  * - 内部消化窗口保活（window_online / window_online_feedback / window_offline），上层无需感知；
  * - 业务消息按 type 查表分发到 BroadcastHandlers 对应处理器（处理器直接拿到收窄后的载荷）；

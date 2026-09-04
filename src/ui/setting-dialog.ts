@@ -1,8 +1,6 @@
-// 插件设置对话框装配与交互（原 index.ts openSetting 方法外迁）
+// 插件设置对话框装配与交互
 // 职责：插件自己的设置对话框（打开/保存/导入导出入口/键盘与滚轮拦截/原生设置跳转），
 // 参考原生代码 app/src/plugin/Setting.ts Setting.open 方法。
-// 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
-// 设置项/保存/导入导出/关闭菜单等经插件实例与其服务（configService/importExportService/menuView）直连。
 import {Constants, Dialog, openSetting} from "siyuan";
 import type PluginSnippets from "../index";
 
@@ -15,7 +13,7 @@ const openSettingTab = openSetting as (app: Parameters<typeof openSetting>[0], t
 const SETTING_TAB_MOUNT_MAX_RETRIES = 100;
 
 /**
- * 设置对话框管理器（原 index.ts openSetting 方法外迁，行为等价）
+ * 设置对话框管理器
  * 参考原生代码 app/src/plugin/Setting.ts Setting.open 方法
  */
 export class SettingDialog {

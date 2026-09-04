@@ -1,9 +1,7 @@
-// 顶栏菜单 UI（原 index.ts「顶栏菜单」分节整体外迁，行为等价）
+// 顶栏菜单 UI
 // 职责：代码片段管理器顶栏按钮的创建与点击打开、菜单的打开/绘制/事件委托（含键盘）、CSS/JS 切换、搜索、呼吸动画、
 // 菜单项生成与计数/选中/编辑按钮高亮、菜单位置、关闭回调（含自动重载界面联动）、拖拽排序（见 menu-drag-sort.ts）、
 // 以及菜单 + 对话框的全局键盘协调（Esc/Enter/方向键按 zIndex 与开合状态分发）。
-// 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
-// 经插件侧已 public 化的运行态/服务直连（manager/dialog/store/sync/console/i18n/镜像配置等）。
 import {Menu, platformUtils} from "siyuan";
 import {hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, showElementTooltip} from "../utils";
 import {filterSnippetsByKeyword, isSnippetsTypeEnabled, sortSnippets} from "../domain/snippet";
@@ -12,9 +10,7 @@ import type PluginSnippets from "../index";
 import type {Snippet, SnippetType} from "../types";
 
 /**
- * 顶栏菜单管理器（原 index.ts openMenu/initSnippetsContainer/setMenuPosition/closeMenuCallback/scrollToMenuItem/
- * menuClickHandler/拖拽排序组/搜索/菜单项生成/计数与高亮组 外迁，行为等价；顶栏按钮创建 initTopBar 与
- * 点击/命令打开回调 openSnippetsManager（原 topBarInit/openSnippetsManager）随后同迁本类）
+ * 顶栏菜单管理器
  * 菜单状态（menu/menuItems/呼吸标志）为本类内部状态，拖拽交互与拖拽状态见 MenuDragSort（src/ui/menu-drag-sort.ts）；
  * 展示配置（snippetSearchType/snippetSortType/snippetOptionClickBehavior/show* 等）为插件 defineProperty 镜像，
  * 经 plugin 延迟读取；业务动作经 plugin.snippetManager/plugin.snippetsDialog 等直连。
@@ -68,7 +64,7 @@ export class SnippetsMenu {
     }
 
     /**
-     * 注册顶栏按钮图标 symbol（原 index.ts onLayoutReady 内联 addIcons 外迁，行为等价）
+     * 注册顶栏按钮图标 symbol
      * iconJcsm 供顶栏按钮与设置项按钮引用（svg use），注册一次即可，须先于 initTopBar 调用。
      */
     initIcons() {
@@ -82,7 +78,7 @@ export class SnippetsMenu {
     }
 
     /**
-     * 初始化顶栏按钮（原 index.ts topBarInit 外迁，行为等价）
+     * 初始化顶栏按钮
      * 顶栏按钮即菜单入口：schema ctx initTopBar/生命周期装配经插件直连本方法。
      */
     async initTopBar() {
@@ -99,7 +95,7 @@ export class SnippetsMenu {
     }
 
     /**
-     * 顶栏按钮点击/命令回调：打开代码片段管理器（原 index.ts openSnippetsManager 外迁，行为等价）
+     * 顶栏按钮点击/命令回调：打开代码片段管理器
      * 快捷键唤起菜单时，如果菜单已经打开，要先关闭再重新打开，所以直接执行就好，会自动关闭菜单再重开。
      */
     async openSnippetsManager() {
@@ -483,7 +479,7 @@ export class SnippetsMenu {
                 }
             }
 
-            // 切换全局开关（snippetType 取当前菜单显示的类型，与旧实现内部 snippetsType 一致）
+            // 切换全局开关（snippetType 取当前菜单显示的类型）
             if (target.classList.contains("jcsm-all-snippets-switch")) {
                 void this.plugin.snippetManager.globalToggleSnippet(this.plugin.snippetsType, (target as HTMLInputElement).checked);
             }

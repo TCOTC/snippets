@@ -1,7 +1,6 @@
-// 代码片段管理（原 index.ts「代码片段管理」分节外迁，行为等价）
+// 代码片段管理
 // 职责：代码片段的创建/保存/删除/自拉/落库/注入元素更新与移除（含跨窗口 origin 分支）。
-// 简洁化：不设 Host 读取器接口——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
-// 仅访问插件侧已 public 化的运行态；纯工具逻辑（ID 生成/预览判断）在 ../utils，纯领域判断在 ../domain。
+// 运行态经插件实例访问；纯工具逻辑（ID 生成/预览判断）在 ../utils，纯领域判断在 ../domain。
 import {fetchPost, fetchSyncPost} from "siyuan";
 import type PluginSnippets from "../index";
 import {isSnippetsTypeEnabled, isValidJavaScriptCode} from "../domain/snippet";
@@ -10,9 +9,9 @@ import type {Snippet, SnippetType} from "../types";
 import type {BroadcastHandlers} from "./sync";
 
 /**
- * 代码片段管理器（原 index.ts createSnippet/saveSnippet/deleteSnippet/applySnippetUIChange/getSnippetById/
- * getSnippetsList/saveSnippetsList/updateSnippetElement/removeSnippetElement 外迁，行为等价；
- * 跨窗口广播业务消息分发注册表构建 buildSyncHandlers 同迁本类）
+ * 代码片段管理器
+ * 承接代码片段的创建/保存/删除/自拉/落库/注入元素更新与移除（含跨窗口 origin 分支），
+ * 以及跨窗口广播业务消息分发注册表的构建（buildSyncHandlers）。
  */
 export class SnippetManager {
     private readonly plugin: PluginSnippets;
@@ -38,7 +37,7 @@ export class SnippetManager {
     }
 
     /**
-     * 保存代码片段（添加/更新/复制；本窗口操作与同内核其他前端实例广播共用同一路径，阶段 3：消灭 saveSnippetSync 镜像）
+     * 保存代码片段（添加/更新/复制；本窗口操作与同内核其他前端实例广播共用同一路径）
      * - 本窗口操作（origin 缺省为 local）：snippet 为编辑结果对象（对话框保存）或复制源对象（复制按钮，
      *   副本在方法内派生）；先自拉服务端旧态做 diff，有变更才经 Store 落库、更新元素/UI 并广播；
      * - 同内核其他前端实例广播（origin 为 remote）：广播窗口已落库，本窗口不落库、不广播，仅同步自身状态。
@@ -166,7 +165,7 @@ export class SnippetManager {
     }
 
     /**
-     * 删除代码片段（本地操作与跨窗口同步共用同一路径，阶段 3：消灭 deleteSnippetSync 镜像）
+     * 删除代码片段（本窗口操作与同内核其他前端实例广播共用同一路径）
      * - 本地（origin 缺省为 local）：自拉权威数据校验存在 → 从 Store 删除 → 落库 → 移除注入元素
      *   /更新 UI → 广播（附本窗口是否正在预览该片段）；
      * - 远程（origin 为 remote）：广播窗口已落库并校验过，本窗口仅按自身状态同步——广播窗口未预览
@@ -437,7 +436,7 @@ export class SnippetManager {
     private isPublish(): boolean { return window.siyuan.isPublish ?? false; }
 
     /**
-     * 切换代码片段的开关状态（本地操作与跨窗口同步共用同一路径，阶段 3：消灭 toggleSnippetSync 镜像）
+     * 切换代码片段的开关状态（本窗口操作与同内核其他前端实例广播共用同一路径）
      * - 本地（origin 缺省为 local）：改内存 → 落库 → 更新元素 → 广播；若已打开该片段的 CSS 实时预览
      *   对话框，则跳过广播（开关状态由预览中的对话框接管，广播方窗口不推送）；
      * - 远程（origin 为 remote）：广播窗口已落库，本窗口仅同步元素与菜单开关 UI，不落库、不广播。
@@ -480,7 +479,7 @@ export class SnippetManager {
     }
 
     /**
-     * 切换代码片段的发布服务开关状态（本窗口操作与同内核其他前端实例广播共用同一路径，阶段 3：消灭 toggleSnippetPublishSync 镜像）
+     * 切换代码片段的发布服务开关状态（本窗口操作与同内核其他前端实例广播共用同一路径）
      * 说明：这里所说的“跨窗口同步”指同一内核的不同前端实例（多 Electron 窗口 / 浏览器标签页 /
      * 移动端均连同一内核 WebSocket）；广播消息即“来自其他前端实例”，非跨设备同步。
      * 载荷 enabled 字段语义即 disabledInPublish（与 services/sync.ts 载荷注释保持一致）：
@@ -563,7 +562,7 @@ export class SnippetManager {
     }
 
     /**
-     * 切换某类型代码片段的全局开关状态（本地操作与跨窗口同步共用，阶段 3：消灭 globalToggleSnippetSync 镜像）
+     * 切换某类型代码片段的全局开关状态（本窗口操作与同内核其他前端实例广播共用同一路径）
      * - 本地（origin 缺省为 local）：本窗口菜单开关。更新 config 镜像并调 /api/setting/setSnippet
      *   （内核即时广播，其他实例原生重渲染注入元素），收集本窗口实时预览中的片段 ID 随消息广播；
      * - 远程（origin 为 remote）：广播窗口已调 API，本窗口不重复调用，仅同步自身状态——更新 config
@@ -644,7 +643,7 @@ export class SnippetManager {
     }
 
     /**
-     * 构建跨窗口广播业务消息分发注册表（原 index.ts onLayoutReady 内联注册表外迁，行为等价）
+     * 构建跨窗口广播业务消息分发注册表
      * 供 BroadcastService 按 type 查表分发（services/sync.ts）；注册键内联“来源解析”后调本类
      * 对应方法并传 origin 为 "remote"（广播窗口已落库，本窗口不落库、不广播，仅同步自身状态）。
      * 协议不含片段原文（禁原文约束）：接收窗口一律按 snippetId 自拉权威数据后再走本地相同路径。

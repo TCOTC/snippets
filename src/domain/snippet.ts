@@ -63,7 +63,7 @@ export function isSnippetsTypeEnabled(snippetType: SnippetType): boolean {
 }
 
 /**
- * 按插件排序方式处理代码片段列表（原 SnippetsMenu.genMenuSnippetsItems 内联逻辑外迁，行为等价）
+ * 按插件排序方式处理代码片段列表
  * fixedSort/customSort 保持原顺序（返回原引用）；其余排序方式先深拷贝再按键值排序，避免排序影响原数据。
  * 排序键：enabled 启用状态、fileName 名称（可选 natural 数值比较）、created 创建时间（id 前 14 位）。
  * @param snippetsList 代码片段列表
@@ -113,7 +113,7 @@ export function sortSnippets(snippetsList: Snippet[], sortType: string): Snippet
 }
 
 /**
- * 按关键字与搜索类型筛选代码片段（原 SnippetsMenu.filterSnippetsIds 外迁，行为等价）
+ * 按关键字与搜索类型筛选代码片段
  * 搜索类型：1 按标题（标题为空回退内容前 200 字）、2 按代码内容、3 按标题或内容；不区分大小写。
  * @param snippetsList 代码片段列表
  * @param snippetSearchType 搜索类型（插件配置 snippetSearchType）

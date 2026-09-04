@@ -1,9 +1,7 @@
-// 代码片段编辑对话框的编辑器生命周期管理（原 index.ts 外迁）
+// 代码片段编辑对话框的编辑器生命周期管理
 // 职责：主题模式监听（对话框打开时启停）、已打开编辑器随主题/配置更新、编辑器重建。
-// 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
-// console/editorIndentUnit/i18n 经插件实例读取（调用时才取值，保证拿到实时配置/i18n）。
-// jcsm 收敛（阶段 6）：observer 原挂 window.siyuan.jcsm.themeObserver，改为实例字段——
-// 插件重载时 onunload 必停监听、重载后由 checkAndManageThemeWatch 按 DOM 现状自启，无需跨 reload 仓库。
+// 主题监听 observer 为实例字段：插件重载时 onunload 必停监听、重载后由 checkAndManageThemeWatch
+// 按 DOM 现状自启。
 import {EditorState} from "@codemirror/state";
 import {vscodeDark, vscodeLight} from "@uiw/codemirror-theme-vscode";
 import type {EditorView} from "@codemirror/view";
@@ -11,10 +9,9 @@ import {createCodeMirrorEditor, createEditorExtensions, getEditorIndentUnit} fro
 import type PluginSnippets from "../index";
 
 /**
- * 编辑器对话框生命周期管理（原 index.ts 对应私有方法外迁，行为等价）
+ * 编辑器对话框生命周期管理
  * - 主题模式监听：存在打开中的代码片段编辑对话框时监听 :root 的 data-theme-mode 变化，
- *   模式切换后更新所有已打开编辑器主题；无对话框时停止监听。observer 为实例字段，
- *   插件重载后随 DOM 现状自启（与既有 dialog 一并由 checkAndManageThemeWatch 管理）。
+ *   模式切换后更新所有已打开编辑器主题；无对话框时停止监听。
  * - updateAllEditorConfigs / recreateEditor：供设置项变更（缩进单位）与主题切换时刷新已打开编辑器。
  */
 export class EditorManager {
@@ -190,7 +187,7 @@ export class EditorManager {
     }
 
     /**
-     * 移除全局 CodeMirror 样式（原 index.ts uninstall 内联块外迁，行为等价；卸载插件时使用）
+     * 移除全局 CodeMirror 样式（卸载插件时使用）
      * 编辑器在运行中可能向 document.head 注入含 .cm-content 的 style，卸载时清理之。
      */
     cleanupEditorStyles() {

@@ -1,9 +1,7 @@
-// 代码片段对话框（原 index.ts「对话框相关」分节外迁，行为等价）
+// 代码片段对话框
 // 职责：代码片段编辑对话框的装配与交互（生成 HTML/打开/取消/预览/保存/事件绑定）、删除确认/放弃编辑确认/
 // 通用确认对话框、按元素关闭对话框（含 CodeMirror 编辑器销毁、监听器移除与 destroyCallback/超时兜底）、
 // 收集已打开的插件模态对话框。
-// 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
-// 经插件侧已 public 化的运行态/服务直连（menuView/snippetManager/syncService/console/i18n/editorManager 等）。
 import {Constants, Dialog} from "siyuan";
 import {moveElementToTop} from "../utils";
 import {createCodeMirrorEditor} from "./codemirror";
@@ -12,7 +10,7 @@ import type PluginSnippets from "../index";
 import type {Snippet} from "../types";
 
 /**
- * 代码片段对话框管理器（原 index.ts「对话框相关」分节外迁，行为等价）
+ * 代码片段对话框管理器
  * 公开 genEditDialogHtml/openEditDialog/openDeleteDialog/openCancelDialog/openConfirm/reloadUI/closeByElement/closeAllDialogs/getAllModalElements
  */
 export class SnippetsDialog {
@@ -600,7 +598,7 @@ export class SnippetsDialog {
     }
 
     /**
-     * 重载界面（原 index.ts reloadUI 外迁，行为等价；菜单重载按钮/文件监听自动重载/命令注册经插件直连本方法）
+     * 重载界面（菜单重载按钮/文件监听自动重载/命令注册经插件直连本方法）
      * 遍历所有打开的代码片段编辑对话框，存在未保存变更时弹确认框二次确认后再请求重载界面。
      */
     reloadUI() {
@@ -722,7 +720,7 @@ export class SnippetsDialog {
     }
 
     /**
-     * 关闭全部插件模态对话框（原 index.ts uninstall 内联遍历外迁，行为等价；卸载插件时使用）
+     * 关闭全部插件模态对话框（卸载插件时使用）
      * 含代码片段编辑/设置/确认等所有 data-key 以 jcsm- 开头的已打开对话框。
      */
     closeAllDialogs() {

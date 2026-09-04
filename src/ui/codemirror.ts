@@ -1,4 +1,4 @@
-// CodeMirror 6（编辑器扩展/视图创建；原 index.ts 编辑器段外迁）
+// CodeMirror 6 编辑器工厂（扩展配置/视图创建的纯函数，参数由调用方传入）
 import {closeBrackets, closeBracketsKeymap} from "@codemirror/autocomplete"; // autocompletion, completionKeymap
 import {defaultKeymap, history, historyKeymap, indentWithTab} from "@codemirror/commands";
 import {javascript} from "@codemirror/lang-javascript";
@@ -35,7 +35,7 @@ import {
 export type SnippetsEditorI18n = Record<string, string>;
 
 /**
- * 获取编辑器缩进单位（原 index.ts getEditorIndentUnit 外迁）
+ * 获取编辑器缩进单位
  * @param indentUnitConfig 插件配置 editorIndentUnit（tab1/space4/followSiyuan 等）
  * @returns 缩进单位字符串
  */
@@ -62,7 +62,7 @@ export function getEditorIndentUnit(indentUnitConfig: string): string {
 }
 
 /**
- * 创建编辑器扩展配置（原 index.ts createEditorExtensions 外迁，this.i18n/缩进单位改为参数传入）
+ * 创建编辑器扩展配置（i18n/缩进单位由调用方传入，保持工厂纯函数）
  * @param theme 主题配置
  * @param language 语言类型（css | js）
  * @param indentUnitText 缩进单位字符串（由 getEditorIndentUnit 解析）
@@ -138,7 +138,7 @@ export function createEditorExtensions(theme: any, language: string, indentUnitT
 }
 
 /**
- * 创建代码片段编辑器（原 index.ts createCodeMirrorEditor 外迁，缩进配置/i18n 改为参数传入）
+ * 创建代码片段编辑器（缩进配置/i18n 由调用方传入，保持工厂纯函数）
  * @param container 容器元素
  * @param content 初始内容
  * @param language 语言类型（css | js）

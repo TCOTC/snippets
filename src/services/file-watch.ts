@@ -1,8 +1,7 @@
-// 文件夹代码片段监听（原 index.ts「文件监听功能」分节外迁，行为等价）
+// 文件夹代码片段监听
 // 职责：监听 data 下指定文件夹中的 .css/.js 文件——初始加载、周期轮询差异、增删改应用/移除注入元素、
 // 路径/间隔/开关变化处理；JS 文件移除时按 autoReloadUIAfterModifyJS 提示并可自动重载界面。
-// 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
-// 经插件侧已 public 化的配置镜像（fileWatch*/autoReloadUIAfterModifyJS/isReloadUIRequired）与服务直连。
+// 开关/路径/间隔/自动重载等配置经插件实例（fileWatch*/autoReloadUIAfterModifyJS/isReloadUIRequired）读取。
 import {fetchPost} from "siyuan";
 import {isValidJavaScriptCode} from "../domain/snippet";
 import {genNewSnippetId} from "../utils";
@@ -11,7 +10,7 @@ import type PluginSnippets from "../index";
 import type {FileState} from "../types";
 
 /**
- * 文件夹代码片段监听服务（原 index.ts「文件监听功能」分节外迁，行为等价）
+ * 文件夹代码片段监听服务
  * 监听状态（已加载文件状态表、轮询定时器 ID）为本服务内部状态，随实例生命周期启停。
  */
 export class FileWatchService {
