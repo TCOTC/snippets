@@ -1,27 +1,12 @@
 // 代码片段编辑对话框的编辑器生命周期管理（原 index.ts 外迁）
 // 职责：主题模式监听（对话框打开时启停）、已打开编辑器随主题/配置更新、编辑器重建。
-// 运行态依赖（logger/editorIndentUnit/i18n）经 EditorManagerHost 注入，由插件实例实时转发。
+// 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
+// console/editorIndentUnit/i18n 经插件实例读取（调用时才取值，保证拿到实时配置/i18n）。
 import {EditorState} from "@codemirror/state";
 import {vscodeDark, vscodeLight} from "@uiw/codemirror-theme-vscode";
 import type {EditorView} from "@codemirror/view";
 import {createCodeMirrorEditor, createEditorExtensions, getEditorIndentUnit} from "./codemirror";
-import type {SnippetsEditorI18n} from "./codemirror";
-
-/**
- * 编辑器管理器所需的插件运行态（读取器函数形式，调用时才取值，保证拿到实时配置/i18n）
- */
-export interface EditorManagerHost {
-    /** 插件日志器（consoleDebug 关闭时 log 静默，warn/error 恒输出） */
-    logger: {
-        log(...args: any[]): void;
-        warn(...args: any[]): void;
-        error(...args: any[]): void;
-    };
-    /** 读取：插件配置 editorIndentUnit */
-    editorIndentUnit: () => string;
-    /** 读取：插件 i18n 文案 */
-    i18n: () => SnippetsEditorI18n;
-}
+import type PluginSnippets from "../index";
 
 /**
  * 编辑器对话框生命周期管理（原 index.ts 对应私有方法外迁，行为等价）
@@ -31,10 +16,10 @@ export interface EditorManagerHost {
  * - updateAllEditorConfigs / recreateEditor：供设置项变更（缩进单位）与主题切换时刷新已打开编辑器。
  */
 export class EditorManager {
-    private readonly host: EditorManagerHost;
+    private readonly plugin: PluginSnippets;
 
-    constructor(host: EditorManagerHost) {
-        this.host = host;
+    constructor(plugin: PluginSnippets) {
+        this.plugin = plugin;
     }
 
     /**
@@ -51,12 +36,12 @@ export class EditorManager {
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 if (mutation.type === "attributes" && mutation.attributeName === "data-theme-mode") {
-                    this.host.logger.log("themeModeChangeHandler: mutation", mutation);
+                    this.plugin.console.log("themeModeChangeHandler: mutation", mutation);
 
                     // 检查主题模式是否有变化
                     const currentThemeMode = window.siyuan.config.appearance.mode;
                     if (currentThemeMode !== lastThemeMode) {
-                        this.host.logger.log(`Theme mode changed: ${lastThemeMode} -> ${currentThemeMode}`);
+                        this.plugin.console.log(`Theme mode changed: ${lastThemeMode} -> ${currentThemeMode}`);
                         lastThemeMode = currentThemeMode;
 
                         // 更新所有打开的代码片段编辑对话框中的编辑器主题
@@ -78,7 +63,7 @@ export class EditorManager {
             if (!window.siyuan.jcsm) window.siyuan.jcsm = {};
             window.siyuan.jcsm.themeObserver = observer;
 
-            this.host.logger.log("startThemeModeWatch: theme mode watch started");
+            this.plugin.console.log("startThemeModeWatch: theme mode watch started");
         }
     }
 
@@ -89,7 +74,7 @@ export class EditorManager {
         if (window.siyuan.jcsm?.themeObserver) {
             window.siyuan.jcsm.themeObserver.disconnect();
             delete window.siyuan.jcsm.themeObserver;
-            this.host.logger.log("stopThemeModeWatch: theme mode watch stopped");
+            this.plugin.console.log("stopThemeModeWatch: theme mode watch stopped");
         }
     }
 
@@ -108,7 +93,7 @@ export class EditorManager {
     checkAndManageThemeWatch(isOpen = false) {
         const hasDialog = isOpen || this.hasEditorDialogsOpen();
         const hasObserver = !!window.siyuan.jcsm?.themeObserver;
-        this.host.logger.log("checkAndManageThemeWatch: hasDialog", hasDialog, ", hasObserver", hasObserver);
+        this.plugin.console.log("checkAndManageThemeWatch: hasDialog", hasDialog, ", hasObserver", hasObserver);
 
         if (hasDialog && !hasObserver) {
             // 有对话框但没有监听器，启动监听
@@ -138,7 +123,7 @@ export class EditorManager {
             // 获取当前编辑器实例 - 通过 DOM 元素查找对应的 EditorView
             const editorView = (existingEditorElement as any).cmView as EditorView;
             if (!editorView) {
-                this.host.logger.warn("updateAllEditorConfigs: editorView not found, recreating editor:", reason);
+                this.plugin.console.warn("updateAllEditorConfigs: editorView not found, recreating editor:", reason);
                 this.recreateEditor(dialogElement, contentContainer);
                 return;
             }
@@ -154,13 +139,13 @@ export class EditorManager {
             const snippetType = dialogElement.getAttribute("data-snippet-type") || "css";
             const newState = EditorState.create({
                 doc: currentState.doc,
-                extensions: createEditorExtensions(newTheme, snippetType, getEditorIndentUnit(this.host.editorIndentUnit()), this.host.i18n()),
+                extensions: createEditorExtensions(newTheme, snippetType, getEditorIndentUnit(this.plugin.editorIndentUnit), this.plugin.i18n),
             });
 
             // 更新编辑器状态，保留滚动位置和光标位置
             editorView.setState(newState);
 
-            this.host.logger.log("updateAllEditorConfigs: editor:", reason, "updated:", dialogElement);
+            this.plugin.console.log("updateAllEditorConfigs: editor:", reason, "updated:", dialogElement);
         });
     }
 
@@ -170,7 +155,7 @@ export class EditorManager {
      * @param contentContainer 内容容器
      */
     recreateEditor(dialogElement: Element, contentContainer: HTMLElement) {
-        this.host.logger.log("recreateEditor: dialogElement", dialogElement, ", contentContainer", contentContainer);
+        this.plugin.console.log("recreateEditor: dialogElement", dialogElement, ", contentContainer", contentContainer);
         // 获取当前编辑器内容
         const existingEditorElement = contentContainer.querySelector(".cm-editor");
         if (!existingEditorElement) return;
@@ -183,7 +168,7 @@ export class EditorManager {
                 .map(line => line.textContent || "")
                 .join("\n");
         } else {
-            this.host.logger.error("recreateEditor: no code lines found, return");
+            this.plugin.console.error("recreateEditor: no code lines found, return");
             return;
         }
 
@@ -193,8 +178,8 @@ export class EditorManager {
         contentContainer.innerHTML = "";
 
         // 重新创建编辑器
-        createCodeMirrorEditor(contentContainer, currentContent, snippetType, this.host.editorIndentUnit(), this.host.i18n());
+        createCodeMirrorEditor(contentContainer, currentContent, snippetType, this.plugin.editorIndentUnit, this.plugin.i18n);
 
-        this.host.logger.log(`recreateEditor: editor recreated: ${dialogElement}`);
+        this.plugin.console.log(`recreateEditor: editor recreated: ${dialogElement}`);
     }
 }

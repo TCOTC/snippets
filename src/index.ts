@@ -145,12 +145,8 @@ export default class PluginSnippets extends Plugin {
         // 初始化顶栏菜单管理器（直连本实例，运行态延迟到调用时读取）
         this.menuView = new SnippetsMenu(this);
 
-        // 初始化编辑器对话框生命周期管理器（运行态经读取器实时转发：editorIndentUnit 需在配置装配完成 defineProperty 后才能读取，故只能在调用时取值）
-        this.editorManager = new EditorManager({
-            logger: this.console,
-            editorIndentUnit: () => this.editorIndentUnit,
-            i18n: () => this.i18n,
-        });
+        // 初始化编辑器对话框生命周期管理器（直连本实例，editorIndentUnit 等调用时读取）
+        this.editorManager = new EditorManager(this);
 
         // 初始化配置服务（配置装配/持久化/热应用；存储键名与生命周期数据方法在此转发，运行态均延迟到调用时取值）
         this.configService = new ConfigService({
