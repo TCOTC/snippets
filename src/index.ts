@@ -5,9 +5,7 @@ import {SNIPPETS_CHANGED, SnippetStore} from "./domain/snippet-store";
 import {BroadcastService} from "./services/sync";
 import type {
     SettingApplyPayload,
-    SnippetDeletePayload,
     SnippetSavePayload,
-    SnippetToggleGlobalPayload,
     SnippetTogglePublishPayload
 } from "./services/sync";
 import {hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, showElementTooltip} from "./utils";
@@ -250,9 +248,11 @@ export default class PluginSnippets extends Plugin {
                     await this.toggleSnippet(snippet, enabled, "remote");
                 },
                 snippet_toggle_publish: (payload) => this.toggleSnippetPublishSync(payload),
-                snippet_toggle_global: (payload) => this.globalToggleSnippetSync(payload),
+                snippet_toggle_global: ({snippetType, enabled, previewingSnippetIds}) =>
+                    this.globalToggleSnippet(snippetType, enabled, "remote", previewingSnippetIds),
                 snippet_save: (payload) => this.saveSnippetSync(payload),
-                snippet_delete: (payload) => this.deleteSnippetSync(payload),
+                snippet_delete: ({snippetId, snippetType, previewState}) =>
+                    this.deleteSnippet(snippetId, snippetType, "remote", previewState),
                 snippet_element_update: async ({snippet, snippetId, previewState}) => {
                     // 预览放行原文（豁免）：snippet 来自消息体（编辑中内容未保存、无法自拉）；
                     // 未携带原文（退出预览）时按 ID 自拉已保存片段恢复
@@ -1650,9 +1650,9 @@ export default class PluginSnippets extends Plugin {
                 }
             }
 
-            // 切换全局开关
+            // 切换全局开关（snippetType 取当前菜单显示的类型，与旧实现内部 this.snippetsType 一致）
             if (target.classList.contains("jcsm-all-snippets-switch")) {
-                this.globalToggleSnippet((target as HTMLInputElement).checked);
+                void this.globalToggleSnippet(this.snippetsType, (target as HTMLInputElement).checked);
             }
 
             // 点击顶部的按钮
@@ -1884,22 +1884,65 @@ export default class PluginSnippets extends Plugin {
     }
 
     /**
-     * 切换全局开关状态
+     * 切换某类型代码片段的全局开关状态（本地操作与跨窗口同步共用，阶段 3：消灭 globalToggleSnippetSync 镜像）
+     * - 本地（origin 缺省为 local）：本窗口菜单开关。更新 config 镜像并调 /api/setting/setSnippet
+     *   （内核即时广播，其他实例原生重渲染注入元素），收集本窗口实时预览中的片段 ID 随消息广播；
+     * - 远程（origin 为 remote）：广播窗口已调 API，本窗口不重复调用，仅同步自身状态——更新 config
+     *   镜像、刷新注入元素（跳过广播窗口正在实时预览的片段）与菜单全局开关 UI。
+     * @param snippetType 代码片段类型
      * @param enabled 是否启用
+     * @param origin 变更来源：local（本窗口操作）| remote（其他窗口广播）
+     * @param remotePreviewingSnippetIds 广播窗口正在实时预览的片段 ID（仅远程使用，供本窗口跳过元素更新）
      */
-    private globalToggleSnippet(enabled: boolean) {
+    private async globalToggleSnippet(snippetType: SnippetType, enabled: boolean, origin: "local" | "remote" = "local", remotePreviewingSnippetIds: string[] = []) {
+        this.console.log("globalToggleSnippet:", { snippetType, enabled, origin });
+
         // 更新全局变量和配置
         const syConfig = window.siyuan.config!;
-        if (this.snippetsType === "css") {
+        if (snippetType === "css") {
             syConfig.snippet.enabledCSS = enabled;
-        } else if (this.snippetsType === "js") {
+        } else if (snippetType === "js") {
             syConfig.snippet.enabledJS = enabled;
         }
+
+        if (origin === "remote") {
+            // 如果接受广播的窗口没有打开过菜单，可能不存在 this.snippetsList，需要获取
+            if (!this.snippetsList || this.snippetsList.length === 0) {
+                const snippetsList = await this.getSnippetsList();
+                if (snippetsList) {
+                    this.snippetsList = snippetsList;
+                } else {
+                    this.console.error("globalToggleSnippet: Can not get snippetsList");
+                    return;
+                }
+            }
+
+            // 更新代码片段元素
+            // 切换全局开关只会影响已启用的代码片段，所以过滤出来
+            let filteredSnippets = this.snippetsList.filter((snippet: Snippet) => snippet.type === snippetType && snippet.enabled === true);
+            if (this.realTimePreview) {
+                // 忽略在广播的窗口中正在实时预览的 CSS 代码片段元素更新
+                filteredSnippets = filteredSnippets.filter(snippet => !remotePreviewingSnippetIds.includes(snippet.id));
+            }
+            filteredSnippets.forEach((snippet: Snippet) => {
+                // enabled 为 true 时，snippet.enabled 也一定为 true
+                this.updateSnippetElement(snippet, enabled);
+            });
+
+            // 更新菜单中的全局开关状态（如果菜单已打开，并且显示的是这个类型的代码片段）
+            if (this.menuItems) {
+                const globalSwitch = this.menuItems.querySelector(`.jcsm-top-container[data-type="${snippetType}"] .jcsm-all-snippets-switch`) as HTMLInputElement;
+                globalSwitch && (globalSwitch.checked = enabled);
+            }
+            return;
+        }
+
+        // 本地：调用内核 API（触发内核即时广播，其他实例原生全量重渲染注入元素）
         fetchPost("/api/setting/setSnippet", syConfig.snippet);
 
-        // 更新代码片段元素
+        // 更新代码片段元素（本地正在预览的片段由 updateSnippetElement 内部按 isPreviewingSnippet 跳过）
         // 切换全局开关只会影响已启用的代码片段，所以过滤出来
-        const filteredSnippets = this.snippetsList.filter((snippet: Snippet) => snippet.type === this.snippetsType && snippet.enabled === true);
+        const filteredSnippets = this.snippetsList.filter((snippet: Snippet) => snippet.type === snippetType && snippet.enabled === true);
         filteredSnippets.forEach((snippet: Snippet) => {
             // enabled 为 true 时，snippet.enabled 也一定为 true
             // updateSnippetElement 几乎不会抛出错误，但我们仍需要处理返回的 Promise 以满足 ESLint 要求
@@ -1915,55 +1958,10 @@ export default class PluginSnippets extends Plugin {
         // 广播全局开关状态变更到其他窗口
         this.syncService?.broadcast({
             type: "snippet_toggle_global",
-            snippetType: this.snippetsType,
-            enabled: enabled,
-            previewingSnippetIds: previewingSnippetIds,
+            snippetType,
+            enabled,
+            previewingSnippetIds,
         });
-    }
-
-    /**
-     * 处理全局开关状态同步
-     * @param data 消息数据
-     */
-    private async globalToggleSnippetSync(data: SnippetToggleGlobalPayload) {
-        const { snippetType, enabled, previewingSnippetIds } = data;
-        this.console.log("globalToggleSnippetSync:", { snippetType, enabled, previewingSnippetIds });
-        
-        // 更新全局配置
-        const syConfig = window.siyuan.config!;
-        if (snippetType === "css") {
-            syConfig.snippet.enabledCSS = enabled;
-        } else if (snippetType === "js") {
-            syConfig.snippet.enabledJS = enabled;
-        }
-
-        // 如果接受广播的窗口没有打开过菜单，可能不存在 this.snippetsList，需要获取
-        if (!this.snippetsList || this.snippetsList.length === 0) {
-            const snippetsList = await this.getSnippetsList();
-            if (snippetsList) {
-                this.snippetsList = snippetsList;
-            } else {
-                this.console.error("globalToggleSnippetSync: Can not get snippetsList");
-                return;
-            }
-        }
-
-        // 更新代码片段元素
-        // 切换全局开关只会影响已启用的代码片段，所以过滤出来
-        let filteredSnippets = this.snippetsList.filter((snippet: Snippet) => snippet.type === snippetType && snippet.enabled === true);
-        if (this.realTimePreview) {
-            // 忽略在广播的窗口中正在实时预览的 CSS 代码片段元素更新
-            filteredSnippets = filteredSnippets.filter(snippet => !previewingSnippetIds.includes(snippet.id));
-        }
-        filteredSnippets.forEach((snippet: Snippet) => {
-            // enabled 为 true 时，snippet.enabled 也一定为 true
-            this.updateSnippetElement(snippet, enabled);
-        });
-
-        // 更新菜单中的全局开关状态（如果菜单已打开，并且显示的是这个类型的代码片段）
-        if (!this.menuItems) return;
-        const globalSwitch = this.menuItems.querySelector(`.jcsm-top-container[data-type="${snippetType}"] .jcsm-all-snippets-switch`) as HTMLInputElement;
-        globalSwitch && (globalSwitch.checked = enabled);
     }
 
     /**
@@ -2857,65 +2855,64 @@ export default class PluginSnippets extends Plugin {
     }
 
     /**
-     * 删除代码片段
+     * 删除代码片段（本地操作与跨窗口同步共用同一路径，阶段 3：消灭 deleteSnippetSync 镜像）
+     * - 本地（origin 缺省为 local）：自拉权威数据校验存在 → 从 Store 删除 → 落库 → 移除注入元素
+     *   /更新 UI → 广播（附本窗口是否正在预览该片段）；
+     * - 远程（origin 为 remote）：广播窗口已落库并校验过，本窗口仅按自身状态同步——广播窗口未预览
+     *   该片段时才移除注入元素；片段在本窗口列表中存在时更新 UI 并同步从 Store 删除。
      * @param id 代码片段 ID
      * @param snippetType 代码片段类型
+     * @param origin 变更来源：local（本窗口操作）| remote（其他窗口广播）
+     * @param remotePreviewState 广播窗口是否正在实时预览该片段（仅远程使用，用于跳过注入元素移除）
      */
-    private async deleteSnippet(id: string, snippetType: SnippetType) {
+    private async deleteSnippet(id: string, snippetType: SnippetType, origin: "local" | "remote" = "local", remotePreviewState = false) {
         // TODO: 有个 "/api/snippet/removeSnippet" 看看能不能用上
-        this.console.log("deleteSnippet", id, snippetType);
+        this.console.log("deleteSnippet", {id, snippetType, origin});
 
         if (!id || !snippetType) {
-            this.showErrorMessage(this.i18n.deleteSnippetFailed);
+            if (origin === "local") {
+                this.showErrorMessage(this.i18n.deleteSnippetFailed);
+            } else {
+                this.console.error("deleteSnippet: Snippet is missing:", {id, snippetType});
+            }
             return;
         }
 
-        const snippet = await this.getSnippetById(id);
-        if (snippet === undefined) {
-            this.showErrorMessage(this.i18n.getSnippetFailed);
-            return;
-        } else if (snippet === false) {
-            return;
-        }
-        // 从 Store 中删除：统一更新列表并广播变更事件，菜单在打开时会自行刷新计数
-        this.snippetStore.remove(id);
-        // 需要等 getSnippetsList() 调用的 API 执行完毕之后才推送更新，其他窗口需要用到代码片段的最新数据
-        void await this.saveSnippetsList(this.snippetsList);
+        if (origin === "local") {
+            const snippet = await this.getSnippetById(id);
+            if (snippet === undefined) {
+                this.showErrorMessage(this.i18n.getSnippetFailed);
+                return;
+            } else if (snippet === false) {
+                return;
+            }
+            // 从 Store 中删除：统一更新列表并广播变更事件，菜单在打开时会自行刷新计数
+            this.snippetStore.remove(id);
+            // 需要等 getSnippetsList() 调用的 API 执行完毕之后才推送更新，其他窗口需要用到代码片段的最新数据
+            void await this.saveSnippetsList(this.snippetsList);
 
-        void this.removeSnippetElement(id, snippetType);
-        this.applySnippetUIChange(snippet, false);
+            void this.removeSnippetElement(id, snippetType);
+            this.applySnippetUIChange(snippet, false);
 
-        // 广播代码片段数据更新到其他窗口
-        this.syncService?.broadcast({
-            type: "snippet_delete",
-            snippetId: id,
-            snippetType: snippetType,
-            previewState: this.isPreviewingSnippet(id, snippetType),
-        });
-    }
-
-    /**
-     * 处理代码片段删除同步
-     * @param data 消息数据
-     */
-    private async deleteSnippetSync(data: SnippetDeletePayload) {
-        const { snippetId, snippetType, previewState } = data;
-        if (!snippetId || !snippetType) {
-            this.console.error("deleteSnippetSync: Snippet is missing:", data);
+            // 广播代码片段数据更新到其他窗口
+            this.syncService?.broadcast({
+                type: "snippet_delete",
+                snippetId: id,
+                snippetType: snippetType,
+                previewState: this.isPreviewingSnippet(id, snippetType),
+            });
             return;
         }
-        this.console.log("deleteSnippetSync", snippetId, snippetType);
 
-        if (!previewState) {
-            // 广播窗口没有预览该代码片段的情况下，才移除元素
-            void this.removeSnippetElement(snippetId, snippetType);
+        // 远程：广播窗口没有预览该代码片段的情况下，才移除元素
+        if (!remotePreviewState) {
+            void this.removeSnippetElement(id, snippetType);
         }
-        
-        const snippet = this.snippetsList.find((s: Snippet) => s.id === snippetId);
+        const snippet = this.snippetsList.find((s: Snippet) => s.id === id);
         if (snippet) {
             this.applySnippetUIChange(snippet, false);
             // 从 Store 中删除：统一在列表更新之后触发计数刷新事件（否则计数仍是删除前的值）
-            this.snippetStore.remove(snippetId);
+            this.snippetStore.remove(id);
         }
     }
 
