@@ -10,6 +10,7 @@ import {ImportExportService} from "./services/import-export";
 import {FeedbackService} from "./services/feedback";
 import {ListenerRegistry} from "./services/listener-registry";
 import {SnippetManager} from "./services/snippet-manager";
+import {WsMainSnippetSync} from "./services/ws-main";
 import {SnippetsMenu} from "./ui/menu";
 
 import {
@@ -104,6 +105,12 @@ export default class PluginSnippets extends Plugin {
      */
     syncService: BroadcastService | null = null;
 
+    /**
+     * ws-main 消息同步服务（监听思源内核 setSnippet 广播刷新列表与已打开菜单，
+     * 实现见 src/services/ws-main.ts；start 于布局无关装配段调用）
+     */
+    wsMainSync!: WsMainSnippetSync;
+
     // ================================ 运行态 ================================
     // 运行期会话状态（供菜单/文件监听/编辑对话框等各模块读取；插件重载后以内核数据或配置默认值重建）。
     // 插件配置字段已收敛到 config 对象（src/config/config.ts），不再挂在插件根上。
@@ -192,6 +199,9 @@ export default class PluginSnippets extends Plugin {
         // 初始化对话框管理器（代码片段编辑对话框/确认对话框/按元素关闭等）
         this.snippetsDialog = new SnippetsDialog(this);
 
+        // 初始化 ws-main 消息同步服务（运行态经插件实例引用，start 见下方布局无关装配段）
+        this.wsMainSync = new WsMainSnippetSync(this);
+
         // ================================ 布局无关装配 ================================
         // 以下初始化只依赖内核 HTTP / window.siyuan.config / window.Lute / document.body 静态骨架，
         // 不依赖布局就绪后的 DOM（顶栏 #barPlugins 等）；思源保证 onload 先于 onLayoutReady 完成，
@@ -247,6 +257,13 @@ export default class PluginSnippets extends Plugin {
             await this.syncService.start();
         }
 
+        // 监听内核 ws-main setSnippet 广播（数据同步/他窗口或思源原生修改片段后刷新插件列表与菜单，
+        // 实现见 src/services/ws-main.ts）；发布页收不到该广播（内核跳过发布会话，见 kernel/util/websocket.go），
+        // 与跨窗口广播同条件不注册
+        if (!this.isPublish) {
+            this.wsMainSync.start();
+        }
+
         console.log(this.displayName, "plugin onloaded");
     }
 
@@ -278,6 +295,9 @@ export default class PluginSnippets extends Plugin {
     public onunload() {
         // 关闭跨窗口同步服务（发送下线通知并断开连接）
         this.syncService?.stop();
+
+        // 停止监听内核 ws-main 消息（防止插件实例重载后旧监听器残留）
+        this.wsMainSync?.stop();
 
         // 关闭全部插件模态对话框（含 CodeMirror 编辑器销毁、对话框监听器移除；
         // 实现见 SnippetsDialog.closeAllDialogs，静默关闭不弹确认）

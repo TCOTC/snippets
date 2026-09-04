@@ -47,4 +47,5 @@
 
 - 重构插件代码 [#28](https://github.com/TCOTC/snippets/issues/28)
 - 导入代码片段后立即应用并广播到其他窗口 [#31](https://github.com/TCOTC/snippets/issues/31)
+- 同步代码片段列表以适配数据同步 [#32](https://github.com/TCOTC/snippets/issues/32)
 - 适配发布服务 [#33](https://github.com/TCOTC/snippets/issues/33)

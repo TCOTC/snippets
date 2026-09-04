@@ -592,6 +592,9 @@ export class SnippetManager {
         }
 
         // 本地：调用内核 API（触发内核即时广播，其他实例原生全量重渲染注入元素）
+        // 先抑制本窗口随后收到的内核 setSnippet 回环广播（本窗口已就地更新 config 镜像与注入元素，
+        // 无需 ws-main 同步服务再自拉刷新，见 WsMainSnippetSync.suppressOwnBroadcast）
+        this.plugin.wsMainSync?.suppressOwnBroadcast();
         fetchPost("/api/setting/setSnippet", syConfig.snippet);
 
         // 更新代码片段元素（本地正在预览的片段由 updateSnippetElement 内部按 isPreviewingSnippet 跳过）
