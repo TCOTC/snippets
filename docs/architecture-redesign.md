@@ -16,9 +16,14 @@
 - **提交前必须等用户确认**，不得擅自提交；每批单独一次 commit。
 - **对齐思源原生实现 / 优先用官方 API**：凡思源已提供 API 的就用 API，不自造重复实现；需对照思源源码（`d:\CodeProjects\siyuan` 已加入工作区）核对。
 
-### 已完成提交（main，自下而上）
+### 已完成提交（main，最新在上）
 | commit | 内容 |
 |---|---|
+| `f0ef773` | feat: 新增 services/sync 广播协议类型并收紧 handler 参数类型（阶段 3） |
+| `442c9e6` | docs: 同步退出预览去原文化完成状态 |
+| `2a2b0f9` | feat: snippet_element_update 退出预览去原文化，接收窗口自拉恢复 |
+| `a6984c8` | docs: 修正同内核多实例即时同步机制结论，记录 CSS 实时预览原文豁免决策 |
+| `985cd61` | feat: snippet_save 广播去原文化，接收窗口自拉权威数据 |
 | `b7718de` | docs: 记录广播协议禁传 snippet 原文的约束 |
 | `a60214f` | feat: SnippetStore 支持整表替换，清理两处漏网列表写点 |
 | `bcd8a2c` | feat: SnippetStore 支持拖拽排序移动，executeDragSort 改走统一写路径 |
@@ -42,12 +47,12 @@
 | `dd296e9` | refactor: 抽取纯工具函数到 `utils.ts` |
 | `4f2773e` | refactor: 抽取 `isValidJavaScriptCode` 到 `domain/snippet.ts` |
 
-当前工作区：`docs/`（本文档）未跟踪，`src/` 已随各批提交、处于干净状态（Store 收敛尚未完成的部分见下方待办）。
+当前工作区：干净（本会话收尾时 `docs/` 已入库；新会话从本节的提交清单与下方“下一步建议”续接）。
 
 ### 已建模块
 - `src/core/event-bus.ts`（类型化 pub/sub，`on/off/emit/clear`；注意：勿用字段名 `eventBus`，会与 siyuan `Plugin` 基类成员冲突，内部用 `internalEventBus`）
 - `src/services/storage.ts`（`getFile`/`putFile`/`renameFile`）
-- `src/services/sync.ts`（阶段 3 地基：广播通道常量 + 各消息 payload 接口 + `SnippetBroadcastMessage` 联合类型，含禁原文约束与 CSS 预览豁免注释）
+- `src/services/sync.ts`（阶段 3：广播通道常量 + 各消息 payload 接口 + `SnippetBroadcastMessage` 联合类型，含禁原文约束与 CSS 预览豁免注释；payload 类型已被 6 个广播 handler 与 dispatch 使用）
 - `src/utils.ts`（含 `isPromiseFulfilled`/`hideTooltip`/`showElementTooltip`/`isInputElementActive`/`htmlToElement`/`moveElementToTop`）
 - `src/domain/snippet.ts`（`isValidJavaScriptCode`/`isSnippetsTypeEnabled`）
 - `src/domain/snippet-store.ts`（`SnippetStore`：`remove`/`upsert`/`insertBefore`/`move`/`replaceAll`，单一写路径 + 统一发 `SNIPPETS_CHANGED`）
@@ -95,11 +100,11 @@
 - 接收窗口需要片段内容时，一律自行调用 `/api/snippet/getSnippet` 获取权威数据，禁止依赖消息中的原文。
 - **豁免项（2026-09-04 用户拍板）**：编辑中的 CSS 实时预览同步（`snippet_element_update` 且 `previewState: true`）允许携带原文（content），因为内容未保存、接收窗口无法自拉；范围仅限此预览场景。
 - **现状违规点（待改造）**：无。`snippet_element_update` 的退出预览用法（`previewState: false`）已去原文化（只发 `snippetId` + `previewState: false`，接收窗口自拉后恢复）；`snippet_save` 已去原文化；其余消息（`snippet_toggle`、`snippet_toggle_publish`、`snippet_delete`、`snippet_element_remove`、`snippets_sort`、`setting_apply`）均只含元数据，合规。
-- **snippet_save 已去原文化（2026-09-04，暂未提交）**：本地 `saveSnippet` 广播只发 `{ snippetId, isCopy, copySnippetId }`（写入已 `await saveSnippetsList` 落库，接收窗口按 ID 自拉即可）；`saveSnippetSync` 改为先记录本窗口旧片段、再 `getSnippetById` 自拉权威数据后走 store（复制：自拉副本后镜像菜单/对话框更新；非复制：与旧片段比较后按需更新注入元素）。
+- **snippet_save 已去原文化（2026-09-04，commit `985cd61`）**：本地 `saveSnippet` 广播只发 `{ snippetId, isCopy, copySnippetId }`（写入已 `await saveSnippetsList` 落库，接收窗口按 ID 自拉即可）；`saveSnippetSync` 改为先记录本窗口旧片段、再 `getSnippetById` 自拉权威数据后走 store（复制：自拉副本后镜像菜单/对话框更新；非复制：与旧片段比较后按需更新注入元素）。
 
 ### 下一步建议（朝目标架构，拆可验证子批推进）
 1. 阶段 2（Store 收敛）已完成：`domain/snippet-store.ts` 的 `remove`/`upsert`/`insertBefore`/`move`/`replaceAll` 已承接全部本地结构写，计数统一由 `SNIPPETS_CHANGED` 事件驱动。
-2. 阶段 3：`services/sync.ts` 类型化广播协议并让远程消息映射到 store，消除 `*Sync` 镜像；广播仅发非敏感元数据与 ID（禁原文），CSS 编辑中实时预览（`previewState: true`）豁免。
+2. 阶段 3（sync 收敛）已推进至一半：`services/sync.ts` 协议类型已建、`BROADCAST_CHANNEL_NAME` 迁出、6 个广播 handler 与 dispatch 参数已收紧为 payload 类型。**下一步**：发送侧类型化——把 `broadcastMessage(type: string, data: any)` 改为受 `SnippetBroadcastMessage["type"]` 约束的泛型发送（各调用点传字面量 type 自动获得 payload 校验），消除发送侧裸字符串与 `any`；之后再把 `handleBroadcastMessage` 的 switch 与 handler 迁入 `services/sync.ts`，让远程消息统一映射到 store，消灭 `*Sync` 镜像。
 3. 之后：config 声明式（阶段 4）、UI 视图化（阶段 5）、jcsm 收敛（阶段 6）。
 
 ---
