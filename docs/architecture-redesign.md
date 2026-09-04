@@ -12,8 +12,8 @@
 
 ### 协作方式（用户的硬性要求）
 - **小步推进**：一次只改一小块、行为等价；改完展示给用户，**用户明确确认后才 `git commit`**；再继续下一块。
+- **提交必须由用户明确放行**：任何代码/文档改动完成后都**不得擅自提交**——先把改动与摘要展示给用户检查，用户说"继续/提交"后才 `git commit`（2026-09-04 用户追加强调："必须要我让你继续进行下一步，才提交代码，因为我要先检查"）。"让继续下一步"与"可以提交本批"视同放行。
 - **方向由 AI 自主挑**，用户只判断"每批对不对"，不要反复让用户做方向决策。
-- **提交前必须等用户确认**，不得擅自提交；每批单独一次 commit。
 - **对齐思源原生实现 / 优先用官方 API**：凡思源已提供 API 的就用 API，不自造重复实现；需对照思源源码（`d:\CodeProjects\siyuan` 已加入工作区）核对。
 
 ### 已完成提交（main，最新在上）
@@ -53,7 +53,7 @@
 ### 已建模块
 - `src/core/event-bus.ts`（类型化 pub/sub，`on/off/emit/clear`；注意：勿用字段名 `eventBus`，会与 siyuan `Plugin` 基类成员冲突，内部用 `internalEventBus`）
 - `src/services/storage.ts`（`getFile`/`putFile`/`renameFile`）
-- `src/services/sync.ts`（阶段 3：协议类型 + 传输服务。协议：payload 接口 + `SnippetBroadcastBody`（消息体）→ `WithEnvelope` 分配式生成 `SnippetBroadcastMessage`（信封 + 消息体），`SnippetBusinessMessage` 为去掉窗口保活后的业务子集；含禁原文约束与 CSS 预览豁免注释。传输：`BroadcastService` 统一管理 windowId/其他窗口在线集合/WebSocket 连接与自动重连/页面卸载通知，内部消化窗口保活三消息，`broadcast<T extends SnippetBroadcastBody>` 类型化发送（信封由服务保证附加），业务消息经 `onBusinessMessage` 回调上抛，日志经 `BroadcastLogger` 注入）
+- `src/services/sync.ts`（阶段 3：协议类型 + 传输 + 分发。协议：payload 接口 + `SnippetBroadcastBody`（消息体）→ `WithEnvelope` 分配式生成 `SnippetBroadcastMessage`（信封 + 消息体），`SnippetBusinessMessage` 为去掉窗口保活后的业务子集；含禁原文约束与 CSS 预览豁免注释。传输与分发：`BroadcastService` 统一管理 windowId/其他窗口在线集合/WebSocket 连接与自动重连/页面卸载通知，内部消化窗口保活三消息；`broadcast<T extends SnippetBroadcastBody>` 类型化发送（信封由服务保证附加）；业务消息按 type 查表分发到构造入参 `handlers: Partial<BroadcastHandlers>`（各键处理器直接拿到收窄后的 payload），未注册 type 仅告警；日志经 `BroadcastLogger` 注入）
 - `src/utils.ts`（含 `isPromiseFulfilled`/`hideTooltip`/`showElementTooltip`/`isInputElementActive`/`htmlToElement`/`moveElementToTop`）
 - `src/domain/snippet.ts`（`isValidJavaScriptCode`/`isSnippetsTypeEnabled`）
 - `src/domain/snippet-store.ts`（`SnippetStore`：`remove`/`upsert`/`insertBefore`/`move`/`replaceAll`，单一写路径 + 统一发 `SNIPPETS_CHANGED`）
@@ -105,7 +105,7 @@
 
 ### 下一步建议（朝目标架构，拆可验证子批推进）
 1. 阶段 2（Store 收敛）已完成：`domain/snippet-store.ts` 的 `remove`/`upsert`/`insertBefore`/`move`/`replaceAll` 已承接全部本地结构写，计数统一由 `SNIPPETS_CHANGED` 事件驱动。
-2. 阶段 3（sync 收敛）已过**传输层 + 类型化**：`services/sync.ts` 已含协议类型（`SnippetBroadcastBody`/`SnippetBroadcastMessage`/`SnippetBusinessMessage`）与 `BroadcastService`（连接/重连/窗口保活/类型化 `broadcast`）；`index.ts` 的 `handleBroadcastMessage(data: SnippetBusinessMessage)` 已退化为纯业务分发（switch 穷尽收窄、无 `as` 断言），发送侧 10 个调用点均已类型化。**下一步**：把 8 个 `*Sync` handler 本体收敛——让远程消息直接映射到 `SnippetStore`/config 的同一写路径并复用本地 UI 更新逻辑（从根上消灭 `toggleSnippetSync`/`saveSnippetSync` 等镜像，再把 switch 与 handler 一并迁入 `services/sync.ts`）。
+2. 阶段 3（sync 收敛）已过**传输 + 分发注册表 + toggle 合并**：`services/sync.ts` 含协议类型与 `BroadcastService`（连接/重连/窗口保活/类型化 `broadcast`/按 type 查表分发 `BroadcastHandlers`）；`index.ts` 的 `handleBroadcastMessage` switch 已删除，业务分发改为 onLayoutReady 一次性声明 handlers 注册表（各 type 处理器直接拿收窄 payload）；开关消息已合并：`toggleSnippet(snippet, enabled, origin: "local" | "remote")` 同路径承载本地/远程，`toggleSnippetSync` 镜像已删（远程分支自拉后在注册表内直接调 toggleSnippet）。**下一步**：按同一手法逐个收敛剩余消息——`snippet_toggle_publish`/`snippet_toggle_global`/`snippet_save`/`snippet_delete`/`snippet_element_update`/`snippet_element_remove`/`snippets_sort`/`setting_apply` 的 `*Sync` 镜像，让远程消息与本地操作共用同一方法（origin 参数区分：远程不落库、不广播，仅同步本窗口 UI；本地保留落库 + 广播）。
 3. 之后：config 声明式（阶段 4）、UI 视图化（阶段 5）、jcsm 收敛（阶段 6）。
 
 ---
