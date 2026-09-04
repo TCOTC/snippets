@@ -9,6 +9,11 @@ import type {Snippet, SnippetType} from "../types";
 import type {BroadcastHandlers} from "./sync";
 
 /**
+ * 注入元素 id 拼接（<style>/<script> 元素的定位键）
+ */
+const snippetElementId = (snippetType: string, snippetId: string): string => `snippet${snippetType.toUpperCase()}${snippetId}`;
+
+/**
  * 代码片段管理器
  * 承接代码片段的创建/保存/删除/自拉/落库/注入元素更新与移除（含跨窗口 origin 分支），
  * 以及跨窗口广播业务消息分发注册表的构建（buildSyncHandlers）。
@@ -27,12 +32,10 @@ export class SnippetManager {
         const snippet: Snippet = {
             id: genNewSnippetId(this.plugin.snippetsList),
             name: "",
-            type: this.plugin.snippetsType as "css" | "js",
+            type: this.plugin.snippetsType,
             enabled: this.plugin.config.newSnippetEnabled,
             content: "",
         };
-        // 不直接添加代码片段
-        // this.saveSnippet(snippet);
         void this.plugin.snippetsDialog.openEditDialog(snippet, true);
     }
 
@@ -115,7 +118,12 @@ export class SnippetManager {
             this.plugin.console.log("saveSnippet: copySnippet", copySnippet);
         } else {
             // 在 snippetsList 中查找是否存在该代码片段
-            const oldSnippet = await this.getSnippetById(snippet.id!);
+            const oldSnippet = await this.getSnippetById(snippet.id);
+            if (oldSnippet === false) {
+                // false 是自拉列表失败（getSnippetsList 已弹错误提示）
+                this.plugin.showErrorMessage(this.plugin.i18n.getSnippetFailed);
+                return;
+            }
             if (oldSnippet) {
                 // 如果存在，则更新该代码片段
                 // 比较对象属性值而不是对象引用
@@ -139,10 +147,6 @@ export class SnippetManager {
                     await this.updateSnippetElement(snippet);
                 }
             } else {
-                if (oldSnippet === false) {
-                    this.plugin.showErrorMessage(this.plugin.i18n.getSnippetFailed);
-                    return;
-                }
                 // 如果不存在（oldSnippet === undefined），则添加代码片段（store.upsert 按类型分区插入，计数由事件统一刷新）
                 this.plugin.snippetStore.upsert(snippet);
                 hasChanges = true;
@@ -154,7 +158,7 @@ export class SnippetManager {
         if (hasChanges) {
             // 代码片段发生变更才推送更新
             // 需要等 getSnippetsList() 调用的 API 执行完毕之后才推送更新，其他窗口需要用到代码片段的最新数据
-            void await this.saveSnippetsList(this.plugin.snippetsList);
+            await this.saveSnippetsList(this.plugin.snippetsList);
             this.applySnippetUIChange(snippet, true, copySnippet);
 
             // 广播代码片段数据更新到其他窗口
@@ -203,7 +207,7 @@ export class SnippetManager {
             // 从 Store 中删除：统一更新列表并广播变更事件，菜单在打开时会自行刷新计数
             this.plugin.snippetStore.remove(id);
             // 需要等 getSnippetsList() 调用的 API 执行完毕之后才推送更新，其他窗口需要用到代码片段的最新数据
-            void await this.saveSnippetsList(this.plugin.snippetsList);
+            await this.saveSnippetsList(this.plugin.snippetsList);
 
             void this.removeSnippetElement(id, snippetType);
             this.applySnippetUIChange(snippet, false);
@@ -231,12 +235,12 @@ export class SnippetManager {
     }
 
     /**
-     * 应用代码片段 UI 变更
+     * 应用代码片段 UI 变更（仅本类内部：菜单项/对话框按钮的添加更新与移除）
      * @param snippet 代码片段
      * @param isAddOrUpdate 是否为添加或更新
      * @param copySnippet 副本代码片段
      */
-    applySnippetUIChange(snippet: Snippet, isAddOrUpdate: boolean, copySnippet?: Snippet) {
+    private applySnippetUIChange(snippet: Snippet, isAddOrUpdate: boolean, copySnippet?: Snippet) {
         const snippetMenuItem = this.plugin.menuView.menuItems?.querySelector(`.jcsm-snippet-item[data-id="${snippet.id}"]`) as HTMLElement;
         const dialog = document.querySelector(`${SNIPPET_DIALOG_SELECTOR}[data-snippet-id="${snippet.id}"]`) as HTMLDivElement;
         let deleteButton, confirmButton;
@@ -320,7 +324,7 @@ export class SnippetManager {
         }
         const snippetsList = response.data.snippets as Snippet[];
         this.plugin.console.log("getSnippetsList", snippetsList);
-        return response.data.snippets as Snippet[];
+        return snippetsList;
     }
 
     /**
@@ -345,6 +349,30 @@ export class SnippetManager {
     }
 
     /**
+     * 构建注入元素（CSS 为 <style>，JS 为 <script>）并追加到 document.head
+     */
+    private injectElement(snippet: Snippet, elementId: string): HTMLElement {
+        if (snippet.type === "css") {
+            const styleElement = document.createElement("style");
+            styleElement.id = elementId;
+            styleElement.textContent = snippet.content;
+            document.head.appendChild(styleElement);
+            return styleElement;
+        }
+        // JS
+        if (!isValidJavaScriptCode(snippet.content)) {
+            this.plugin.showErrorMessage(this.plugin.i18n.invalidJavaScriptCode);
+        }
+        const scriptElement = document.createElement("script");
+        scriptElement.id = elementId;
+        scriptElement.type = "text/javascript";
+        // 思源的代码使用 .text ，这与 .textContent 是等效的，参考：https://developer.mozilla.org/en-US/docs/Web/API/HTMLScriptElement/text https://developer.mozilla.org/en-US/docs/Web/API/Node/textContent
+        scriptElement.textContent = snippet.content;
+        document.head.appendChild(scriptElement);
+        return scriptElement;
+    }
+
+    /**
      * 更新代码片段元素（添加、更新、删除、启用、禁用、全局启用、全局禁用）
      * @param snippet 代码片段
      * @param enabled 是否启用
@@ -362,7 +390,7 @@ export class SnippetManager {
             return;
         }
 
-        const elementId = `snippet${snippet.type.toUpperCase()}${snippet.id}`;
+        const elementId = snippetElementId(snippet.type, snippet.id);
         const element = document.getElementById(elementId);
 
         // ?? 空值合并运算符，当左侧值为 null 或 undefined 时返回右侧值，此处优先使用 enabled 的值
@@ -370,29 +398,11 @@ export class SnippetManager {
         const isSnippetsTypeEnabledFlag = isSnippetsTypeEnabled(snippet.type);
 
         if (isEnabled && (isSnippetsTypeEnabledFlag || previewState)) {
-            // 代码片段需要启用 && （该代码片段对应的类型是启用状态 || 正在预览该代码片段）→ 则添加新元素
-            if (element && element.innerHTML === snippet.content) {
-                // 如果要添加的代码片段与原来的一样，就忽略
-            } else {
+            // 代码片段需要启用 && （该代码片段对应的类型是启用状态 || 正在预览该代码片段）→ 添加新元素
+            if (!element || element.innerHTML !== snippet.content) {
                 this.plugin.console.log("updateSnippetElement: remove old element:", element);
                 element?.remove();
-                let newElement;
-                if (snippet.type === "css") {
-                    newElement = document.createElement("style");
-                    newElement.id = elementId;
-                    newElement.textContent = snippet.content;
-                    document.head.appendChild(newElement);
-                } else if (snippet.type === "js") {
-                    if (!isValidJavaScriptCode(snippet.content)) {
-                        this.plugin.showErrorMessage(this.plugin.i18n.invalidJavaScriptCode);
-                    }
-                    newElement = document.createElement("script");
-                    newElement.id = elementId;
-                    newElement.type = "text/javascript";
-                    // 思源的代码使用 .text ，这与 .textContent 是等效的，参考：https://developer.mozilla.org/en-US/docs/Web/API/HTMLScriptElement/text https://developer.mozilla.org/en-US/docs/Web/API/Node/textContent
-                    newElement.textContent = snippet.content;
-                    document.head.appendChild(newElement);
-                }
+                const newElement = this.injectElement(snippet, elementId);
                 this.plugin.console.log("updateSnippetElement: add new element:", newElement);
             }
         } else {
@@ -428,7 +438,7 @@ export class SnippetManager {
         // 如果当前窗口正在预览代码片段，则不移除元素
         if (isPreviewingSnippet(snippetId, snippetType, this.plugin.config.realTimePreview)) return;
 
-        const elementId = `snippet${snippetType.toUpperCase()}${snippetId}`;
+        const elementId = snippetElementId(snippetType, snippetId);
         const element = document.getElementById(elementId);
         // 删除 JS 代码片段需要弹出消息提示：有旧代码 && 旧代码有效（通知 + 呼吸，见 SnippetsMenu.promptJSReloadRequired）
         if (snippetType === "js" && element && element.innerHTML && isValidJavaScriptCode(element.innerHTML)) {
@@ -467,7 +477,7 @@ export class SnippetManager {
         void this.saveSnippetsList(this.plugin.snippetsList);
         void this.updateSnippetElement(snippet);
 
-        if (snippet.type === "css" && this.plugin.config.realTimePreview && document.querySelector(`${SNIPPET_DIALOG_SELECTOR}[data-snippet-id="${snippet.id}"]`)) {
+        if (isPreviewingSnippet(snippet.id, snippet.type, this.plugin.config.realTimePreview)) {
             // 如果开启了实时预览，并且打开了对应的 CSS 代码片段对话框，则在菜单项上开关代码片段的操作需要忽略，不广播开关状态变更到其他窗口
             return;
         }

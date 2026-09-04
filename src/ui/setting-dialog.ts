@@ -92,7 +92,6 @@ export class SettingDialog {
         });
 
         const closeElement = dialog.element.querySelector(".b3-dialog__close") as HTMLElement;
-        const scrimElement = dialog.element.querySelector(".b3-dialog__scrim") as HTMLElement;
 
         dialog.destroyNative = dialog.destroy;
         dialog.destroy = () => {
@@ -118,7 +117,7 @@ export class SettingDialog {
                     event.stopPropagation();
                     this.plugin.configService.saveFromDialog(dialog.element);
                 }
-            } else if (target === closeElement || target === scrimElement) {
+            } else if (target === closeElement) {
                 this.plugin.snippetsDialog.closeByElement(dialog.element);
             }
 
@@ -205,18 +204,11 @@ export class SettingDialog {
                     event.preventDefault();
                     event.stopPropagation();
                     void this.plugin.importExportService.exportSnippetsToFile();
-                } else if (action.startsWith("importSnippets")) {
-                    // 通过浏览器 API 导入文件
+                } else if (action === "importSnippetsWithAppend" || action === "importSnippetsWithOverwrite") {
+                    // 浏览器文件选择导入（overwrite 为 true 时覆盖现有片段）
                     event.preventDefault();
                     event.stopPropagation();
-
-                    if (action === "importSnippetsWithAppend") {
-                        // 追加到当前代码片段列表的开头，如果有 ID 与当前代码片段列表中的 ID 重复，则重新生成 ID
-                        void this.plugin.importExportService.importSnippets(false);
-                    } else if (action === "importSnippetsWithOverwrite") {
-                        // 直接覆盖所有代码片段
-                        void this.plugin.importExportService.importSnippets(true);
-                    }
+                    void this.plugin.importExportService.importSnippets(action === "importSnippetsWithOverwrite");
                 }
                 // TODO功能: 移动端的导出导入
             }

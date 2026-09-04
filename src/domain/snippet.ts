@@ -1,4 +1,5 @@
 import {parse as acornParse} from "acorn";
+import type {ExpressionStatement} from "acorn";
 import type {Snippet, SnippetType} from "../types";
 
 /**
@@ -33,34 +34,35 @@ export function isValidJavaScriptCode(code: string): boolean {
     // 使用 acorn 解析代码，判断是否为有效的 JavaScript 代码
     try {
         // https://github.com/acornjs/acorn/tree/master/acorn/
-        const ast = acornParse(code, { ecmaVersion: "latest" }) as any;
-        const length = ast.body.length;
+        const ast = acornParse(code, { ecmaVersion: "latest" });
+        const statements = ast.body;
+        const length = statements.length;
         if (length === 0) {
             return false;
         } else if (
-            length === 1 &&                            // 代码只包含一个顶级语句或表达式
-            ast.body[0].type === "ExpressionStatement" // 代码是一行表达式
+            length === 1 &&                                        // 代码只包含一个顶级语句或表达式
+            statements[0].type === "ExpressionStatement"          // 代码是一行表达式
         ) {
-            const type = ast.body[0].expression.type;
+            const expressionType = (statements[0] as ExpressionStatement).expression.type;
             if (
-                type === "Literal" ||          // 字面量（Literal）是值本身，比如数字、字符串、布尔值等。只有一个值，没有其他语法结构
-                type === "Identifier" ||       // 标识符（Identifier）是变量名、函数名等标识。只是引用一个变量，没有做赋值、调用、声明等操作
-                type === "MemberExpression" || // 成员表达式（MemberExpression）是访问对象属性的表达式，比如 obj.prop 或 arr[index]
-                type === "ThisExpression" ||   // 懒得写注释了
-                type === "Super" ||
-                type === "ArrayExpression" ||
-                type === "ObjectExpression" ||
-                type === "TemplateLiteral" ||
-                type === "FunctionExpression" ||
-                type === "ArrowFunctionExpression" ||
-                type === "UpdateExpression" ||
-                type === "UnaryExpression" ||
-                type === "BinaryExpression" ||
-                type === "LogicalExpression" ||
-                type === "ConditionalExpression" ||
+                expressionType === "Literal" ||          // 字面量（Literal）是值本身，比如数字、字符串、布尔值等。只有一个值，没有其他语法结构
+                expressionType === "Identifier" ||       // 标识符（Identifier）是变量名、函数名等标识。只是引用一个变量，没有做赋值、调用、声明等操作
+                expressionType === "MemberExpression" || // 成员表达式（MemberExpression）是访问对象属性的表达式，比如 obj.prop 或 arr[index]
+                expressionType === "ThisExpression" ||   // this 表达式，单独一行 this 无任何副作用
+                expressionType === "Super" ||
+                expressionType === "ArrayExpression" ||
+                expressionType === "ObjectExpression" ||
+                expressionType === "TemplateLiteral" ||
+                expressionType === "FunctionExpression" ||
+                expressionType === "ArrowFunctionExpression" ||
+                expressionType === "UpdateExpression" ||
+                expressionType === "UnaryExpression" ||
+                expressionType === "BinaryExpression" ||
+                expressionType === "LogicalExpression" ||
+                expressionType === "ConditionalExpression" ||
                 // 立即执行函数是这个类型，需要排除 type === 'CallExpression' ||
-                type === "NewExpression" ||
-                type === "SequenceExpression"
+                expressionType === "NewExpression" ||
+                expressionType === "SequenceExpression"
             ) {
                 return false;
             }
@@ -96,34 +98,21 @@ export function sortSnippets(snippetsList: Snippet[], sortType: string): Snippet
     if (sortType !== "fixedSort" && sortType !== "customSort") {
         // 深拷贝，避免排序影响原数据
         sortedList = deepClone(snippetsList);
-        switch (sortType) {
-            case "enabledASC":
-                sortedList.sort((a, b) => Number(b.enabled) - Number(a.enabled));
-                break;
-            case "enabledDESC":
-                sortedList.sort((a, b) => Number(a.enabled) - Number(b.enabled));
-                break;
-            case "fileNameASC":
-                sortedList.sort((a, b) => a.name.localeCompare(b.name));
-                break;
-            case "fileNameDESC":
-                sortedList.sort((a, b) => b.name.localeCompare(a.name));
-                break;
-            case "fileNameNatASC":
-                sortedList.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-                break;
-            case "fileNameNatDESC":
-                sortedList.sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }));
-                break;
-            case "createdASC":
-                // 创建时间要从 id 中获取，id 的格式是 "20250813161014-se1mend"，其中 "20250813161014" 是创建时间，"se1mend" 是随机字符串
-                sortedList.sort((a, b) => a.id!.slice(0, 14).localeCompare(b.id!.slice(0, 14)));
-                break;
-            case "createdDESC":
-                sortedList.sort((a, b) => b.id!.slice(0, 14).localeCompare(a.id!.slice(0, 14)));
-                break;
-            default:
-                break;
+        // 各排序方式为同一 sort 骨架 + 不同比较器（created 从 id 前 14 位取创建时间，
+        // id 格式为 "20250813161014-se1mend"，前 14 位是时间、后段是随机字符串）
+        const comparators: Record<string, (a: Snippet, b: Snippet) => number> = {
+            enabledASC: (a, b) => Number(b.enabled) - Number(a.enabled),              // 已开启优先
+            enabledDESC: (a, b) => Number(a.enabled) - Number(b.enabled),             // 未开启优先
+            fileNameASC: (a, b) => a.name.localeCompare(b.name),                       // 名称字母升序
+            fileNameDESC: (a, b) => b.name.localeCompare(a.name),                      // 名称字母降序
+            fileNameNatASC: (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }),   // 名称自然升序
+            fileNameNatDESC: (a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }),  // 名称自然降序
+            createdASC: (a, b) => a.id.slice(0, 14).localeCompare(b.id.slice(0, 14)), // 创建时间升序
+            createdDESC: (a, b) => b.id.slice(0, 14).localeCompare(a.id.slice(0, 14)),// 创建时间降序
+        };
+        const comparator = comparators[sortType];
+        if (comparator) {
+            sortedList.sort(comparator);
         }
     }
     return sortedList;
@@ -165,5 +154,5 @@ export function filterSnippetsByKeyword(snippetsList: Snippet[], snippetSearchTy
                     return false;
             }
         })
-        .map((snippet: Snippet) => snippet.id!); // 只返回 id 字符串数组
+        .map((snippet: Snippet) => snippet.id); // 只返回 id 字符串数组
 }

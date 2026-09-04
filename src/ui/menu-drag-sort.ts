@@ -5,6 +5,17 @@
 import {Constants} from "siyuan";
 import type PluginSnippets from "../index";
 
+/** 位移超过该值（像素）才视为拖拽开始 */
+const DRAG_START_THRESHOLD_PX = 3;
+/** 拖拽中原片段透明度 */
+const DRAG_ITEM_OPACITY = "0.38";
+/** 长按该时长（毫秒）后进入拖拽（移动端） */
+const TOUCH_LONG_PRESS_MS = 500;
+/** 拖拽结束后延迟清理状态标志的时长（毫秒） */
+const DRAG_STATE_CLEANUP_MS = 50;
+/** 拖拽落点高亮类选择器 */
+const DRAGOVER_CLASS_SELECTOR = ".dragover__top, .dragover__bottom";
+
 /**
  * 顶栏菜单拖拽排序交互
  * 拖拽状态（isDragging/dragCleanupTimer）为本类内部状态；菜单点击处理（SnippetsMenu.menuClickHandler）
@@ -42,7 +53,7 @@ export class MenuDragSort {
         this.dragCleanupTimer = window.setTimeout(() => {
             this.isDragging = false;
             this.dragCleanupTimer = null;
-        }, 50);
+        }, DRAG_STATE_CLEANUP_MS);
     }
 
     /**
@@ -104,9 +115,7 @@ export class MenuDragSort {
      */
     private updateDragStyles(moveEvent: MouseEvent | TouchEvent, dragContainer: HTMLElement, item: HTMLElement, contentRect: DOMRect): HTMLElement | null {
         // 清除所有拖拽样式
-        dragContainer.querySelectorAll(".dragover__top, .dragover__bottom").forEach(item => {
-            item.classList.remove("dragover__top", "dragover__bottom");
-        });
+        this.clearDragStyles(dragContainer);
 
         // 获取当前坐标
         let clientX: number, clientY: number;
@@ -198,6 +207,40 @@ export class MenuDragSort {
     }
 
     /**
+     * 清除容器内全部拖拽落点高亮样式
+     * @param dragContainer 拖拽容器
+     */
+    private clearDragStyles(dragContainer: HTMLElement): void {
+        dragContainer.querySelectorAll(DRAGOVER_CLASS_SELECTOR).forEach(item => {
+            item.classList.remove("dragover__top", "dragover__bottom");
+        });
+    }
+
+    /**
+     * 结束拖拽并执行排序（mouseup/touchend 共用收尾）
+     */
+    private async endDragAndSort(ghostElement: HTMLElement | undefined, item: HTMLElement, dragContainer: HTMLElement, selectItem: HTMLElement | null) {
+        ghostElement?.remove();
+        item.style.opacity = "";
+
+        if (!selectItem) {
+            selectItem = dragContainer.querySelector(DRAGOVER_CLASS_SELECTOR);
+        }
+
+        // 执行拖拽排序
+        const hasPositionChanged = await this.executeDragSort(item, selectItem);
+
+        // 如果拖拽回到原位，保持拖拽状态并延迟清理，阻止随后的点击事件；否则立即清除
+        if (!hasPositionChanged) {
+            this.clearDragState();
+        } else {
+            this.isDragging = false;
+        }
+
+        this.clearDragStyles(dragContainer);
+    }
+
+    /**
      * 菜单鼠标按下事件处理（用于桌面端拖拽排序，由菜单 open 绑定）
      * @param event 鼠标事件
      */
@@ -228,8 +271,8 @@ export class MenuDragSort {
         const contentRect = dragContainer.getBoundingClientRect();
 
         documentSelf.onmousemove = (moveEvent: MouseEvent) => {
-            if (Math.abs(moveEvent.clientY - event.clientY) < 3 && Math.abs(moveEvent.clientX - event.clientX) < 3) {
-                // 移动距离小于 3px 时，不进行拖拽
+            if (Math.abs(moveEvent.clientY - event.clientY) < DRAG_START_THRESHOLD_PX && Math.abs(moveEvent.clientX - event.clientX) < DRAG_START_THRESHOLD_PX) {
+                // 移动距离小于阈值时，不进行拖拽
                 return;
             }
 
@@ -240,7 +283,7 @@ export class MenuDragSort {
             this.isDragging = true;
 
             if (!ghostElement) {
-                item.style.opacity = "0.38";
+                item.style.opacity = DRAG_ITEM_OPACITY;
                 ghostElement = this.createDragGhost(item);
                 document.body.appendChild(ghostElement);
             }
@@ -261,28 +304,7 @@ export class MenuDragSort {
             documentSelf.onmouseup = null;
             documentSelf.ondragstart = null;
 
-            ghostElement?.remove();
-            item.style.opacity = "";
-
-            if (!selectItem) {
-                selectItem = dragContainer.querySelector(".dragover__top, .dragover__bottom");
-            }
-
-            // 执行拖拽排序
-            const hasPositionChanged = await this.executeDragSort(item, selectItem);
-
-            // 如果拖拽回到原位，设置标志位阻止点击事件
-            if (this.isDragging && !hasPositionChanged) {
-                // 保持拖拽状态，阻止点击事件，延迟清理
-                this.clearDragState();
-            } else {
-                this.isDragging = false; // 立即清除拖拽状态
-            }
-
-            // 清除所有拖拽样式
-            dragContainer.querySelectorAll(".dragover__top, .dragover__bottom").forEach(item => {
-                item.classList.remove("dragover__top", "dragover__bottom");
-            });
+            await this.endDragAndSort(ghostElement, item, dragContainer, selectItem);
         };
     }
 
@@ -336,9 +358,9 @@ export class MenuDragSort {
                 // 设置幽灵元素初始位置为当前触摸位置
                 ghostElement.style.top = startTouch.clientY + "px";
                 ghostElement.style.left = startTouch.clientX + "px";
-                item.style.opacity = "0.38";
+                item.style.opacity = DRAG_ITEM_OPACITY;
             }
-        }, 500);
+        }, TOUCH_LONG_PRESS_MS);
 
         // 触摸移动事件
         const touchmoveHandler = (moveEvent: TouchEvent) => {
@@ -349,7 +371,7 @@ export class MenuDragSort {
             const deltaY = Math.abs(currentTouch.clientY - startTouch.clientY);
 
             // 如果已经移动了，标记为已移动状态
-            if (deltaX > 3 || deltaY > 3) {
+            if (deltaX > DRAG_START_THRESHOLD_PX || deltaY > DRAG_START_THRESHOLD_PX) {
                 hasMoved = true;
                 // 如果已经移动了，清除长按定时器，不进行拖拽
                 if (longPressTimer) {
@@ -393,30 +415,7 @@ export class MenuDragSort {
             // 只有在拖拽状态下才阻止默认行为
             if (this.isDragging) {
                 endEvent.preventDefault();
-
-                // 清理拖拽状态
-                ghostElement?.remove();
-                item.style.opacity = "";
-
-                if (!selectItem) {
-                    selectItem = dragContainer.querySelector(".dragover__top, .dragover__bottom");
-                }
-
-                // 执行拖拽排序
-                const hasPositionChanged = await this.executeDragSort(item, selectItem);
-
-                // 如果拖拽回到原位，设置标志位阻止点击事件
-                if (!hasPositionChanged) {
-                    // 保持拖拽状态，阻止点击事件，延迟清理
-                    this.clearDragState();
-                } else {
-                    this.isDragging = false; // 立即清除拖拽状态
-                }
-
-                // 清除所有拖拽样式
-                dragContainer.querySelectorAll(".dragover__top, .dragover__bottom").forEach(item => {
-                    item.classList.remove("dragover__top", "dragover__bottom");
-                });
+                await this.endDragAndSort(ghostElement, item, dragContainer, selectItem);
             }
         };
 

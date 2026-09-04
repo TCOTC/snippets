@@ -13,7 +13,7 @@ import type {SettingItem} from "../types";
 /**
  * 配置项下拉选项
  */
-export interface SnippetsConfigOption {
+interface SnippetsConfigOption {
     value: string | number;
     text: string;
 }
@@ -21,7 +21,7 @@ export interface SnippetsConfigOption {
 /**
  * 配置项定义（configItems 元素的类型定义）
  */
-export interface SnippetsConfigItem {
+interface SnippetsConfigItem {
     key: string;
     description?: string;
     type?: "boolean" | "string" | "number" | "selectString" | "selectNumber" | "createActionElement";
@@ -46,6 +46,11 @@ export class ConfigService {
      * 配置项定义（条目构建见本模块 createSnippetsConfigItems，init 时构建一次）
      */
     private configItems: SnippetsConfigItem[] = [];
+
+    /**
+     * 有配置值的条目（init 时由 configItems 过滤按钮类条目得到）
+     */
+    private valueItems: SnippetsConfigItem[] = [];
 
     /**
      * 插件设置对象（init 装配后可用）
@@ -104,6 +109,16 @@ export class ConfigService {
     }
 
     /**
+     * 应用单个配置项（值有变化才写入并触发 onApply）
+     */
+    private async setValue(item: SnippetsConfigItem, newValue: any) {
+        if (this.read(item.key) !== newValue) {
+            this.write(item.key, newValue);
+            await this.apply(item.key, newValue);
+        }
+    }
+
+    /**
      * 构建配置项（条目定义见本模块 createSnippetsConfigItems；仅构建一次并复用，
      * 条目持有插件实例引用，运行态属性在 onApply/createActionElement 调用时才求值）
      * 注意：构建时不使用 this.plugin.console 之类的方法——它们需配置加载完成后才可用
@@ -113,6 +128,8 @@ export class ConfigService {
             return;
         }
         this.configItems = createSnippetsConfigItems(this.plugin);
+        // 按钮类条目无配置值，装配 Setting 仍遍历全量，其余路径统一遍历 valueItems
+        this.valueItems = this.configItems.filter(item => item.type !== "createActionElement");
     }
 
     /**
@@ -126,8 +143,7 @@ export class ConfigService {
 
         // 从配置文件合并到 config 对象（值缺失/新增键时保持字段默认值，默认值事实源见 config.ts）
         this.initConfigItems();
-        this.configItems.forEach(item => {
-            if (item.type === "createActionElement") return;
+        this.valueItems.forEach(item => {
             if (Object.prototype.hasOwnProperty.call(config, item.key)) {
                 this.write(item.key, config[item.key]);
             }
@@ -147,25 +163,26 @@ export class ConfigService {
      * @param dialogElement 对话框元素
      */
     public async saveFromDialog(dialogElement: HTMLElement) {
-        this.configItems.forEach(async item => {
+        // 按钮类条目无控件，且逐个 await 副作用完成后再持久化/关窗
+        for (const item of this.valueItems) {
             let newValue;
             let element: HTMLInputElement | HTMLSelectElement | null = null;
 
             switch (item.type) {
                 case "boolean":
                     element = dialogElement.querySelector(`input[data-type='${item.key}']`);
-                    if (!element) return;
+                    if (!element) continue;
                     newValue = (element as HTMLInputElement).checked;
                     break;
                 case "selectString":
                 case "selectNumber":
                     element = dialogElement.querySelector(`select[data-type='${item.key}']`);
-                    if (!element) return;
+                    if (!element) continue;
                     newValue = item.type === "selectNumber" ? parseInt((element as HTMLSelectElement).value) : (element as HTMLSelectElement).value;
                     break;
                 case "string":
                     element = dialogElement.querySelector(`input[data-type='${item.key}']`);
-                    if (!element) return;
+                    if (!element) continue;
                     newValue = (element as HTMLInputElement).value;
                     // fileWatchPath 特殊校验，不允许为空或只有空字符
                     if (item.key === "fileWatchPath" && (!newValue || newValue.trim() === "")) {
@@ -176,16 +193,13 @@ export class ConfigService {
                     break;
                 case "number":
                     element = dialogElement.querySelector(`input[data-type='${item.key}']`);
-                    if (!element) return;
+                    if (!element) continue;
                     newValue = parseInt((element as HTMLInputElement).value) || this.read(item.key) || 0;
                     break;
             }
 
-            if (this.read(item.key) !== newValue) {
-                this.write(item.key, newValue);
-                this.apply(item.key, newValue).then();
-            }
-        });
+            await this.setValue(item, newValue);
+        }
 
         // 等待写入完成后再决定是否关闭对话框：
         // 写 API 失败（只读模式/插件已销毁等场景 reject）已归一为 { code: 非 0 }（见 settleWriteResponse）
@@ -204,20 +218,14 @@ export class ConfigService {
      * 应用配置（本地读取或跨窗口/跨设备同步后的统一入口，按值 diff 幂等）
      * @param config 配置对象
      */
-    public applyConfig(config: any) {
+    private applyConfig(config: any) {
         if (!config || typeof config !== "object") {
             return;
         }
         // 逐个配置项与当前值比较，有变化时写入并触发对应 UI 更新
-        // 按钮类条目无对应字段，不参与热应用
-        this.configItems.forEach(item => {
-            if (item.type === "createActionElement") return;
-            if (config.hasOwnProperty(item.key)) {
-                const newValue = config[item.key];
-                if (this.read(item.key) !== newValue) {
-                    this.write(item.key, newValue);
-                    this.apply(item.key, newValue);
-                }
+        this.valueItems.forEach(item => {
+            if (Object.prototype.hasOwnProperty.call(config, item.key)) {
+                void this.setValue(item, config[item.key]);
             }
         });
     }
@@ -245,13 +253,13 @@ export class ConfigService {
         // 检查通知键是否存在于配置项中
         const configItem = this.configItems.find(item => item.key === noticeConfigKey);
         if (!configItem) {
-            this.plugin.console.warn(`ignoreNotice: Notification config item "${noticeConfigKey}" not found`);
+            this.plugin.console.warn(`disableNotification: Notification config item "${noticeConfigKey}" not found`);
             return;
         }
 
         // 检查是否为布尔类型的通知配置
         if (configItem.type !== "boolean") {
-            this.plugin.console.warn(`ignoreNotice: Notification config item "${noticeConfigKey}" is not boolean type`);
+            this.plugin.console.warn(`disableNotification: Notification config item "${noticeConfigKey}" is not boolean type`);
             return;
         }
 
@@ -261,7 +269,7 @@ export class ConfigService {
         // 保存设置到配置文件
         void this.persistConfig();
 
-        this.plugin.console.log(`ignoreNotice: Notification "${noticeConfigKey}" has been disabled and settings saved`);
+        this.plugin.console.log(`disableNotification: Notification "${noticeConfigKey}" has been disabled and settings saved`);
     }
 
     /**
@@ -270,9 +278,7 @@ export class ConfigService {
      */
     private persistConfig(): any {
         const config: any = {};
-        this.configItems.forEach(item => {
-            // 按钮类条目无配置值，不参与持久化
-            if (item.type === "createActionElement") return;
+        this.valueItems.forEach(item => {
             config[item.key] = this.read(item.key);
         });
         return this.saveStoredConfig(config);
@@ -290,8 +296,8 @@ export class ConfigService {
         }
 
         return {
-            title: (this.plugin.i18n as any)[item.key],
-            description: item.description ? (this.plugin.i18n as any)[item.description] : undefined,
+            title: this.plugin.i18n[item.key],
+            description: item.description ? this.plugin.i18n[item.description] : undefined,
             direction: item.direction,
             createActionElement: () => {
                 if (item.type === "boolean") {
@@ -304,7 +310,7 @@ export class ConfigService {
                     const optionsHtml = item.options.map(option => {
                         // 由于 HTML 的 value 属性最终都会被转为字符串，这里直接用字符串比较即可
                         const isSelected = String(currentValue) === String(option.value);
-                        return `<option value="${option.value}"${isSelected ? " selected" : ""}>${(this.plugin.i18n as any)[option.text]}</option>`;
+                        return `<option value="${option.value}"${isSelected ? " selected" : ""}>${this.plugin.i18n[option.text]}</option>`;
                     }).join("");
 
                     return htmlToElement(
@@ -322,15 +328,31 @@ export class ConfigService {
                     return htmlToElement(
                         `<input class="b3-text-field fn__flex-center" type="number" data-type="${item.key}" value="${currentValue}" min="1" max="300" step="1">`
                     );
-                } else if (item.type === "createActionElement" || item.createActionElement) {
-                    return item.createActionElement?.() as HTMLElement;
+                } else if (item.createActionElement) {
+                    return item.createActionElement();
                 }
-                // 理论不可达：configItems 的类型均已在上方处理，返回 undefined 以保持原运行时行为
-                return undefined as unknown as HTMLElement;
+                // 理论不可达：configItems 的类型均已在上方处理
+                throw new Error("Unhandled config item type: " + item.type);
             },
         };
     }
 }
+
+/**
+ * 显示/隐藏菜单片段项上的操作按钮（删除/复制/编辑，三个 show* 配置共用）
+ */
+const applySnippetButtonVisibility = (plugin: PluginSnippets, buttonType: string, show: boolean) => {
+    const buttons = plugin.menuView.menuItems?.querySelectorAll(`.jcsm-snippet-item button[data-type='${buttonType}']`) as NodeListOf<HTMLButtonElement> | undefined;
+    buttons?.forEach(button => button.classList.toggle("fn__none", !show));
+};
+
+/**
+ * 构建操作按钮条目的元素（导出/导入按钮同模板）
+ */
+const createOutlineActionElement = (action: string, icon: string, label: string): HTMLElement =>
+    htmlToElement(
+        `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="${action}"><svg><use xlink:href="#${icon}"></use></svg>${label}</span>`
+    );
 
 /**
  * 构建全部配置项（条目持有插件实例引用）
@@ -340,7 +362,7 @@ export class ConfigService {
  * @param plugin 插件实例
  * @returns 配置项数组
  */
-export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfigItem[] => [
+const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfigItem[] => [
     {
         key: "openNativeSnippets",
         description: "openNativeSnippetsDescription",
@@ -366,23 +388,14 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         // （启用实时预览时由输入事件驱动预览，手动按钮隐藏；禁用后恢复手动按钮）
         onApply: (newValue) => {
             const cssDialogs = document.querySelectorAll(`${SNIPPET_DIALOG_SELECTOR}[data-snippet-type="css"]`);
-            if (newValue === true) {
-                cssDialogs.forEach(cssDialog => {
-                    const previewButton = cssDialog.querySelector("button[data-action='preview']") as HTMLButtonElement;
-                    if (previewButton) {
-                        previewButton.classList.add("fn__none");
-                    }
+            cssDialogs.forEach(cssDialog => {
+                const previewButton = cssDialog.querySelector("button[data-action='preview']") as HTMLButtonElement;
+                previewButton?.classList.toggle("fn__none", newValue === true);
+                if (newValue === true) {
                     // 已打开的 CSS 对话框立即按实时预览刷新一次（keydown 监听器按 detail 识别该请求）
                     cssDialog.dispatchEvent(new CustomEvent("keydown", {detail: "realTimePreview"}));
-                });
-            } else {
-                cssDialogs.forEach(cssDialog => {
-                    const previewButton = cssDialog.querySelector("button[data-action='preview']") as HTMLButtonElement;
-                    if (previewButton) {
-                        previewButton.classList.remove("fn__none");
-                    }
-                });
-            }
+                }
+            });
         },
     },
     {
@@ -398,49 +411,22 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "showDuplicateButton",
         description: "showDuplicateButtonDescription",
         type: "boolean",
-        // 修改 showDuplicateButton 之后，查询所有菜单项修改创建副本按钮的 fn__none
-        onApply: (newValue) => {
-            const duplicateButtons = plugin.menuView.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='duplicate']") as NodeListOf<HTMLButtonElement>;
-            duplicateButtons.forEach(duplicateButton => {
-                if (newValue) {
-                    duplicateButton.classList.remove("fn__none");
-                } else {
-                    duplicateButton.classList.add("fn__none");
-                }
-            });
-        },
+        // 修改 showDuplicateButton 之后，显示/隐藏所有菜单片段项上的创建副本按钮
+        onApply: (newValue) => applySnippetButtonVisibility(plugin, "duplicate", !!newValue),
     },
     {
         key: "showDeleteButton",
         description: "showDeleteButtonDescription",
         type: "boolean",
-        // 修改 showDeleteButton 之后，查询所有菜单项修改删除按钮的 fn__none
-        onApply: (newValue) => {
-            const deleteButtons = plugin.menuView.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='delete']") as NodeListOf<HTMLButtonElement>;
-            deleteButtons.forEach(deleteButton => {
-                if (newValue) {
-                    deleteButton.classList.remove("fn__none");
-                } else {
-                    deleteButton.classList.add("fn__none");
-                }
-            });
-        },
+        // 修改 showDeleteButton 之后，显示/隐藏所有菜单片段项上的删除按钮
+        onApply: (newValue) => applySnippetButtonVisibility(plugin, "delete", !!newValue),
     },
     {
         key: "showEditButton",
         description: "showEditButtonDescription",
         type: "boolean",
-        // 修改 showEditButton 之后，查询所有菜单项修改编辑按钮的 fn__none
-        onApply: (newValue) => {
-            const editButtons = plugin.menuView.menuItems?.querySelectorAll(".jcsm-snippet-item button[data-type='edit']") as NodeListOf<HTMLButtonElement>;
-            editButtons.forEach(editButton => {
-                if (newValue) {
-                    editButton.classList.remove("fn__none");
-                } else {
-                    editButton.classList.add("fn__none");
-                }
-            });
-        },
+        // 修改 showEditButton 之后，显示/隐藏所有菜单片段项上的编辑按钮
+        onApply: (newValue) => applySnippetButtonVisibility(plugin, "edit", !!newValue),
     },
     {
         key: "showPublishCheckbox",
@@ -622,31 +608,19 @@ export const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfi
         key: "exportSnippets",
         description: "exportSnippetsDescription",
         type: "createActionElement",
-        createActionElement: () => {
-            return htmlToElement(
-                `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="exportSnippets"><svg><use xlink:href="#iconUpload"></use></svg>${plugin.i18n.export}</span>`
-            );
-        },
+        createActionElement: () => createOutlineActionElement("exportSnippets", "iconUpload", plugin.i18n.export),
     },
     {
         key: "importSnippetsWithAppend",
         description: "importSnippetsWithAppendDescription",
         type: "createActionElement",
-        createActionElement: () => {
-            return htmlToElement(
-                `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="importSnippetsWithAppend"><svg><use xlink:href="#iconDownload"></use></svg>${plugin.i18n.importWithAppend}</span>`
-            );
-        },
+        createActionElement: () => createOutlineActionElement("importSnippetsWithAppend", "iconDownload", plugin.i18n.importWithAppend),
     },
     {
         key: "importSnippetsWithOverwrite",
         description: "importSnippetsWithOverwriteDescription",
         type: "createActionElement",
-        createActionElement: () => {
-            return htmlToElement(
-                `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="importSnippetsWithOverwrite"><svg><use xlink:href="#iconDownload"></use></svg>${plugin.i18n.importWithOverwrite}</span>`
-            );
-        },
+        createActionElement: () => createOutlineActionElement("importSnippetsWithOverwrite", "iconDownload", plugin.i18n.importWithOverwrite),
     },
     {
         key: "feedbackIssue",

@@ -142,7 +142,7 @@ export default class PluginSnippets extends Plugin {
      */
     console = {
         log: (...args: any[]) => {
-            if (this.config?.consoleDebug) {
+            if (this.config.consoleDebug) {
                 console.log(...args);
             }
         },
@@ -257,7 +257,7 @@ export default class PluginSnippets extends Plugin {
         // 初始化顶栏按钮（addTopBar 依赖布局就绪后的顶栏 DOM #barPlugins，须在 onLayoutReady 中调用；
         // 按钮位置取自已加载完成的插件设置）；发布页为只读会话，不添加管理用顶栏按钮
         if (!this.isPublish) {
-            this.menuView.initTopBar().then();
+            void this.menuView.initTopBar();
         }
     }
 
@@ -285,10 +285,10 @@ export default class PluginSnippets extends Plugin {
 
         // 移除 CodeMirror 编辑器样式（编辑对话框运行中向 document.head 注入的 .cm-content 样式，
         // 实现见 EditorManager.cleanupEditorStyles）
-        this.editorManager?.cleanupEditorStyles();
+        this.editorManager.cleanupEditorStyles();
 
         // 停止主题模式监听（对话框已关闭，observer 若仍在则兜底断开）
-        this.editorManager?.stopThemeModeWatch();
+        this.editorManager.stopThemeModeWatch();
 
         // 移除菜单
         this.menuView.close();
@@ -356,7 +356,7 @@ export default class PluginSnippets extends Plugin {
      * 发送重新加载界面请求
      */
     postReloadUI() {
-        fetchPost("/api/ui/reloadUI", (response: any) => {
+        fetchPost("/api/ui/reloadUI", (response: { status: number }) => {
             if (response.status !== 200) {
                 this.showErrorMessage(this.i18n.reloadUIFailed);
             }

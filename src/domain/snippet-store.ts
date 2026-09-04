@@ -15,13 +15,6 @@ export class SnippetStore {
     }
 
     /**
-     * 当前代码片段列表（内存态）
-     */
-    get list(): Snippet[] {
-        return this.plugin.snippetsList;
-    }
-
-    /**
      * 列表变更后刷新菜单计数
      */
     private notifyChanged(): void {
@@ -40,17 +33,16 @@ export class SnippetStore {
     /**
      * 删除指定 ID 的代码片段
      * @param id 代码片段 ID
-     * @returns 列表中存在该 ID 并实际删除时为 true
      */
-    remove(id: string): boolean {
+    remove(id: string): void {
         const oldList = this.plugin.snippetsList;
         const newList = oldList.filter((snippet: Snippet) => snippet.id !== id);
         if (newList.length === oldList.length) {
-            return false;
+            // 列表中不存在该 ID，无需变更
+            return;
         }
         this.plugin.snippetsList = newList;
         this.notifyChanged();
-        return true;
     }
 
     /**
@@ -76,47 +68,28 @@ export class SnippetStore {
         const [moved] = snippetsList.splice(fromIndex, 1);
         let targetIndex = toIndex;
 
-        // 如果 snippetType 是 CSS 而 targetType 是 JS，则将片段排序到最后一个 CSS 后面
-        if (snippetType === "css" && targetType === "js") {
-            const cssCount = snippetsList.filter((s: Snippet) => s.type === "css").length;
-            if (cssCount > 1) {
-                // 找到最后一个 CSS 的位置
+        // 跨分区拖拽时目标分区无同类项可承接 → 恢复原位；否则按分区边界重算落位索引
+        const isCrossZone = snippetType !== targetType;
+        if (isCrossZone) {
+            const targetZoneCount = snippetsList.filter((s: Snippet) => s.type === snippetType).length;
+            if (targetZoneCount <= 1) {
+                // 原分区只剩被移动项，无同类可承接，恢复原位
+                snippetsList.splice(fromIndex, 0, moved);
+                return false;
+            }
+            if (snippetType === "css") {
+                // 移到最后一个 CSS 之后（首个 JS 之前）
                 targetIndex = snippetsList.map((s: Snippet) => s.type).lastIndexOf("css") + 1;
             } else {
-                // CSS 数量小于等于 1，不进行排序
-                snippetsList.splice(fromIndex, 0, moved);
-                return false;
-            }
-        }
-        // 如果 snippetType 是 JS 而 targetType 是 CSS，则将片段排序到第一个 JS 前面
-        else if (snippetType === "js" && targetType === "css") {
-            const jsCount = snippetsList.filter((s: Snippet) => s.type === "js").length;
-            if (jsCount > 1) {
-                // 找到第一个 JS 的位置
+                // 移到第一个 JS 之前
                 targetIndex = snippetsList.findIndex((s: Snippet) => s.type === "js");
-            } else {
-                // JS 数量小于等于 1，不进行排序
-                snippetsList.splice(fromIndex, 0, moved);
-                return false;
             }
-        }
-        // 如果 snippetType 和 targetType 都是 CSS 或都是 JS，则根据拖拽方向排序
-        else {
-            if (isTop) {
-                // 拖拽到上方
-                if (fromIndex < toIndex) {
-                    targetIndex = toIndex - 1; // 从前面拖拽到后面
-                } else {
-                    targetIndex = toIndex;     // 从后面拖拽到前面
-                }
-            } else {
-                // 拖拽到下方
-                if (fromIndex < toIndex) {
-                    targetIndex = toIndex;     // 从前面拖拽到后面
-                } else {
-                    targetIndex = toIndex + 1; // 从后面拖拽到前面
-                }
-            }
+        } else if (isTop) {
+            // 拖拽到上方
+            targetIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
+        } else {
+            // 拖拽到下方
+            targetIndex = fromIndex < toIndex ? toIndex : toIndex + 1;
         }
 
         // 插入到目标索引位置
@@ -155,12 +128,10 @@ export class SnippetStore {
      * 存在同 ID 片段时整体替换；不存在时按类型分区插入（CSS 保持在前、JS 保持在后，
      * 与思源原生列表的分区规则一致：JS 插入到当前首个 JS 片段之前，无 JS 片段时追加到末尾）。
      * @param snippet 代码片段
-     * @returns 变更详情：added 表示是否为新增；oldSnippet 为被替换的旧片段（更新时存在）
      */
-    upsert(snippet: Snippet): { added: boolean; oldSnippet?: Snippet } {
+    upsert(snippet: Snippet): void {
         const oldList = this.plugin.snippetsList;
-        const oldSnippet = oldList.find((s: Snippet) => s.id === snippet.id);
-        if (oldSnippet) {
+        if (oldList.some((s: Snippet) => s.id === snippet.id)) {
             // 更新：整体替换同 ID 片段
             this.plugin.snippetsList = oldList.map((s: Snippet) => (s.id === snippet.id ? snippet : s));
         } else {
@@ -182,6 +153,5 @@ export class SnippetStore {
             this.plugin.snippetsList = newList;
         }
         this.notifyChanged();
-        return { added: !oldSnippet, oldSnippet };
     }
 }
