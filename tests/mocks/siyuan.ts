@@ -16,9 +16,46 @@ export const showMessage = vi.fn();
 export const hideMessage = vi.fn();
 export const confirm = vi.fn();
 
+// 导出下载（import-export 使用）
+export const saveExportFile = vi.fn(async () => undefined);
+
+// 原生设置跳转（setting-dialog 使用）
+export const openSetting = vi.fn(() => undefined);
+
+// 平台工具（menu.ts 使用）
+export const platformUtils = {
+    isMobile: () => false,
+    isTouchDevice: () => false,
+    isMac: () => false,
+};
+
+/**
+ * Menu 桩：提供菜单容器 element 与基础状态字段（menu.ts 使用）
+ */
+export class Menu {
+    element: HTMLElement;
+    isOpen = false;
+
+    constructor() {
+        this.element = document.createElement("div");
+        this.element.id = "commonMenu";
+    }
+}
+
 // 环境探测
 export const getFrontend = vi.fn(() => "desktop");
 export const getBackend = vi.fn(() => "windows");
+
+// 常量（取值与思源 petal/src/constants.ts 对齐；仅收录测试与源码断言会用到的键，
+// 新增用例需要其他常量时在此补充）
+export const Constants = {
+    SIYUAN_APPID: "siyuan",
+    TIMEOUT_DBLCLICK: 200,
+    SIZE_SCROLL_TB: 40,
+    SIZE_SCROLL_STEP: 30,
+    SIYUAN_CONTEXT_MENU: "siyuan-context-menu",
+    DIALOG_CONFIRM: "dialog-confirm",
+};
 
 // 类桩：可实例化、可 spy 构造次数与原型方法
 export class Plugin {
@@ -34,7 +71,30 @@ export class Setting {
     items: SettingItem[] = [];
 }
 
+/**
+ * Dialog 桩：将构造选项的 content HTML 挂到 element 上，使
+ * dialog.element.querySelector(".b3-dialog__content") 等选择器可直接用于装配断言
+ */
 export class Dialog {
-    id = "";
+    element: HTMLElement;
     destroy = vi.fn();
+    options: {title?: string; content?: string; width?: string; height?: string};
+
+    constructor(options: {title?: string; content?: string; width?: string; height?: string} = {}) {
+        this.options = options;
+        this.element = document.createElement("div");
+        // 与原生 Dialog 一致：最外层带 b3-dialog--open 与 data-key，内部嵌套 .b3-dialog 容器
+        // （closeByElement 依赖 dialogElement.querySelector(".b3-dialog") 的 style）
+        this.element.className = "b3-dialog b3-dialog--open";
+        if (options.content) {
+            this.element.innerHTML = options.content;
+        }
+        const inner = document.createElement("div");
+        inner.className = "b3-dialog";
+        this.element.appendChild(inner);
+        // 原生 Dialog 构造即把 element 挂到 document.body（setting-dialog/snippets-dialog 依赖）
+        if (typeof document !== "undefined") {
+            document.body.appendChild(this.element);
+        }
+    }
 }

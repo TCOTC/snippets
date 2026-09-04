@@ -57,7 +57,9 @@ export function getEditorIndentUnit(indentUnitConfig: string): string {
     } else {
         // indentUnitConfig === "followSiyuan" 或者 indentUnitConfig 是其他值
         const SiyuanCodeTabSpaces = window.siyuan.config.editor.codeTabSpaces;
-        if (SiyuanCodeTabSpaces && typeof SiyuanCodeTabSpaces === "number" && SiyuanCodeTabSpaces >= 0) {
+        // 注意不能对 SiyuanCodeTabSpaces 做真值判断：思源 codeTabSpaces 为 0 表示“使用制表符缩进”，
+        // 0 是 falsy，用 `0 && ...` 会把它挡在门外而误落两空格兜底
+        if (typeof SiyuanCodeTabSpaces === "number" && SiyuanCodeTabSpaces >= 0) {
             // 跟随思源设置
             return SiyuanCodeTabSpaces === 0 ? "\t" : " ".repeat(SiyuanCodeTabSpaces);
         } else {

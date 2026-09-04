@@ -30,6 +30,7 @@
     "esbuild-loader": "^4.5.0",
     "eslint": "^10.9.1",
     "globals": "^17.12.0",
+    "jsdom": "^30.0.1",
     "mini-css-extract-plugin": "^2.10.2",
     "sass": "^1.104.0",
     "sass-loader": "^17.0.1",
