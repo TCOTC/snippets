@@ -9,8 +9,8 @@ export const SNIPPETS_CHANGED = "snippets-changed";
 
 /**
  * 代码片段列表在内存中的存取适配
- * 当前实现为读写 window.siyuan.jcsm.snippetsList，以保证插件 reload 后列表不丢失；
- * 将来收敛 jcsm 时只需替换注入的实现。
+ * 当前实现为读写插件实例的 snippetsList 缓存（内核 /api/snippet/getSnippet 为权威，菜单打开/保存等场景自拉刷新；
+ * 原读写 window.siyuan.jcsm.snippetsList，阶段 6 已收敛为实例缓存——插件重载后由下一次自拉重建）
  */
 export interface SnippetListStorage {
     get(): Snippet[];

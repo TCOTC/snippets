@@ -39,20 +39,16 @@ export default class PluginSnippets extends Plugin {
 
     // ================================ 生命周期方法 ================================
 
-    // 使用 window.siyuan.jcsm 存储变量
-    // 这样重载插件（比如插件配置同步）之后，旧实例（包含未关闭的 Dialog）与新实例使用的变量始终是一致的
+    /**
+     * 是否为移动端（onLayoutReady 时按前端类型赋值；运行态标志收敛自 window.siyuan.jcsm，
+     * 实例字段即可——每次插件加载都会重算，无需跨 reload 全局仓库）
+     */
+    isMobile = false;
 
     /**
-     * 是否为移动端
+     * 是否为触摸设备（onLayoutReady 时赋值，同上收敛自 jcsm）
      */
-    get isMobile(): boolean { return window.siyuan.jcsm?.isMobile ?? false; }
-    set isMobile(value: boolean) { (window.siyuan.jcsm ??= {}).isMobile = value; }
-
-    /**
-     * 是否为触摸设备
-     */
-    get isTouchDevice(): boolean { return window.siyuan.jcsm?.isTouchDevice ?? false; }
-    set isTouchDevice(value: boolean) { (window.siyuan.jcsm ??= {}).isTouchDevice = value; }
+    isTouchDevice = false;
 
     /**
      * 顶栏按钮元素（SnippetsMenu 直连访问，故公开）
@@ -126,7 +122,7 @@ export default class PluginSnippets extends Plugin {
      * 启用插件
      */
     public async onload() {
-        // 初始化代码片段列表 Store，以 window.siyuan.jcsm.snippetsList 作为跨 reload 存活的存储后端
+        // 初始化代码片段列表 Store（后端为插件实例 snippetsList 缓存：以内核为权威，菜单打开/保存后自拉刷新）
         this.snippetStore = new SnippetStore(this.internalEventBus, {
             get: () => this.snippetsList,
             set: (snippetsList) => {
@@ -158,7 +154,7 @@ export default class PluginSnippets extends Plugin {
         // 初始化通知/错误提示服务（直连本实例，配置开关经实例 defineProperty 镜像读取）
         this.feedbackService = new FeedbackService(this);
 
-        // 初始化事件监听器簿记（状态存于 jcsm 跨 reload 存活；addListener/removeListener 经实例委托到它）
+        // 初始化事件监听器簿记（监听器登记与元素清理见 src/services/listener-registry.ts）
         this.listenerRegistry = new ListenerRegistry(this);
 
         // 初始化对话框管理器（代码片段编辑对话框/确认对话框/按元素关闭等；直连本实例）
@@ -179,9 +175,6 @@ export default class PluginSnippets extends Plugin {
      * 布局加载完成
      */
     public async onLayoutReady() {
-        // 初始化 window.siyuan.jcsm
-        window.siyuan.jcsm ??= {}; // ??= 逻辑空赋值运算符 https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing_assignment
-
         const frontEnd = getFrontend();
         this.isMobile = frontEnd === "mobile" || frontEnd === "browser-mobile";
         this.isTouchDevice = ("ontouchstart" in window) && navigator.maxTouchPoints > 1;
@@ -193,8 +186,6 @@ export default class PluginSnippets extends Plugin {
         if (this.fileWatchEnabled && this.fileWatchEnabled !== "disabled") {
             this.fileWatchService.start();
         }
-        // 插件设置加载之后暴露 ignoreNotice 方法到全局
-        window.siyuan.jcsm.disableNotification = (messageI18nKey) => this.configService.disableNotification(messageI18nKey);
 
         // 顶栏按钮图标（iconJcsm symbol 注册见 SnippetsMenu.initIcons，src/ui/menu.ts）
         this.menuView.initIcons();
@@ -329,9 +320,6 @@ export default class PluginSnippets extends Plugin {
         // 移除所有监听器
         this.listenerRegistry.destroy();
 
-        // 最后移除全局变量
-        delete window.siyuan.jcsm;
-
         console.log(this.displayName, this.i18n.pluginUninstall);
     }
 
@@ -455,19 +443,19 @@ export default class PluginSnippets extends Plugin {
     declare showPublishCheckbox: number;
 
     /**
-     * 是否需要重新加载界面
+     * 是否需要重新加载界面（JS 修改后的呼吸提示标志；收敛自 window.siyuan.jcsm，
+     * 属菜单 UI 运行态——界面刷新/插件重载后自然复位，无需跨 reload 全局仓库）
      */
-    get isReloadUIRequired() { return window.siyuan.jcsm?.isReloadUIRequired ?? false; }
-    set isReloadUIRequired(value: boolean) { (window.siyuan.jcsm ??= {}).isReloadUIRequired = value; }
+    isReloadUIRequired = false;
 
 
     // ================================ 代码片段管理 ================================
 
     /**
-     * 代码片段列表
+     * 代码片段列表缓存（以内核 /api/snippet/getSnippet 为权威：菜单打开/保存/删除/排序等场景自拉刷新；
+     * 收敛自 window.siyuan.jcsm.snippetsList——仅作同页会话缓存，插件重载后由下一次自拉重建）
      */
-    get snippetsList() { return window.siyuan.jcsm?.snippetsList ?? []; }
-    set snippetsList(value: Snippet[]) { (window.siyuan.jcsm ??= {}).snippetsList = value; }
+    snippetsList: Snippet[] = [];
 
     /**
      * 默认代码片段类型（配置镜像 defaultSnippetsType：ConfigService 内部缓存 + defineProperty 代理）
@@ -475,18 +463,24 @@ export default class PluginSnippets extends Plugin {
     declare defaultSnippetsType: SnippetType;
 
     /**
-     * 代码片段类型
+     * 用户会话中切换过的代码片段类型缓存（收敛自 window.siyuan.jcsm.snippetsType，
+     * 重载后回退配置默认值 defaultSnippetsType）
+     */
+    private snippetsTypeCache: SnippetType | undefined;
+
+    /**
+     * 当前代码片段类型（用户切换过则用缓存值，否则用配置默认值；读点语义与原 jcsm 实现一致）
      */
     get snippetsType(): SnippetType {
         // 如果已经有值（用户切换过标签），使用该值，否则使用配置中的默认值（defaultSnippetsType 配置镜像
         // 已收敛为 ConfigService 内部缓存并经 defineProperty 代理，见 src/config/config-service.ts）
-        const type = window.siyuan.jcsm?.snippetsType ?? this.defaultSnippetsType;
+        const type = this.snippetsTypeCache ?? this.defaultSnippetsType;
         if (type !== "css" && type !== "js") {
             return "css";
         }
         return type;
     }
-    set snippetsType(value: SnippetType) { (window.siyuan.jcsm ??= {}).snippetsType = value; }
+    set snippetsType(value: SnippetType) { this.snippetsTypeCache = value; }
 
 
     // ================================ 对话框相关（实现见 src/ui/snippets-dialog.ts SnippetsDialog） ================================

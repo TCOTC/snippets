@@ -31,10 +31,18 @@ export class FeedbackService {
     showNotification(messageI18nKey: string, timeout: number | undefined = undefined) {
         if (this.notificationSwitch && (this.plugin as any)[messageI18nKey + "Notice"] && this.plugin.i18n[messageI18nKey]) {
             // 全局通知开关开启、该通知选项开启、i18n 键存在 → 弹出通知
-            const ignoreNoticeButton = `<button class='jscm-snackbar-ignore-notice-button b3-button ariaLabel' aria-label='${this.plugin.i18n.ignoreNoticeButtonAriaLabel}' onclick='event.stopPropagation(); window.siyuan.jcsm.disableNotification(\"${messageI18nKey}\");'>${this.plugin.i18n.noLongerShow}</button>`;
+            const ignoreNoticeButton = `<button class='jscm-snackbar-ignore-notice-button b3-button ariaLabel' aria-label='${this.plugin.i18n.ignoreNoticeButtonAriaLabel}'>${this.plugin.i18n.noLongerShow}</button>`;
             const message = this.plugin.i18n[messageI18nKey].replace("${ignoreNoticeButton}", ignoreNoticeButton);
+            const messageId = PLUGIN_NAME + "-" + messageI18nKey;
             // 传入 messageId 参数之后，反复弹出相同的消息时，不会关闭上一个消息再弹出新消息
-            showMessage(message, timeout, "info", PLUGIN_NAME + "-" + messageI18nKey);
+            showMessage(message, timeout, "info", messageId);
+            // “不再提示”按钮绑定（原为内联 onclick 调 window.siyuan.jcsm.disableNotification 全局，
+            // 收敛后改为元素事件绑定——按钮随消息容器同生共死，无需全局函数；容器 id 由 showMessage 保证）
+            const button = document.querySelector(`.b3-snackbar[data-id="${messageId}"] .jscm-snackbar-ignore-notice-button`) as HTMLButtonElement | null;
+            button?.addEventListener("click", (event) => {
+                event.stopPropagation();
+                this.plugin.configService.disableNotification(messageI18nKey);
+            });
         }
     }
 

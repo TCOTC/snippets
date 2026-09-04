@@ -2,6 +2,8 @@
 // 职责：主题模式监听（对话框打开时启停）、已打开编辑器随主题/配置更新、编辑器重建。
 // 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
 // console/editorIndentUnit/i18n 经插件实例读取（调用时才取值，保证拿到实时配置/i18n）。
+// jcsm 收敛（阶段 6）：observer 原挂 window.siyuan.jcsm.themeObserver，改为实例字段——
+// 插件重载时 onunload 必停监听、重载后由 checkAndManageThemeWatch 按 DOM 现状自启，无需跨 reload 仓库。
 import {EditorState} from "@codemirror/state";
 import {vscodeDark, vscodeLight} from "@uiw/codemirror-theme-vscode";
 import type {EditorView} from "@codemirror/view";
@@ -11,12 +13,17 @@ import type PluginSnippets from "../index";
 /**
  * 编辑器对话框生命周期管理（原 index.ts 对应私有方法外迁，行为等价）
  * - 主题模式监听：存在打开中的代码片段编辑对话框时监听 :root 的 data-theme-mode 变化，
- *   模式切换后更新所有已打开编辑器主题；无对话框时停止监听。observer 挂 window.siyuan.jcsm，
- *   保证跨插件 reload 存活与多实例互斥。
+ *   模式切换后更新所有已打开编辑器主题；无对话框时停止监听。observer 为实例字段，
+ *   插件重载后随 DOM 现状自启（与既有 dialog 一并由 checkAndManageThemeWatch 管理）。
  * - updateAllEditorConfigs / recreateEditor：供设置项变更（缩进单位）与主题切换时刷新已打开编辑器。
  */
 export class EditorManager {
     private readonly plugin: PluginSnippets;
+
+    /**
+     * 主题模式监听器（观察 :root 的 data-theme-mode 属性变化）
+     */
+    private themeModeObserver: MutationObserver | null = null;
 
     constructor(plugin: PluginSnippets) {
         this.plugin = plugin;
@@ -27,7 +34,7 @@ export class EditorManager {
      */
     startThemeModeWatch() {
         // 如果已经启动了监听，则不重复启动
-        if (window.siyuan.jcsm?.themeObserver) return;
+        if (this.themeModeObserver) return;
 
         // 存储上一次的主题模式，用于比较是否有变化
         let lastThemeMode = window.siyuan.config.appearance.mode;
@@ -59,9 +66,8 @@ export class EditorManager {
                 attributeFilter: ["data-theme-mode"]
             });
 
-            // 将 observer 存储到全局变量中
-            if (!window.siyuan.jcsm) window.siyuan.jcsm = {};
-            window.siyuan.jcsm.themeObserver = observer;
+            // 记录到实例字段
+            this.themeModeObserver = observer;
 
             this.plugin.console.log("startThemeModeWatch: theme mode watch started");
         }
@@ -71,9 +77,9 @@ export class EditorManager {
      * 停止主题模式监听
      */
     stopThemeModeWatch() {
-        if (window.siyuan.jcsm?.themeObserver) {
-            window.siyuan.jcsm.themeObserver.disconnect();
-            delete window.siyuan.jcsm.themeObserver;
+        if (this.themeModeObserver) {
+            this.themeModeObserver.disconnect();
+            this.themeModeObserver = null;
             this.plugin.console.log("stopThemeModeWatch: theme mode watch stopped");
         }
     }
@@ -92,7 +98,7 @@ export class EditorManager {
      */
     checkAndManageThemeWatch(isOpen = false) {
         const hasDialog = isOpen || this.hasEditorDialogsOpen();
-        const hasObserver = !!window.siyuan.jcsm?.themeObserver;
+        const hasObserver = !!this.themeModeObserver;
         this.plugin.console.log("checkAndManageThemeWatch: hasDialog", hasDialog, ", hasObserver", hasObserver);
 
         if (hasDialog && !hasObserver) {

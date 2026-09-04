@@ -33,23 +33,6 @@ declare global {
             config: NonNullable<ISiyuan["config"]>;
             menus: NonNullable<ISiyuan["menus"]>;
             languages: NonNullable<ISiyuan["languages"]>;
-            jcsm?: {
-                // window.siyuan.jcsm 是跨插件 reload 存活的全局变量仓库；此处仅声明仍被
-                // 类型化读写（手写 getter/setter / 直接 jcsm.x）的字段。
-                // 配置类字段（realTimePreview/newSnippetEnabled/consoleDebug/snippetSearchType/
-                // fileWatch* 等）经 ConfigService 内部缓存 + Object.defineProperty 以实例属性访问，
-                // 不再存于 jcsm（阶段 6 已收敛，见 config-service.ts）。
-                isMobile?: boolean;
-                isTouchDevice?: boolean;
-                snippetsType?: SnippetType;
-                snippetsList?: Snippet[];
-                listeners?: ListenersArray | null;
-                isCheckingListeners?: boolean;
-                listenerCheckIntervalId?: number | null;
-                isReloadUIRequired?: boolean;
-                themeObserver?: MutationObserver;
-                disableNotification?: (messageI18nKey: string) => void;
-            };
         };
         JSAndroid?: {
             openExternal: (uri: string) => void;

@@ -1,44 +1,38 @@
 // 事件监听器统一簿记（原 index.ts「事件监听管理」分节外迁，行为等价）
-// 职责：所有 addListener/removeListener 统一登记到 window.siyuan.jcsm.listeners（跨插件 reload 存活，
-// 卸载时移除全部监听器；元素可能由上一实例添加）；定时检查元素是否仍在 DOM，不在则移除监听器。
+// 职责：所有 addListener/removeListener 统一登记（卸载时移除全部监听器）；定时检查元素是否仍在 DOM，
+// 不在则移除监听器；联动主题监听启停。
 // 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
 // 日志/调试开关/主题监听检查/对话框菜单开合判断经插件实例直连。
+// jcsm 收敛（阶段 6）：簿记三字段（listeners/listenerCheckIntervalId/isCheckingListeners）原存于
+// window.siyuan.jcsm，改为实例字段——监听器绑定在元素上（元素移除即自动释放），跨实例共用簿记的
+// 唯一用途是卸载时清点，实例字段在插件卸载（uninstall）时仍持有全部本页登记记录，语义等价。
 import type PluginSnippets from "../index";
 import type {ListenersArray} from "../types";
 
 /**
  * 事件监听器簿记（原 index.ts「事件监听管理」分节外迁，行为等价）
- * 状态（listeners/listenerCheckIntervalId/isCheckingListeners）存于 window.siyuan.jcsm，
- * 各实例共用同一份簿记：卸载插件时移除所有监听器，但元素可能由上一实例添加，故不能按实例隔离。
  */
 export class ListenerRegistry {
     private readonly plugin: PluginSnippets;
 
+    /**
+     * 事件监听器的映射（卸载时移除所有插件监听器）
+     */
+    private listeners: ListenersArray = [];
+
+    /**
+     * 监听器检查定时器 ID
+     */
+    private listenerCheckIntervalId: number | null = null;
+
+    /**
+     * 是否正在检查监听器元素
+     */
+    private isCheckingListeners = false;
+
     constructor(plugin: PluginSnippets) {
         this.plugin = plugin;
     }
-
-    /**
-     * 事件监听器的映射（存于 jcsm，卸载时移除所有插件监听器；元素可能为上一实例添加，各实例共用）
-     */
-    private get listeners(): ListenersArray {
-        const jcsm = window.siyuan.jcsm ??= {};
-        jcsm.listeners ??= [] as ListenersArray;
-        return jcsm.listeners as ListenersArray;
-    }
-    private set listeners(value: ListenersArray | undefined) { (window.siyuan.jcsm ??= {}).listeners = value; }
-
-    /**
-     * 监听器检查定时器 ID（存于 jcsm）
-     */
-    private get listenerCheckIntervalId() { return window.siyuan.jcsm?.listenerCheckIntervalId ?? null; }
-    private set listenerCheckIntervalId(value: number | null) { (window.siyuan.jcsm ??= {}).listenerCheckIntervalId = value; }
-
-    /**
-     * 是否正在检查监听器元素（存于 jcsm）
-     */
-    private get isCheckingListeners() { return window.siyuan.jcsm?.isCheckingListeners ?? false; }
-    private set isCheckingListeners(value: boolean) { (window.siyuan.jcsm ??= {}).isCheckingListeners = value; }
 
     /**
      * 添加事件监听器
@@ -148,8 +142,8 @@ export class ListenerRegistry {
                 element.removeEventListener(event, fn, options);
             });
         }
-        // 清空 listeners 数组
-        this.listeners = undefined;
+        // 清空簿记
+        this.listeners = [];
         // 重置检查标志
         this.isCheckingListeners = false;
         // 停止监听器检查定时器
