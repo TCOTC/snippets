@@ -12,7 +12,7 @@ import type {Snippet, SnippetType} from "../types";
 /**
  * 顶栏菜单管理器
  * 菜单状态（menu/menuItems/呼吸标志）为本类内部状态，拖拽交互与拖拽状态见 MenuDragSort（src/ui/menu-drag-sort.ts）；
- * 展示配置（snippetSearchType/snippetSortType/snippetOptionClickBehavior/show* 等）为插件 defineProperty 镜像，
+ * 展示配置（snippetSearchType/snippetSortType/snippetOptionClickBehavior/show* 等）为插件实例字段，
  * 经 plugin 延迟读取；业务动作经 plugin.snippetManager/plugin.snippetsDialog 等直连。
  */
 export class SnippetsMenu {

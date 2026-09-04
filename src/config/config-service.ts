@@ -1,8 +1,7 @@
 // 插件配置的装配、持久化与热应用
-// 职责：配置读取与版本校验 → 缓存于服务内部镜像并挂到插件实例（defineProperty）→
-// 构建 Setting 项；对话框保存（saveFromDialog）；配置热应用（applyConfig，onDataChanged 同源）；
-// 通知禁用持久化（disableNotification）。
-// 配置镜像存于本服务内部缓存（配置每次 init 从磁盘重新加载、写配置即落盘，无需外部全局仓库）；
+// 职责：配置读取与版本校验 → 逐项写入插件实例字段（configItems 驱动）→ 构建 Setting 项；
+// 对话框保存（saveFromDialog）；配置热应用（applyConfig，onDataChanged 同源）；通知禁用持久化（disableNotification）。
+// 配置值存于插件实例同名字段（配置每次 init 从磁盘重新加载、写配置即落盘，无需外部全局仓库）；
 // 配置文件读写经插件生命周期方法（loadData/saveData/removeData）与本模块自持的存储键名。
 import {hideMessage, Setting} from "siyuan";
 import {htmlToElement, isPromiseFulfilled} from "../utils";
@@ -23,13 +22,6 @@ const CONFIG_VERSION = 1;
  */
 export class ConfigService {
     private readonly plugin: PluginSnippets;
-
-    /**
-     * 配置镜像缓存：defineProperty 到插件实例的属性代理本缓存
-     * 配置已落盘且 init 每次从磁盘重新加载，reload 后新实例 init 即重建本缓存，无需跨 reload 全局仓库。
-     * 配置已落盘且 init 每次从磁盘重新加载，reload 后新实例 init 即重建本缓存，无需跨 reload 全局仓库。
-     */
-    private readonly configValues = new Map<string, any>();
 
     /**
      * 插件设置对象（仅 init 通过版本校验后创建并填充；失败时保持未初始化）
@@ -70,17 +62,17 @@ export class ConfigService {
     }
 
     /**
-     * 读取配置项当前值（定义于配置项 key，缓存于本服务内部镜像）
+     * 读取配置项当前值（存于插件实例对应字段，键与 configItems 条目 key 一致）
      */
-    private readValue(key: string): any {
-        return this.configValues.get(key);
+    private read(key: string): any {
+        return (this.plugin as any)[key];
     }
 
     /**
-     * 写入配置项到内部镜像
+     * 写配置项到插件实例对应字段
      */
-    private writeValue(key: string, value: any) {
-        this.configValues.set(key, value);
+    private write(key: string, value: any) {
+        (this.plugin as any)[key] = value;
     }
 
     /**
@@ -125,19 +117,8 @@ export class ConfigService {
         // 读取配置或者设置默认值
         await this.plugin.initConfigItems();
         this.plugin.configItems.forEach(item => {
-            // 缓存配置（缺失时用默认值），供 defineProperty 代理读取
-            this.writeValue(item.key, config[item.key] ?? item.defaultValue);
-        });
-
-        // 为每个配置项在插件实例上动态生成 getter/setter（代理到内部配置镜像）
-        const target = this.plugin;
-        this.plugin.configItems.forEach(item => {
-            Object.defineProperty(target, item.key, {
-                get: () => this.readValue(item.key) ?? item.defaultValue,
-                set: (value: any) => this.writeValue(item.key, value),
-                enumerable: true,
-                configurable: true
-            });
+            // 写配置到实例字段（缺失时用默认值；无默认值的按钮类条目写 undefined，不参与持久化）
+            this.write(item.key, config[item.key] ?? item.defaultValue);
         });
 
         this.settingInstance = new Setting({});
@@ -188,8 +169,8 @@ export class ConfigService {
                     break;
             }
 
-            if (this.readValue(item.key) !== newValue) {
-                this.writeValue(item.key, newValue);
+            if (this.read(item.key) !== newValue) {
+                this.write(item.key, newValue);
                 this.apply(item.key, newValue).then();
             }
         });
@@ -218,8 +199,8 @@ export class ConfigService {
         this.plugin.configItems.forEach(item => {
             if (config.hasOwnProperty(item.key)) {
                 const newValue = config[item.key];
-                if (this.readValue(item.key) !== newValue) {
-                    this.writeValue(item.key, newValue);
+                if (this.read(item.key) !== newValue) {
+                    this.write(item.key, newValue);
                     this.apply(item.key, newValue);
                 }
             }
@@ -260,7 +241,7 @@ export class ConfigService {
         }
 
         // 禁用通知
-        this.writeValue(noticeConfigKey, false);
+        this.write(noticeConfigKey, false);
 
         // 保存设置到配置文件
         void this.persistConfig();
@@ -269,13 +250,13 @@ export class ConfigService {
     }
 
     /**
-     * 将内部配置镜像中的全部配置项收集为配置对象并写入文件
+     * 将全部配置项收集为配置对象并写入文件
      * @returns saveData 的返回（调用方用 isPromiseFulfilled 判断是否成功）
      */
     private persistConfig(): any {
         const config: any = { version: CONFIG_VERSION };
         this.plugin.configItems.forEach(item => {
-            config[item.key] = this.readValue(item.key);
+            config[item.key] = this.read(item.key);
         });
         return this.saveStoredConfig(config);
     }
@@ -298,11 +279,11 @@ export class ConfigService {
             createActionElement: () => {
                 if (item.type === "boolean") {
                     return htmlToElement(
-                        `<input class="b3-switch fn__flex-center" type="checkbox" data-type="${item.key}"${this.readValue(item.key) ? " checked" : ""}>`
+                        `<input class="b3-switch fn__flex-center" type="checkbox" data-type="${item.key}"${this.read(item.key) ? " checked" : ""}>`
                     );
                 } else if ((item.type === "selectString" || item.type === "selectNumber") && item.options) {
                     // 创建下拉框
-                    const currentValue = this.readValue(item.key) ?? item.defaultValue;
+                    const currentValue = this.read(item.key) ?? item.defaultValue;
                     const optionsHtml = item.options.map(option => {
                         // 由于 HTML 的 value 属性最终都会被转为字符串，这里直接用字符串比较即可
                         const isSelected = String(currentValue) === String(option.value);
@@ -314,13 +295,13 @@ export class ConfigService {
                     );
                 } else if (item.type === "string") {
                     // 创建文本输入框
-                    const currentValue = this.readValue(item.key) ?? item.defaultValue ?? "";
+                    const currentValue = this.read(item.key) ?? item.defaultValue ?? "";
                     return htmlToElement(
                         `<input class="b3-text-field fn__flex-center" type="text" data-type="${item.key}" value="${currentValue}"${item.defaultValue ? ` placeholder="${item.defaultValue}"` : ""}>`
                     );
                 } else if (item.type === "number") {
                     // 创建数字输入框
-                    const currentValue = this.readValue(item.key) ?? item.defaultValue ?? 0;
+                    const currentValue = this.read(item.key) ?? item.defaultValue ?? 0;
                     return htmlToElement(
                         `<input class="b3-text-field fn__flex-center" type="number" data-type="${item.key}" value="${currentValue}" min="1" max="300" step="1"${item.defaultValue ? ` placeholder="${item.defaultValue}"` : ""}>`
                     );

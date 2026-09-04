@@ -130,13 +130,13 @@ export default class PluginSnippets extends Plugin {
         // 初始化设置对话框管理器（直连本实例）
         this.settingDialog = new SettingDialog(this);
 
-        // 初始化文件监听服务（直连本实例，配置镜像经实例读取）
+        // 初始化文件监听服务（直连本实例，配置字段经实例读取）
         this.fileWatchService = new FileWatchService(this);
 
         // 初始化导入导出服务（直连本实例，列表读写/菜单刷新经服务内转发）
         this.importExportService = new ImportExportService(this);
 
-        // 初始化通知/错误提示服务（直连本实例，配置开关经实例 defineProperty 镜像读取）
+        // 初始化通知/错误提示服务（直连本实例，配置开关经实例字段读取）
         this.feedbackService = new FeedbackService(this);
 
         // 初始化事件监听器簿记（监听器登记与元素清理见 src/services/listener-registry.ts）
@@ -148,11 +148,6 @@ export default class PluginSnippets extends Plugin {
 
     /**
      * 顶栏按钮位置
-     */
-    declare topBarPosition: "left" | "right";
-
-    /**
-     * 布局加载完成
      */
     public async onLayoutReady() {
         const frontEnd = getFrontend();
@@ -299,23 +294,66 @@ export default class PluginSnippets extends Plugin {
     }
 
 
-    // ================================ 插件设置 ================================
+    // ================================ 插件配置 ================================
+    // 值来自配置文件 plugin-config.json（ConfigService.init 按 configItems 条目逐项覆盖）；
+    // 初始值仅占位（与 config/schema.ts 条目 defaultValue 一致），各 UI/服务模块直连读取，故公开。
 
-    /**
-     * CSS 代码片段实时预览（必须与 snippet.type === "css" 一起使用；配置镜像 defineProperty 投影，
-     * SnippetManager/SnippetsDialog 直连读取）
-     */
-    realTimePreview!: boolean;
+    /** CSS 代码片段实时预览（须与 snippet.type === "css" 一起使用） */
+    realTimePreview = true;
 
-    /**
-     * 新建代码片段时默认启用（配置镜像 defineProperty 投影，SnippetManager 直连读取）
-     */
-    newSnippetEnabled!: boolean;
+    /** 新建代码片段时默认启用 */
+    newSnippetEnabled = true;
 
-    /**
-     * 在开发者工具中输出插件日志（配置镜像 defineProperty 投影，ListenerRegistry 直连读取）
-     */
-    consoleDebug!: boolean;
+    /** 在开发者工具中输出插件日志 */
+    consoleDebug = false;
+
+    /** JS 修改后自动重新加载界面 */
+    autoReloadUIAfterModifyJS = true;
+
+    /** 点击代码片段选项的行为：0 无操作 / 1 切换开关 / 2 打开编辑器 */
+    snippetOptionClickBehavior = 1;
+
+    /** 代码片段排序方式（排序逻辑见 domain/snippet.ts sortSnippets） */
+    snippetSortType = "customSort";
+
+    /** 代码片段搜索类型：0 不搜索 / 1 标题 / 2 内容 / 3 标题或内容 */
+    snippetSearchType = 1;
+
+    /** 是否显示创建副本按钮 */
+    showDuplicateButton = false;
+
+    /** 是否显示删除按钮 */
+    showDeleteButton = true;
+
+    /** 是否显示编辑按钮 */
+    showEditButton = true;
+
+    /** 发布开关显示策略：0 跟随发布服务 / 1 总是显示 / 2 总是隐藏 */
+    showPublishCheckbox = 0;
+
+    /** 新建片段时的默认类型 */
+    defaultSnippetsType: SnippetType = "css";
+
+    /** 编辑器缩进单位（CodeMirror 解析见 ui/codemirror.ts getEditorIndentUnit） */
+    editorIndentUnit = "followSiyuan";
+
+    /** 是否允许同时打开多个代码片段编辑器 */
+    multipleSnippetEditors = true;
+
+    /** 文件夹监听模式：disabled 禁用 / enabled 监听 / loadOnly 仅启动时加载 */
+    fileWatchEnabled = "disabled";
+
+    /** 文件夹监听路径 */
+    fileWatchPath = "data/snippets";
+
+    /** 文件夹监听间隔（秒） */
+    fileWatchInterval = 5;
+
+    /** 顶栏按钮位置 */
+    topBarPosition: "left" | "right" = "right";
+
+    /** “修改 JS 后重新加载界面”通知开关（feedback.ts 按 i18n 键动态读取 *Notice 字段） */
+    reloadUIAfterModifyJSNotice = true;
 
     /**
      * 配置项定义（类型定义与条目构建见 src/config/schema.ts；ConfigService 直连访问，故公开）
@@ -358,55 +396,7 @@ export default class PluginSnippets extends Plugin {
 
 
     // ================================ 顶栏菜单（实现见 src/ui/menu.ts SnippetsMenu） ================================
-    // 菜单打开/绘制/事件/搜索/拖拽/高亮与菜单状态均为 SnippetsMenu 内部状态；
-    // 此处仅保留供 SnippetsMenu 经 defineProperty 读取的配置镜像属性声明。
-
-    /**
-     * 是否启用自动重新加载界面功能
-     */
-    declare autoReloadUIAfterModifyJS: boolean;
-
-    /**
-     * 点击代码片段选项的行为
-     * 0：无操作
-     * 1：切换代码片段开关状态
-     * 2：打开代码片段编辑器
-     */
-    declare snippetOptionClickBehavior: number;
-
-    /**
-     * 代码片段的排序方式
-     */
-    declare snippetSortType: string;
-
-    /**
-     * 代码片段搜索类型
-     * 0: 不搜索
-     * 1: 按标题搜索
-     * 2: 按代码内容搜索
-     * 3: 按标题和代码内容搜索
-     */
-    declare snippetSearchType: number;
-
-    /**
-     * 是否显示创建副本按钮
-     */
-    declare showDuplicateButton: boolean;
-
-    /**
-     * 是否显示删除按钮
-     */
-    declare showDeleteButton: boolean;
-
-    /**
-     * 是否显示编辑按钮
-     */
-    declare showEditButton: boolean;
-
-    /**
-     * 是否显示发布服务开关
-     */
-    declare showPublishCheckbox: number;
+    // 菜单打开/绘制/事件/搜索/拖拽/高亮与菜单状态均为 SnippetsMenu 内部状态。
 
     /**
      * 是否需要重新加载界面（JS 修改后提示用户重载的呼吸标志；属菜单 UI 运行态，界面刷新后自然复位）
@@ -414,18 +404,11 @@ export default class PluginSnippets extends Plugin {
     isReloadUIRequired = false;
 
 
-    // ================================ 代码片段管理 ================================
-
     /**
      * 代码片段列表缓存（以内核 /api/snippet/getSnippet 为权威：菜单打开/保存/删除/排序等场景自拉刷新；
      * 仅作同页会话缓存，插件重载后由下一次自拉重建）
      */
     snippetsList: Snippet[] = [];
-
-    /**
-     * 默认代码片段类型（配置镜像 defaultSnippetsType：ConfigService 内部缓存 + defineProperty 代理）
-     */
-    declare defaultSnippetsType: SnippetType;
 
     /**
      * 用户会话中切换过的代码片段类型缓存（重载后回退配置默认值 defaultSnippetsType）
@@ -436,8 +419,6 @@ export default class PluginSnippets extends Plugin {
      * 当前代码片段类型（用户切换过则用缓存值，否则用配置默认值）
      */
     get snippetsType(): SnippetType {
-        // 如果已经有值（用户切换过标签），使用该值，否则使用配置中的默认值（defaultSnippetsType 配置镜像
-        // 已收敛为 ConfigService 内部缓存并经 defineProperty 代理，见 src/config/config-service.ts）
         const type = this.snippetsTypeCache ?? this.defaultSnippetsType;
         if (type !== "css" && type !== "js") {
             return "css";
@@ -445,19 +426,6 @@ export default class PluginSnippets extends Plugin {
         return type;
     }
     set snippetsType(value: SnippetType) { this.snippetsTypeCache = value; }
-
-
-    // ================================ 对话框相关（实现见 src/ui/snippets-dialog.ts SnippetsDialog） ================================
-
-    /**
-     * 编辑器缩进单位
-     */
-    declare editorIndentUnit: string;
-
-    /**
-     * 是否允许同时打开多个代码片段编辑器
-     */
-    declare multipleSnippetEditors: boolean;
 
 
     // ================================ 消息处理 ================================
@@ -543,22 +511,6 @@ export default class PluginSnippets extends Plugin {
         this.listenerRegistry.remove(element, event, fn, options);
     }
 
-
-    // ================================ 文件监听功能（实现见 src/services/file-watch.ts） ================================
-    /**
-     * 文件监听模式
-     */
-    declare fileWatchEnabled: string;
-
-    /**
-     * 文件监听路径
-     */
-    declare fileWatchPath: string;
-
-    /**
-     * 文件监听间隔（秒）
-     */
-    declare fileWatchInterval: number;
 
     // ================================ 跨窗口同步 ================================
 

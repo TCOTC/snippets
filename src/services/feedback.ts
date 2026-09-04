@@ -1,6 +1,6 @@
 // 通知与错误提示
 // 职责：showNotification（仅弹出设置中存在的通知，含"不再提示"按钮）；showErrorMessage（错误提示）。
-// 通知开关等配置经插件实例 defineProperty 代理读取（含 *Notice 通知开关镜像）。
+// 通知开关等配置存于插件实例对应字段（含 *Notice 通知开关，键与 configItems 条目一致）。
 import {showMessage} from "siyuan";
 import type PluginSnippets from "../index";
 
