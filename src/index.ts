@@ -4280,20 +4280,6 @@ export default class PluginSnippets extends Plugin {
         }
     }
 
-    /**
-     * 获取文件内容，返回 Promise
-     * @param path 文件路径
-     * @returns Promise<any>
-     */
-    private getFile(path: string): Promise<any> {
-        // 解决 400 parses request failed 问题，fetchPost 需要传递对象而不是 JSON 字符串
-        return new Promise((resolve) => {
-            fetchPost("/api/file/getFile", { path }, (response: any) => {
-                resolve(response);
-            });
-        });
-    }
-
 
     // ================================ 工具方法 ================================
 
