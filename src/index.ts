@@ -211,20 +211,11 @@ export default class PluginSnippets extends Plugin {
             refreshMenuSnippetsType: () => this.menuView.setMenuSnippetsType(this.snippetsType),
         });
 
-        // 初始化通知/错误提示服务（配置开关读取经实例 defineProperty 镜像转发）
-        this.feedbackService = new FeedbackService({
-            displayName: () => this.displayName,
-            i18n: () => this.i18n,
-            readConfig: (key) => (this as any)[key],
-        });
+        // 初始化通知/错误提示服务（直连本实例，配置开关经实例 defineProperty 镜像读取）
+        this.feedbackService = new FeedbackService(this);
 
         // 初始化事件监听器簿记（状态存于 jcsm 跨 reload 存活；addListener/removeListener 经实例委托到它）
-        this.listenerRegistry = new ListenerRegistry({
-            logger: this.console,
-            consoleDebug: () => this.consoleDebug,
-            checkThemeWatch: () => this.editorManager.checkAndManageThemeWatch(),
-            isDialogOrMenuOpen: () => this.menuView.isDialogAndMenuOpen(),
-        });
+        this.listenerRegistry = new ListenerRegistry(this);
 
         // 初始化对话框管理器（代码片段编辑对话框/确认对话框/按元素关闭等；直连本实例）
         this.snippetsDialog = new SnippetsDialog(this);
@@ -527,9 +518,9 @@ export default class PluginSnippets extends Plugin {
     newSnippetEnabled!: boolean;
 
     /**
-     * 在开发者工具中输出插件日志
+     * 在开发者工具中输出插件日志（ListenerRegistry 直连访问，故公开）
      */
-    private consoleDebug!: boolean;
+    consoleDebug!: boolean;
 
     /**
      * 配置项定义（类型定义与条目构建见 src/config/schema.ts）
@@ -856,7 +847,3 @@ export default class PluginSnippets extends Plugin {
      */
     syncService: BroadcastService | null = null;
 }
-
-
-
-

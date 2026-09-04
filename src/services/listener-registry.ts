@@ -1,26 +1,10 @@
 // 事件监听器统一簿记（原 index.ts「事件监听管理」分节外迁，行为等价）
 // 职责：所有 addListener/removeListener 统一登记到 window.siyuan.jcsm.listeners（跨插件 reload 存活，
 // 卸载时移除全部监听器；元素可能由上一实例添加）；定时检查元素是否仍在 DOM，不在则移除监听器。
-// 运行态依赖（日志/调试开关/主题监听检查/对话框菜单开合判断）经 ListenerRegistryHost 注入。
+// 简洁化：不设 Host——直接持有 PluginSnippets 实例（import type 避免运行时循环依赖），
+// 日志/调试开关/主题监听检查/对话框菜单开合判断经插件实例直连。
+import type PluginSnippets from "../index";
 import type {ListenersArray} from "../types";
-
-/**
- * 监听器簿记所需的插件运行态（读取器/动作函数形式，调用时才取值或执行）
- */
-export interface ListenerRegistryHost {
-    /** 插件日志器 */
-    logger: {
-        log(...args: any[]): void;
-        warn(...args: any[]): void;
-        error(...args: any[]): void;
-    };
-    /** 读取：consoleDebug 配置（调试时缩短监听器检查间隔） */
-    consoleDebug: () => boolean;
-    /** 动作：检查并管理主题模式监听状态（编辑器对话框存在与否联动） */
-    checkThemeWatch: () => void;
-    /** 读取：是否存在打开的插件对话框或菜单 */
-    isDialogOrMenuOpen: () => boolean;
-}
 
 /**
  * 事件监听器簿记（原 index.ts「事件监听管理」分节外迁，行为等价）
@@ -28,10 +12,10 @@ export interface ListenerRegistryHost {
  * 各实例共用同一份簿记：卸载插件时移除所有监听器，但元素可能由上一实例添加，故不能按实例隔离。
  */
 export class ListenerRegistry {
-    private readonly host: ListenerRegistryHost;
+    private readonly plugin: PluginSnippets;
 
-    constructor(host: ListenerRegistryHost) {
-        this.host = host;
+    constructor(plugin: PluginSnippets) {
+        this.plugin = plugin;
     }
 
     /**
@@ -94,9 +78,9 @@ export class ListenerRegistry {
      * @param options 监听器选项
      */
     remove(element: HTMLElement, event?: string, fn?: (event?: Event) => void, options?: AddEventListenerOptions) {
-        this.host.logger.log("removeListener:", element);
+        this.plugin.console.log("removeListener:", element);
         if (!element) {
-            this.host.logger.warn("removeListener: element is not found");
+            this.plugin.console.warn("removeListener: element is not found");
             return;
         }
 
@@ -107,7 +91,7 @@ export class ListenerRegistry {
         const elementListeners = this.listeners[elementIndex];
         if (!elementListeners) {
             // 未获取到 elementListeners，有可能是重复调用了 removeListener，直接返回
-            this.host.logger.warn("removeListener: elementListeners is not found");
+            this.plugin.console.warn("removeListener: elementListeners is not found");
             return;
         }
 
@@ -188,7 +172,7 @@ export class ListenerRegistry {
         this.isCheckingListeners = true;
 
         // 检查主题监听状态
-        this.host.checkThemeWatch();
+        this.plugin.editorManager.checkAndManageThemeWatch();
 
         // 如果没有监听器，停止定时器并返回
         if (!this.listeners || this.listeners.length === 0) {
@@ -197,10 +181,10 @@ export class ListenerRegistry {
             return;
         }
 
-        this.host.logger.log("check Listener:", this.listeners);
+        this.plugin.console.log("check Listener:", this.listeners);
 
         // 如果窗口内没有打开的 Dialog 和菜单，则移除 Document 的监听器
-        if (!this.host.isDialogOrMenuOpen()) {
+        if (!this.plugin.menuView.isDialogAndMenuOpen()) {
             this.remove(document.documentElement);
         }
 
@@ -217,7 +201,7 @@ export class ListenerRegistry {
                 });
                 // 从数组中移除该元素的记录
                 this.listeners.splice(i, 1);
-                this.host.logger.warn("checkListenerElement: remove listener of element which is not in DOM", element);
+                this.plugin.console.warn("checkListenerElement: remove listener of element which is not in DOM", element);
             }
         }
 
@@ -244,7 +228,7 @@ export class ListenerRegistry {
         this.listenerCheckIntervalId = window.setInterval(() => {
             this.isCheckingListeners = false; // 重置检查标志
             this.checkListenerElement();
-        }, this.host.consoleDebug() ? 20000 : 30000);
+        }, this.plugin.consoleDebug ? 20000 : 30000);
     }
 
     /**
