@@ -161,6 +161,32 @@ export class FileWatchService {
     }
 
     /**
+     * 读取监听文件并解析 getFile 响应（string 直接为内容；{code,data} 与 {modified,content} 两种对象形态）
+     * @param filePath 文件路径
+     * @returns 修改时间与内容；文件不存在/无内容时为 null
+     */
+    private async readWatchedFile(filePath: string): Promise<{ modified: number; content: string } | null> {
+        const response = await getFile(filePath);
+
+        if (typeof response === "string") {
+            // 如果响应是字符串，说明直接返回了文件内容
+            return { modified: 0, content: response };
+        }
+        if (response && typeof response === "object") {
+            if (response.code !== undefined) {
+                // {code, data} 形态：code 非 0 或无 data 视为读取失败
+                if (response.code !== 0 || !response.data) {
+                    return null;
+                }
+                return { modified: response.data.modified || 0, content: response.data.content || "" };
+            }
+            // 无 code 字段，可能直接是文件数据
+            return { modified: response.modified || 0, content: response.content || "" };
+        }
+        return null;
+    }
+
+    /**
      * 加载单个文件
      * @param filePath 文件路径
      */
@@ -171,47 +197,20 @@ export class FileWatchService {
                 return;
             }
 
-            // 获取文件信息
-            const response = await getFile(filePath);
-
-            // 检查响应格式
-            let currentModified = 0;
-            let currentContent = "";
-
-            if (typeof response === "string") {
-                // 如果响应是字符串，说明直接返回了文件内容
-                currentContent = response;
-            } else if (response && typeof response === "object") {
-                // 如果响应是对象，检查是否有 code 字段
-                if (response.code !== undefined) {
-                    if (response.code !== 0) {
-                        return;
-                    }
-
-                    if (!response.data) {
-                        return;
-                    }
-
-                    currentModified = response.data.modified || 0;
-                    currentContent = response.data.content || "";
-                } else {
-                    // 如果响应对象没有 code 字段，可能直接是文件数据
-                    currentModified = response.modified || 0;
-                    currentContent = response.content || "";
-                }
-            } else {
+            const fileData = await this.readWatchedFile(filePath);
+            if (!fileData) {
                 return;
             }
 
             // 记录文件状态
             this.fileWatchFileStates.set(filePath, {
                 path: filePath,
-                lastModified: currentModified,
-                content: currentContent
+                lastModified: fileData.modified,
+                content: fileData.content
             });
 
             // 应用文件内容
-            await this.applyFileChange(filePath, currentContent);
+            await this.applyFileChange(filePath, fileData.content);
 
             this.plugin.console.log("loadSingleFile: File loaded successfully", filePath);
 
@@ -374,37 +373,11 @@ export class FileWatchService {
                 return;
             }
 
-            // 获取文件信息
-            const response = await getFile(filePath);
-
-            // 检查响应格式
-            let currentModified = 0;
-            let currentContent = "";
-
-            if (typeof response === "string") {
-                // 如果响应是字符串，说明直接返回了文件内容
-                currentContent = response;
-            } else if (response && typeof response === "object") {
-                // 如果响应是对象，检查是否有 code 字段
-                if (response.code !== undefined) {
-                    if (response.code !== 0) {
-                        return;
-                    }
-
-                    if (!response.data) {
-                        return;
-                    }
-
-                    currentModified = response.data.modified || 0;
-                    currentContent = response.data.content || "";
-                } else {
-                    // 如果响应对象没有 code 字段，可能直接是文件数据
-                    currentModified = response.modified || 0;
-                    currentContent = response.content || "";
-                }
-            } else {
+            const fileData = await this.readWatchedFile(filePath);
+            if (!fileData) {
                 return;
             }
+            const {modified: currentModified, content: currentContent} = fileData;
 
             // 获取之前的文件状态
             const previousState = this.fileWatchFileStates.get(filePath);
