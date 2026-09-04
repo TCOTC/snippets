@@ -30,11 +30,10 @@ import {
 // 工具函数
 import {isPromiseFulfilled} from "./utils";
 
-// CodeMirror 6（编辑器扩展与视图创建已外迁至 src/ui/codemirror.ts，此处仅保留重建编辑器所需的状态/主题/类型）
-import {EditorState} from "@codemirror/state";
-import {vscodeDark, vscodeLight} from "@uiw/codemirror-theme-vscode";
+// CodeMirror 6（编辑器扩展/视图创建/生命周期管理已外迁至 src/ui/codemirror.ts 与 src/ui/editor-manager.ts）
 import type {EditorView} from "@codemirror/view";
-import {createCodeMirrorEditor, createEditorExtensions, getEditorIndentUnit} from "./ui/codemirror";
+import {createCodeMirrorEditor} from "./ui/codemirror";
+import {EditorManager} from "./ui/editor-manager";
 
 const PLUGIN_NAME = "snippets";                    // 插件名
 const STORAGE_NAME = "plugin-config.json";         // 配置文件名
@@ -96,6 +95,11 @@ export default class PluginSnippets extends Plugin {
     private snippetStore!: SnippetStore;
 
     /**
+     * 编辑器对话框生命周期管理（主题监听 + 已打开编辑器更新/重建，实现见 src/ui/editor-manager.ts）
+     */
+    private editorManager!: EditorManager;
+
+    /**
      * 启用插件
      */
     public async onload() {
@@ -105,6 +109,13 @@ export default class PluginSnippets extends Plugin {
             set: (snippetsList) => {
                 this.snippetsList = snippetsList;
             },
+        });
+
+        // 初始化编辑器对话框生命周期管理器（运行态经读取器实时转发：editorIndentUnit 需在 initSetting 完成 defineProperty 后才能读取，故只能在调用时取值）
+        this.editorManager = new EditorManager({
+            logger: this.console,
+            editorIndentUnit: () => this.editorIndentUnit,
+            i18n: () => this.i18n,
         });
 
         // 订阅代码片段列表变更事件：菜单打开时刷新各类型计数
@@ -321,11 +332,8 @@ export default class PluginSnippets extends Plugin {
         // 关闭跨窗口同步服务（发送下线通知并断开连接）
         this.syncService?.stop();
 
-        // 清理主题监听器
-        if (window.siyuan.jcsm?.themeObserver) {
-            window.siyuan.jcsm.themeObserver.disconnect();
-            delete window.siyuan.jcsm.themeObserver;
-        }
+        // 停止主题模式监听
+        this.editorManager?.stopThemeModeWatch();
 
         // 移除菜单
         this.menu?.close();
@@ -373,11 +381,8 @@ export default class PluginSnippets extends Plugin {
 
         // TODO自定义页签: 移除所有自定义页签
 
-        // 清理主题监听器
-        if (window.siyuan.jcsm?.themeObserver) {
-            window.siyuan.jcsm.themeObserver.disconnect();
-            delete window.siyuan.jcsm.themeObserver;
-        }
+        // 停止主题模式监听
+        this.editorManager?.stopThemeModeWatch();
 
         // 移除所有监听器
         this.destroyListeners();
@@ -708,7 +713,7 @@ export default class PluginSnippets extends Plugin {
             }
             case "editorIndentUnit":
                 // 修改编辑器缩进单位后，更新所有打开的编辑器
-                this.updateAllEditorConfigs("indent unit");
+                this.editorManager.updateAllEditorConfigs("indent unit");
                 break;
             case "fileWatchEnabled":
                 // 处理文件监听模式改变
@@ -2908,167 +2913,6 @@ export default class PluginSnippets extends Plugin {
     declare editorIndentUnit: string;
 
     /**
-     * 启动主题模式监听
-     */
-    private startThemeModeWatch() {
-        // 如果已经启动了监听，则不重复启动
-        if (window.siyuan.jcsm?.themeObserver) return;
-
-        // 存储上一次的主题模式，用于比较是否有变化
-        let lastThemeMode = window.siyuan.config.appearance.mode;
-
-        // 使用 MutationObserver 监听 :root 元素的 data-theme-mode 属性变化
-        const observer = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                if (mutation.type === "attributes" && mutation.attributeName === "data-theme-mode") {
-                    this.console.log("themeModeChangeHandler: mutation", mutation);
-
-                    // 检查主题模式是否有变化
-                    const currentThemeMode = window.siyuan.config.appearance.mode;
-                    if (currentThemeMode !== lastThemeMode) {
-                        this.console.log(`Theme mode changed: ${lastThemeMode} -> ${currentThemeMode}`);
-                        lastThemeMode = currentThemeMode;
-
-                        // 更新所有打开的代码片段编辑对话框中的编辑器主题
-                        this.updateAllEditorConfigs("theme");
-                    }
-                }
-            });
-        });
-
-        // 开始监听 :root 元素的属性变化
-        const rootElement = document.querySelector(":root");
-        if (rootElement) {
-            observer.observe(rootElement, {
-                attributes: true,
-                attributeFilter: ["data-theme-mode"]
-            });
-
-            // 将 observer 存储到全局变量中
-            if (!window.siyuan.jcsm) window.siyuan.jcsm = {};
-            window.siyuan.jcsm.themeObserver = observer;
-
-            this.console.log("startThemeModeWatch: theme mode watch started");
-        }
-    }
-
-    /**
-     * 停止主题模式监听
-     */
-    private stopThemeModeWatch() {
-        if (window.siyuan.jcsm?.themeObserver) {
-            window.siyuan.jcsm.themeObserver.disconnect();
-            delete window.siyuan.jcsm.themeObserver;
-            this.console.log("stopThemeModeWatch: theme mode watch stopped");
-        }
-    }
-
-    /**
-     * 检查是否有编辑器对话框打开
-     * @returns 是否存在打开的编辑器对话框
-     */
-    private hasEditorDialogsOpen(): boolean {
-        return document.querySelectorAll('.b3-dialog--open[data-key="jcsm-snippet-dialog"]').length > 0;
-    }
-
-    /**
-     * 检查并管理主题模式监听状态
-     * @param isOpen 是否正在打开编辑器对话框
-     */
-    private checkAndManageThemeWatch(isOpen = false) {
-        const hasDialog = isOpen || this.hasEditorDialogsOpen();
-        const hasObserver = !!window.siyuan.jcsm?.themeObserver;
-        this.console.log("checkAndManageThemeWatch: hasDialog", hasDialog, ", hasObserver", hasObserver);
-
-        if (hasDialog && !hasObserver) {
-            // 有对话框但没有监听器，启动监听
-            this.startThemeModeWatch();
-        } else if (!hasDialog && hasObserver) {
-            // 没有对话框但有监听器，停止监听
-            this.stopThemeModeWatch();
-        }
-        // 不关心其他情况
-    }
-
-    /**
-     * 更新所有打开的代码片段编辑对话框中的编辑器配置
-     * @param reason 更新原因，用于日志记录
-     */
-    private updateAllEditorConfigs(reason = "config") {
-        // 获取所有打开的代码片段编辑对话框
-        const snippetDialogs = document.querySelectorAll('.b3-dialog--open[data-key="jcsm-snippet-dialog"]');
-        snippetDialogs.forEach((dialogElement) => {
-            const contentContainer = dialogElement.querySelector(".jcsm-dialog-content") as HTMLElement;
-            if (!contentContainer) return;
-
-            // 查找现有的 CodeMirror 编辑器 DOM 元素
-            const existingEditorElement = contentContainer.querySelector(".cm-editor");
-            if (!existingEditorElement) return;
-
-            // 获取当前编辑器实例 - 通过 DOM 元素查找对应的 EditorView
-            const editorView = (existingEditorElement as any).cmView as EditorView;
-            if (!editorView) {
-                this.console.warn("updateAllEditorConfigs: editorView not found, recreating editor:", reason);
-                this.recreateEditor(dialogElement, contentContainer);
-                return;
-            }
-
-            // 获取当前主题模式
-            const currentThemeMode = window.siyuan.config.appearance.mode;
-            const newTheme = currentThemeMode === 0 ? vscodeLight : vscodeDark;
-
-            // 获取当前编辑器状态
-            const currentState = editorView.state;
-
-            // 创建新的编辑器状态，保留文档内容和选择状态
-            const snippetType = dialogElement.getAttribute("data-snippet-type") || "css";
-            const newState = EditorState.create({
-                doc: currentState.doc,
-                extensions: createEditorExtensions(newTheme, snippetType, getEditorIndentUnit(this.editorIndentUnit), this.i18n),
-            });
-
-            // 更新编辑器状态，保留滚动位置和光标位置
-            editorView.setState(newState);
-
-            this.console.log("updateAllEditorConfigs: editor:", reason, "updated:", dialogElement);
-        });
-    }
-
-    /**
-     * 重新创建编辑器（当无法找到 EditorView 实例时使用）
-     * @param dialogElement 对话框元素
-     * @param contentContainer 内容容器
-     */
-    private recreateEditor(dialogElement: Element, contentContainer: HTMLElement) {
-        this.console.log("recreateEditor: dialogElement", dialogElement, ", contentContainer", contentContainer);
-        // 获取当前编辑器内容
-        const existingEditorElement = contentContainer.querySelector(".cm-editor");
-        if (!existingEditorElement) return;
-
-        const codeLines = existingEditorElement.querySelectorAll(".cm-line");
-        let currentContent = "";
-        if (codeLines.length > 0) {
-            // 从 CodeMirror 的 DOM 结构中提取文本内容
-            currentContent = Array.from(codeLines)
-                .map(line => line.textContent || "")
-                .join("\n");
-        } else {
-            this.console.error("recreateEditor: no code lines found, return");
-            return;
-        }
-
-        const snippetType = dialogElement.getAttribute("data-snippet-type") || "css";
-
-        // 清空容器
-        contentContainer.innerHTML = "";
-
-        // 重新创建编辑器
-        createCodeMirrorEditor(contentContainer, currentContent, snippetType, this.editorIndentUnit, this.i18n);
-
-        this.console.log(`recreateEditor: editor recreated: ${dialogElement}`);
-    }
-
-    /**
      * 是否允许同时打开多个代码片段编辑器
      */
     declare multipleSnippetEditors: boolean;
@@ -3146,7 +2990,7 @@ export default class PluginSnippets extends Plugin {
         }
 
         // 检查并启动主题模式监听（在第一个编辑器对话框打开时）
-        this.checkAndManageThemeWatch(true);
+        this.editorManager.checkAndManageThemeWatch(true);
 
         // 设置代码片段标题和内容
         const nameElement = dialog.element.querySelector(".jcsm-dialog-name") as HTMLInputElement; // 标题不允许输入换行，所以得用 input 元素，textarea 元素没法在操作能 Ctrl+Z 撤回的前提下阻止用户换行
@@ -3653,7 +3497,7 @@ export default class PluginSnippets extends Plugin {
             // Dialog 移除之后再移除全局键盘事件监听，因为需要判断窗口中是否还存在菜单和 Dialog
             this.destroyGlobalKeyDownHandler();
             // 检查并停止主题模式监听（在最后一个编辑器对话框关闭时）
-            this.checkAndManageThemeWatch();
+            this.editorManager.checkAndManageThemeWatch();
         };
 
         let isDestroyed = false;
@@ -4148,7 +3992,7 @@ export default class PluginSnippets extends Plugin {
         this.isCheckingListeners = true;
 
         // 检查主题监听状态
-        this.checkAndManageThemeWatch();
+        this.editorManager.checkAndManageThemeWatch();
 
         // 如果没有监听器，停止定时器并返回
         if (!this.listeners || this.listeners.length === 0) {
