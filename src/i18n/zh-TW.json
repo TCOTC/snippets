@@ -156,6 +156,7 @@
   "topBarPositionLeft": "左側",
   "topBarPositionRight": "右側",
   "invalidJavaScriptCode": "JavaScript 代碼無效，請檢查代碼內容",
+  "invalidCssSnippetContent": "CSS 代碼片段無法儲存，內容包含被禁止的 </style 或 <script 標記",
   "defaultSnippetsType": "管理選單預設顯示標籤頁",
   "defaultSnippetsTypeDescription": "開啟管理選單時預設顯示的代碼片段類型",
   "defaultSnippetsTypeCSS": "CSS",

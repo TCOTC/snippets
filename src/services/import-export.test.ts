@@ -28,6 +28,7 @@ const setup = (serverSnippets: Snippet[] = []) => {
             importFileContentEmpty: "导入文件为空",
             importFileNotValidJson: "不是有效的 JSON",
             importSnippetsInvalidFormat: "导入格式无效",
+            invalidCssSnippetContent: "CSS 内容违规",
             importSnippetsFailed: "导入失败",
             importSnippetsOverwriteSuccess: "覆盖成功",
             importSnippetsAppendSuccess: "追加成功",
@@ -222,6 +223,37 @@ describe("ImportExportService", () => {
             await triggerFileChange(inputOf(), new File([JSON.stringify([{id: "x", name: "缺字段"}])], "bad.json"));
             await promise;
             expect(plugin.showErrorMessage).toHaveBeenCalledWith("导入格式无效");
+        });
+
+        it("导入文件含内容违规的 CSS 片段时拒绝导入并列出违规片段名（不假成功）", async () => {
+            const server = [{id: "s-1", name: "原有", content: "p {}", type: "css", enabled: true}] as Snippet[];
+            const {service, plugin} = setup(server);
+            setFetchMock({});
+            const data = JSON.stringify([
+                {id: "bad-1", name: "坏CSS", content: "<script>alert(1)</script>", type: "css", enabled: true},
+                {id: "good-1", name: "好CSS", content: "body {}", type: "css", enabled: true},
+            ]);
+            const promise = service.importSnippets(false);
+            await triggerFileChange(inputOf(), new File([data], "snippets.json"));
+            await promise;
+            // 提示可定位到违规片段（其余合法片段不被误报）
+            expect(plugin.showErrorMessage).toHaveBeenCalledWith("CSS 内容违规: 坏CSS");
+            // 未落库、未应用导入、无成功提示
+            expect(plugin.snippetManager.saveSnippetsList).not.toHaveBeenCalled();
+            expect(plugin.snippetManager.applyImportedSnippets).not.toHaveBeenCalled();
+            expect(showMessage).not.toHaveBeenCalled();
+        });
+
+        it("落库被拒时中止导入：不替换 Store、不弹成功（避免假成功）", async () => {
+            const server = [{id: "s-1", name: "原有", content: "p {}", type: "css", enabled: true}] as Snippet[];
+            const {service, plugin} = setup(server);
+            setFetchMock({});
+            vi.mocked(plugin.snippetManager.saveSnippetsList).mockRejectedValueOnce(new Error("保存代码片段列表失败 [invalid css snippet content]"));
+            const promise = service.importSnippets(false);
+            await triggerFileChange(inputOf(), new File([JSON.stringify([{id: "imp-1", name: "导入", content: "body {}", type: "css", enabled: true}])], "s.json"));
+            await promise;
+            expect(plugin.snippetManager.applyImportedSnippets).not.toHaveBeenCalled();
+            expect(showMessage).not.toHaveBeenCalled();
         });
 
         it("导入片段缺少 id 或与现有冲突时重新生成不冲突 ID", async () => {

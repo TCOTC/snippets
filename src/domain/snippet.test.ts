@@ -1,5 +1,5 @@
 // domain/snippet.ts 纯函数单测
-// 覆盖：deepClone/snippetTitle/isValidJavaScriptCode/isSnippetsTypeEnabled/
+// 覆盖：deepClone/snippetTitle/isValidJavaScriptCode/isValidCssSnippetContent/isSnippetsTypeEnabled/
 //       sortSnippets（8 种排序 + 引用语义）/filterSnippetsByKeyword（4 种搜索类型）
 import {afterEach, describe, expect, it, vi} from "vitest";
 import type {Snippet} from "../types";
@@ -7,6 +7,7 @@ import {
     deepClone,
     filterSnippetsByKeyword,
     isSnippetsTypeEnabled,
+    isValidCssSnippetContent,
     isValidJavaScriptCode,
     snippetTitle,
     sortSnippets,
@@ -114,6 +115,34 @@ describe("isValidJavaScriptCode", () => {
         expect(isValidJavaScriptCode("function (")).toBe(false);
         // 单独一行 super 只能出现在类方法内，脚本顶层是语法错误（曾被误列排除表，属不可达分支）
         expect(isValidJavaScriptCode("super")).toBe(false);
+    });
+});
+
+describe("isValidCssSnippetContent", () => {
+    it("合法 CSS 内容为可接受", () => {
+        expect(isValidCssSnippetContent("body { color: red; }")).toBe(true);
+        expect(isValidCssSnippetContent("")).toBe(true);
+        // 普通含 style/script 单词的 CSS 规则不受影响
+        expect(isValidCssSnippetContent(".style { color: red; }")).toBe(true);
+        expect(isValidCssSnippetContent("script { display: block; }")).toBe(true);
+        // 非 <script 起始的文本（无标签形态）可接受
+        expect(isValidCssSnippetContent("/* scripture */ p {}")).toBe(true);
+    });
+
+    it("内容含 </style 时拒绝（与内核 Contains 判据一致，含大小写变体与后续字符）", () => {
+        expect(isValidCssSnippetContent("p {} </style>")).toBe(false);
+        expect(isValidCssSnippetContent("p {} </STYLE>")).toBe(false);
+        expect(isValidCssSnippetContent("p {} </Style>")).toBe(false);
+        // 内核为子串匹配：</stylex 同样命中
+        expect(isValidCssSnippetContent("p {} </stylex")).toBe(false);
+    });
+
+    it("内容含 <script 时拒绝（与内核 Contains 判据一致，含大小写变体与后续字符）", () => {
+        expect(isValidCssSnippetContent("<script>alert(1)</script>")).toBe(false);
+        expect(isValidCssSnippetContent("<SCRIPT>alert(1)</SCRIPT>")).toBe(false);
+        expect(isValidCssSnippetContent("/* <script */ p {}")).toBe(false);
+        // 内核为子串匹配：<scripture 同样命中
+        expect(isValidCssSnippetContent("/* <scripture */ p {}")).toBe(false);
     });
 });
 

@@ -247,6 +247,26 @@ describe("SnippetManager", () => {
             expect(broadcast).not.toHaveBeenCalled();
         });
 
+        it("本地保存内容含内核禁止标记的 CSS 片段时拦截（提示可定位，不落库不广播）", async () => {
+            const {manager, plugin, broadcast} = setup([]);
+            const badSnippet = makeSnippet("css-bad", "css", "</style><script>alert(1)</script>", true, "含脚本的CSS");
+            await manager.saveSnippet(badSnippet);
+            // 提示信息含片段名，可定位到具体是哪条违规
+            expect(plugin.showErrorMessage).toHaveBeenCalledWith("CSS 内容违规: 含脚本的CSS");
+            expect(plugin.snippetStore.upsert).not.toHaveBeenCalled();
+            expect(broadcast).not.toHaveBeenCalled();
+            expect(fetchPost).not.toHaveBeenCalled();
+        });
+
+        it("远程分支保存含违规内容的 CSS 片段不拦截（广播窗口已落库校验，本窗口只同步）", async () => {
+            const serverList = [makeSnippet("css-bad", "css", "</style>")];
+            const {manager, plugin, broadcast} = setup(serverList);
+            await manager.saveSnippet(serverList[0], false, "remote");
+            expect(plugin.showErrorMessage).not.toHaveBeenCalled();
+            expect(plugin.snippetStore.upsert).toHaveBeenCalled();
+            expect(broadcast).not.toHaveBeenCalled();
+        });
+
         it("远程复制缺少权威副本时记录错误并返回", async () => {
             const {manager, plugin, broadcast} = setup([]);
             await manager.saveSnippet(makeSnippet("css-1", "css"), true, "remote");
@@ -459,6 +479,26 @@ describe("SnippetManager", () => {
                 expect.stringContaining("isCopy is missing"),
                 expect.anything()
             );
+        });
+    });
+
+    describe("saveSnippetsList 内核 CSS 安全校验预扫描", () => {
+        it("列表含内容违规的 CSS 片段时拒绝保存并列出全部违规片段名", async () => {
+            const {manager, plugin} = setup([]);
+            const badCss = makeSnippet("bad-1", "css", "<script>alert(1)</script>", true, "违规甲");
+            const badCss2 = makeSnippet("bad-2", "css", "p {} </style>", true, "违规乙");
+            const goodCss = makeSnippet("ok-1", "css", "body {}");
+            await expect(manager.saveSnippetsList([goodCss, badCss, badCss2])).rejects.toThrow("违规甲");
+            expect(plugin.showErrorMessage).toHaveBeenCalledWith("CSS 内容违规: 违规甲, 违规乙");
+            // 预扫描拒绝后不调用内核落库 API
+            expect(fetchPost).not.toHaveBeenCalled();
+        });
+
+        it("列表全部合法时正常调用内核落库", async () => {
+            const {manager} = setup([]);
+            const goodCss = makeSnippet("ok-1", "css", "body {}");
+            await expect(manager.saveSnippetsList([goodCss])).resolves.toBeUndefined();
+            expect(fetchPost).toHaveBeenCalledWith("/api/snippet/setSnippet", { snippets: [goodCss] }, expect.any(Function));
         });
     });
 });

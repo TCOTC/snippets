@@ -134,6 +134,19 @@ export const isInputElementActive = (): boolean => {
 };
 
 /**
+ * HTML 转义（用于把动态纯文本安全拼入 innerHTML 消息等场景）
+ * @param text 纯文本
+ * @returns 转义后的 HTML 文本
+ */
+export const escapeHtml = (text: string): string =>
+    text.replace(/[&<>"']/g, (char) =>
+        char === "&" ? "&amp;" :
+        char === "<" ? "&lt;" :
+        char === ">" ? "&gt;" :
+        char === "\"" ? "&quot;" : "&#39;"
+    );
+
+/**
  * 将 HTML 字符串转换为元素
  * @param html HTML 字符串
  * @returns 元素

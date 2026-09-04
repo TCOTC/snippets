@@ -156,6 +156,7 @@
   "topBarPositionLeft": "Left",
   "topBarPositionRight": "Right",
   "invalidJavaScriptCode": "Invalid JavaScript code, please check the code content",
+  "invalidCssSnippetContent": "CSS snippet cannot be saved because its content contains forbidden </style or <script",
   "defaultSnippetsType": "Default tab in management menu",
   "defaultSnippetsTypeDescription": "The default code snippet type displayed when opening the management menu",
   "defaultSnippetsTypeCSS": "CSS",

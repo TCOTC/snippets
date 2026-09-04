@@ -156,6 +156,7 @@
   "topBarPositionLeft": "左侧",
   "topBarPositionRight": "右侧",
   "invalidJavaScriptCode": "JavaScript 代码无效，请检查代码内容",
+  "invalidCssSnippetContent": "CSS 代码片段无法保存，内容包含被禁止的 </style 或 <script 标记",
   "defaultSnippetsType": "管理菜单默认显示标签页",
   "defaultSnippetsTypeDescription": "打开管理菜单时默认显示的代码片段类型",
   "defaultSnippetsTypeCSS": "CSS",

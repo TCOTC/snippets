@@ -3,8 +3,8 @@
 // 运行态经插件实例访问；纯工具逻辑（ID 生成/预览判断）在 ../utils，纯领域判断在 ../domain。
 import {fetchPost, fetchSyncPost} from "siyuan";
 import type PluginSnippets from "../index";
-import {deepClone, isSnippetsTypeEnabled, isValidJavaScriptCode, snippetTitle} from "../domain/snippet";
-import {genNewSnippetId, isPreviewingSnippet, SNIPPET_DIALOG_SELECTOR} from "../utils";
+import {deepClone, isSnippetsTypeEnabled, isValidCssSnippetContent, isValidJavaScriptCode, snippetTitle} from "../domain/snippet";
+import {escapeHtml, genNewSnippetId, isPreviewingSnippet, SNIPPET_DIALOG_SELECTOR} from "../utils";
 import type {Snippet, SnippetType} from "../types";
 import type {BroadcastHandlers} from "./sync";
 
@@ -95,6 +95,15 @@ export class SnippetManager {
                 await this.updateSnippetElement(snippet);
             }
             this.applySnippetUIChange(snippet, true);
+            return;
+        }
+
+        // 适配思源内核 CSS 片段安全校验：内容含 </style 或 <script 的 CSS 片段无法落库
+        // （整表保存会被内核整体拒绝且不指明是哪一条），本地保存/复制前按同一判据预校验并给出片段名
+        if (snippet.type === "css" && !isValidCssSnippetContent(snippet.content)) {
+            // 报错消息经 innerHTML 渲染（思源 showMessage），且片段名可能回退到内容前 200 字（内容本身含违规标签），
+            // 整条消息先转义再展示；i18n 文案保持普通文本，不做实体化，避免双重转义
+            this.plugin.showErrorMessage(escapeHtml(this.plugin.i18n.invalidCssSnippetContent + ": " + snippetTitle(snippet)));
             return;
         }
 
@@ -332,6 +341,18 @@ export class SnippetManager {
      */
     saveSnippetsList(snippetsList: Snippet[]): Promise<void> {
         this.plugin.console.log("saveSnippetsList", snippetsList);
+        // 适配思源内核 CSS 片段安全校验（kernel/api/snippet.go）：只要列表中存在一条 CSS 片段内容含
+        // </style 或 <script，内核就会整体拒绝本次保存且只返回笼统的 invalid css snippet content。
+        // 这里先按同一判据扫描整表，命中时直接拒绝并列出片段名，便于用户定位历史遗留的违规片段
+        const invalidCssSnippets = snippetsList.filter((snippet) => snippet.type === "css" && !isValidCssSnippetContent(snippet.content));
+        if (invalidCssSnippets.length > 0) {
+            // 报错消息经 innerHTML 渲染（思源 showMessage），且片段名可能回退到内容前 200 字（内容本身含违规标签），
+            // 整条消息先转义再展示；i18n 文案保持普通文本，不做实体化，避免双重转义。
+            // reject 携带未转义的原始消息，仅作错误对象，不进入 DOM
+            const rawMessage = this.plugin.i18n.invalidCssSnippetContent + ": " + invalidCssSnippets.map((snippet) => snippetTitle(snippet)).join(", ");
+            this.plugin.showErrorMessage(escapeHtml(rawMessage));
+            return Promise.reject(new Error(rawMessage));
+        }
         // 将回调形式的 fetchPost 包装为 Promise，以便可以 await
         return new Promise((resolve, reject) => {
             fetchPost("/api/snippet/setSnippet", { snippets: snippetsList }, (response) => {

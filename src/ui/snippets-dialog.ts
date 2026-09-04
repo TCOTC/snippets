@@ -3,7 +3,8 @@
 // 通用确认对话框、按元素关闭对话框（含 CodeMirror 编辑器销毁、监听器移除与 destroyCallback/超时兜底）、
 // 收集已打开的插件模态对话框。
 import {Constants, Dialog} from "siyuan";
-import {attachDialogObject, genSnippetSwitchHtml, getDialogObject, isDialogButtonFocused, moveElementToTop, setDialogKeyHandler, SNIPPET_DIALOG_DATA_KEY, SNIPPET_DIALOG_SELECTOR} from "../utils";
+import {attachDialogObject, escapeHtml, genSnippetSwitchHtml, getDialogObject, isDialogButtonFocused, moveElementToTop, setDialogKeyHandler, SNIPPET_DIALOG_DATA_KEY, SNIPPET_DIALOG_SELECTOR} from "../utils";
+import {isValidCssSnippetContent} from "../domain/snippet";
 import {createCodeMirrorEditor, getEditorView} from "./editor-manager";
 import type PluginSnippets from "../index";
 import type {Snippet} from "../types";
@@ -261,6 +262,14 @@ export class SnippetsDialog {
             snippet.content = codeMirrorView.state.doc.toString();
             snippet.enabled = snippetSwitchInput.checked;
             snippet.disabledInPublish = !publishSwitchInput.checked;
+
+            // 适配思源内核 CSS 片段安全校验：内容含 </style 或 <script 的 CSS 片段无法保存。
+            // 必须在关闭对话框前预校验，否则报错时编辑器已关闭，用户无从修改（issue #43）。
+            // 报错消息经 innerHTML 渲染（思源 showMessage），先转义再展示
+            if (snippet.type === "css" && !isValidCssSnippetContent(snippet.content)) {
+                this.plugin.showErrorMessage(escapeHtml(this.plugin.i18n.invalidCssSnippetContent));
+                return;
+            }
 
             // 要先关闭 Dialog，因为通过 saveSnippet 调用的 updateSnippetElement 会根据 Dialog 是否打开来决定是否需要更新代码片段元素
             this.closeByElement(dialog.element);

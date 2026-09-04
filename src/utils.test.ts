@@ -6,6 +6,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 import {fetchPost} from "siyuan";
 import type {Snippet} from "./types";
 import {
+    escapeHtml,
     genNewSnippetId,
     genSnippetSwitchHtml,
     getFile,
@@ -24,6 +25,18 @@ describe("常量", () => {
     it("插件名与对话框 data-key 与代码保持一致", () => {
         expect(PLUGIN_NAME).toBe("snippets");
         expect(SNIPPET_DIALOG_DATA_KEY).toBe("jcsm-snippet-dialog");
+    });
+});
+
+describe("escapeHtml", () => {
+    it("HTML 特殊字符全部转义为实体", () => {
+        expect(escapeHtml("<script>alert(1)</script>")).toBe("&lt;script&gt;alert(1)&lt;/script&gt;");
+        expect(escapeHtml("a & b \"c\" 'd'")).toBe("a &amp; b &quot;c&quot; &#39;d&#39;");
+        expect(escapeHtml("a < b > c")).toBe("a &lt; b &gt; c");
+    });
+
+    it("无特殊字符时原样返回", () => {
+        expect(escapeHtml("普通文本 body {}")).toBe("普通文本 body {}");
     });
 });
 

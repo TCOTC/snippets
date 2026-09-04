@@ -74,6 +74,19 @@ export function isValidJavaScriptCode(code: string): boolean {
 }
 
 /**
+ * 判断 CSS 代码片段内容是否会被思源内核拒绝
+ * 思源内核 setSnippet 对 CSS 片段做安全校验：内容（不区分大小写）包含 "</style" 或 "<script" 时
+ * 整表保存失败并返回 invalid css snippet content（见 siyuan kernel/api/snippet.go），
+ * 插件保存/导入前须按同一判据预校验，否则报错无法定位到具体片段
+ * @param content CSS 代码
+ * @returns 是否为内核可接受的 CSS 代码
+ */
+export function isValidCssSnippetContent(content: string): boolean {
+    const lowerContent = content.toLowerCase();
+    return !lowerContent.includes("</style") && !lowerContent.includes("<script");
+}
+
+/**
  * 判断代码片段类型是否启用
  * @param snippetType 代码片段类型
  * @returns 是否启用

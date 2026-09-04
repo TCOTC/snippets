@@ -2,7 +2,8 @@
 // 职责：导出全部代码片段为 JSON（经 /api/export/exportResources 导出 zip 并去随机前缀后 saveExportFile 下载）；
 // 从本地文件（json/zip）导入——zip 上传解压后递归定位 json；校验、ID 去重、覆盖前备份、整表替换写库。
 import {saveExportFile, showMessage} from "siyuan";
-import {fetchPostPromise, genNewSnippetId, getFile, putFile, renameFile} from "../utils";
+import {isValidCssSnippetContent, snippetTitle} from "../domain/snippet";
+import {escapeHtml, fetchPostPromise, genNewSnippetId, getFile, putFile, renameFile} from "../utils";
 import type PluginSnippets from "../index";
 import type {Snippet} from "../types";
 
@@ -160,7 +161,15 @@ export class ImportExportService {
 
                     // 验证导入数据格式
                     if (!this.validateImportData(importData)) {
-                        this.plugin.showErrorMessage(this.plugin.i18n.importSnippetsInvalidFormat);
+                        // 优先定位 CSS 内容违规（与思源内核安全校验同判据），否则给通用格式提示
+                        const invalidCssSnippets = this.findInvalidCssSnippets(importData);
+                        if (invalidCssSnippets.length > 0) {
+                            // 报错消息经 innerHTML 渲染（思源 showMessage），且片段名可能回退到内容前 200 字
+                            // （内容本身含违规标签），整条消息先转义再展示
+                            this.plugin.showErrorMessage(escapeHtml(this.plugin.i18n.invalidCssSnippetContent + ": " + invalidCssSnippets.map((snippet) => snippetTitle(snippet)).join(", ")));
+                        } else {
+                            this.plugin.showErrorMessage(this.plugin.i18n.importSnippetsInvalidFormat);
+                        }
                         return;
                     }
 
@@ -285,6 +294,12 @@ export class ImportExportService {
             return false;
         }
 
+        // 适配思源内核 CSS 片段安全校验：内容含 </style 或 <script 的 CSS 片段无法落库，
+        // 导入时按同一判据拦截（validateImportData 返回 false，错误定位见 findInvalidCssSnippets）
+        if (snippet.type === "css" && !isValidCssSnippetContent(snippet.content)) {
+            return false;
+        }
+
         if (typeof snippet.enabled !== "boolean") {
             return false;
         }
@@ -295,6 +310,22 @@ export class ImportExportService {
         }
 
         return true;
+    }
+
+    /**
+     * 找出导入数据中内容违反思源内核 CSS 片段安全校验的片段
+     * （结构非法的条目已被 validateImportData 拦截，此处仅作防御性遍历以给出可定位提示）
+     * @param data 导入数据（可能结构非法）
+     * @returns 违规的 CSS 片段列表
+     */
+    private findInvalidCssSnippets(data: any): Snippet[] {
+        if (!Array.isArray(data)) return [];
+        return data.filter((snippet: any) =>
+            snippet && typeof snippet === "object" &&
+            snippet.type === "css" &&
+            typeof snippet.content === "string" &&
+            !isValidCssSnippetContent(snippet.content)
+        );
     }
 
     /**

@@ -156,6 +156,7 @@
   "topBarPositionLeft": "左側",
   "topBarPositionRight": "右側",
   "invalidJavaScriptCode": "無効な JavaScript コードです。コードの内容を確認してください",
+  "invalidCssSnippetContent": "CSS スニペットは保存できません。内容に禁止された </style または <script が含まれています",
   "defaultSnippetsType": "管理メニューのデフォルトタブ",
   "defaultSnippetsTypeDescription": "管理メニューを開いたときにデフォルトで表示されるコードスニペットタイプ",
   "defaultSnippetsTypeCSS": "CSS",
