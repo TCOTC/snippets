@@ -54,6 +54,12 @@
 - 前缀是思源内核 `exportResources`/`ExportResources` 为隔离/令牌下载故意加的随机 exportID（`kernel/model/export.go`），非 bug；思源原生导出不走该接口故不带。
 - 已通过 `renameFile` 把导出产物在 `temp/export` 内改名为干净名后 `saveExportFile`（zip 结构不变，新旧版本导入兼容）。跨平台可用性已核实（桌面 copy / 移动端+浏览器 均解析同一 `/export/` 实体 `temp/export`）。
 
+### 广播协议约束：消息不得携带代码片段原文（敏感信息）
+- **硬性约束（用户要求）**：跨窗口广播消息体中不允许包含 snippet 的 `content` 原文（代码可能含密钥、内网地址等敏感信息），只允许携带非敏感元数据（`snippetId`、`snippetType`、`name`、开关状态等）。
+- 接收窗口需要片段内容时，一律自行调用 `/api/snippet/getSnippet` 获取权威数据，禁止依赖消息中的原文。
+- **现状违规点（待阶段 3 sync 收敛时一并改造）**：`snippet_save`（saveSnippet）广播携带完整 `snippet` 与 `copySnippet`（含 `content`）；`snippet_element_update`（实时预览同步）广播携带完整 snippet（含 `content`）。其余消息（`snippet_toggle`、`snippet_toggle_publish`、`snippet_delete`、`snippet_element_remove`、`snippets_sort`、`setting_apply`）均只含元数据，合规。
+- **与实时预览的冲突（待议）**：CSS 实时预览的内容可能尚未保存，远程窗口无法从内核取回，跨窗口预览同步本质上需要传输原文；若坚持禁传原文，需决定多窗口实时预览的取舍（如改为仅本窗口预览），此冲突留待 sync 阶段与用户确认。
+
 ### 下一步建议（朝目标架构，拆可验证子批推进）
 1. 建 `core/state.ts` + `domain/snippet-store.ts`（阶段 2）：把 snippetsList 增/删/改收敛为单一 `apply` 并统一发 `SNIPPETS_CHANGED`，让 `saveSnippet`/`saveSnippetSync`/`deleteSnippet(Sync)`/`toggleSnippet(Sync)`/排序等散落写点逐步改走 store。
 2. 阶段 3：`services/sync.ts` 类型化广播协议并让远程消息映射到 store `apply`，消除 `*Sync` 镜像。
@@ -160,7 +166,7 @@ src/
   - *持久配置*：落盘，由 `ConfigService` 读写；
   - *跨 reload 存活性句柄*：仅保留少数必须存活引用（已打开 Dialog / CodeMirror 实例）；
   - *跨窗口同步*：一律走 `sync.ts` 的消息协议，不再把状态塞进 jcsm 当"共享变量"。
-- **广播协议类型化**：定义消息联合类型，`handleBroadcastMessage` 的 switch 由 `sync.ts` 收敛；远程事件与本地变更统一映射到同一个 store `apply`，从根上消灭 `*Sync` 镜像代码。
+- **广播协议类型化**：定义消息联合类型，`handleBroadcastMessage` 的 switch 由 `sync.ts` 收敛；远程事件与本地变更统一映射到同一个 store `apply`，从根上消灭 `*Sync` 镜像代码。协议只传非敏感元数据、不传 snippet `content` 原文（见会话进度节「广播协议约束」）。
 - **设置声明式**：`schema.ts` 里一份配置项（key / 类型 / 默认 / 选项 / `onApply` 回调），自动派生设置对话框控件、defineProperty、持久化、变更处理；删除 `applySetting` 大 switch。
 - **UI 按视图封装**：每个视图自己持有 DOM 构建与更新逻辑，从 store 拉取数据渲染；不同视图之间不再通过 querySelector 互戳。
 
