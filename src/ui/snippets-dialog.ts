@@ -7,12 +7,13 @@
 import {Constants, Dialog} from "siyuan";
 import {moveElementToTop} from "../utils";
 import {createCodeMirrorEditor} from "./codemirror";
+import type {EditorView} from "@codemirror/view";
 import type PluginSnippets from "../index";
 import type {Snippet} from "../types";
 
 /**
  * 代码片段对话框管理器（原 index.ts「对话框相关」分节外迁，行为等价）
- * 公开 genEditDialogHtml/openEditDialog/openDeleteDialog/openCancelDialog/openConfirm/closeByElement/getAllModalElements
+ * 公开 genEditDialogHtml/openEditDialog/openDeleteDialog/openCancelDialog/openConfirm/reloadUI/closeByElement/getAllModalElements
  */
 export class SnippetsDialog {
     private readonly plugin: PluginSnippets;
@@ -596,6 +597,49 @@ export class SnippetsDialog {
                 target = target.parentElement as HTMLElement;
             }
         }, {capture: true});
+    }
+
+    /**
+     * 重载界面（原 index.ts reloadUI 外迁，行为等价；菜单重载按钮/文件监听自动重载/命令注册经插件直连本方法）
+     * 遍历所有打开的代码片段编辑对话框，存在未保存变更时弹确认框二次确认后再请求重载界面。
+     */
+    reloadUI() {
+        // 方案1：获取界面上所有打开的代码片段编辑对话框，判断是否存在未保存的变更，如果有的话需要弹窗确认再重载界面
+        // 先用方案 1 顶顶，之后看看能不能实现方案 2
+        // TODO: 方案2：获取界面上所有打开的代码片段编辑对话框（包括相关内联样式），重载界面之后恢复对话框的位置、大小、内容...
+
+        // 获取所有打开的代码片段编辑对话框
+        const dialogs = document.querySelectorAll(".b3-dialog--open[data-key='jcsm-snippet-dialog']");
+        // 判断是否存在未保存的变更
+        let needConfirm = false;
+        for (let i = 0; i < dialogs.length; i++) {
+            const dialog = dialogs[i] as HTMLElement;
+            const snippetId = dialog.getAttribute("data-snippet-id");
+            const snippet = this.plugin.snippetsList.find((s: Snippet) => s.id === snippetId);
+            // 获取代码片段的标题
+            const titleElement = dialog.querySelector(".jcsm-dialog-name") as HTMLInputElement;
+            const title = titleElement?.value || "";
+            // 从编辑器获取代码
+            const editorElement = dialog.querySelector(".cm-editor") as HTMLElement;
+            const editorView = (editorElement as any).cmView as EditorView;
+            const code = editorView.state.doc.toString() || "";
+            if (
+                (snippet && (title !== snippet.name || code !== snippet.content)) // 已存在的代码片段，判断标题或内容是否有变更
+                || (!snippet && (title !== "" || code !== ""))                    // 新建代码片段，判断是否有内容
+            ) {
+                // 只要有一个未保存变更就停止循环
+                needConfirm = true;
+                break;
+            }
+        }
+
+        if (needConfirm) {
+            this.openConfirm(this.plugin.i18n.reloadUIConfirm, this.plugin.i18n.reloadUIConfirmDescription, "jcsm-reload-ui-confirm", undefined, undefined, () => {
+                this.plugin.postReloadUI();
+            });
+        } else {
+            this.plugin.postReloadUI();
+        }
     }
 
     // dialog.destroy 还能传递参数，看看这个写法能不能用上

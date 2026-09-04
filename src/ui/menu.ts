@@ -451,8 +451,8 @@ export class SnippetsMenu {
                     // 打开设置对话框
                     this.plugin.openSetting();
                 } else if (type === "reload") {
-                    // 重新加载界面
-                    this.plugin.reloadUI();
+                    // 重新加载界面（扫描打开的编辑对话框未保存变更并二次确认，见 SnippetsDialog.reloadUI）
+                    this.plugin.snippetsDialog.reloadUI();
                 } else if (type === "new") {
                     // 新建代码片段
                     this.plugin.snippetManager.createSnippet();

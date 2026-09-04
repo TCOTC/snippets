@@ -27,7 +27,6 @@ import {
 import {isPromiseFulfilled} from "./utils";
 
 // CodeMirror 6（编辑器扩展/视图创建/生命周期管理已外迁至 src/ui/codemirror.ts、src/ui/editor-manager.ts 与 src/ui/snippets-dialog.ts）
-import type {EditorView} from "@codemirror/view";
 import {EditorManager} from "./ui/editor-manager";
 import {SettingDialog} from "./ui/setting-dialog";
 import {SnippetsDialog} from "./ui/snippets-dialog";
@@ -244,7 +243,8 @@ export default class PluginSnippets extends Plugin {
             langKey: "reloadUI", // 重新加载界面
             hotkey: "",
             callback: () => {
-                this.reloadUI();
+                // 重载界面（扫描打开的编辑对话框未保存变更并二次确认）见 SnippetsDialog.reloadUI
+                this.snippetsDialog.reloadUI();
             },
         });
 
@@ -557,49 +557,7 @@ export default class PluginSnippets extends Plugin {
     // ================================ 工具方法 ================================
 
     /**
-     * 重新加载界面（SnippetsMenu 直连访问，故公开）
-     */
-    reloadUI() {
-        // 方案1：获取界面上所有打开的代码片段编辑对话框，判断是否存在未保存的变更，如果有的话需要弹窗确认再重载界面
-        // 先用方案 1 顶顶，之后看看能不能实现方案 2
-        // TODO: 方案2：获取界面上所有打开的代码片段编辑对话框（包括相关内联样式），重载界面之后恢复对话框的位置、大小、内容...
-
-        // 获取所有打开的代码片段编辑对话框
-        const dialogs = document.querySelectorAll(".b3-dialog--open[data-key='jcsm-snippet-dialog']");
-        // 判断是否存在未保存的变更
-        let needConfirm = false;
-        for (let i = 0; i < dialogs.length; i++) {
-            const dialog = dialogs[i] as HTMLElement;
-            const snippetId = dialog.getAttribute("data-snippet-id");
-            const snippet = this.snippetsList.find((s: Snippet) => s.id === snippetId);
-            // 获取代码片段的标题
-            const titleElement = dialog.querySelector(".jcsm-dialog-name") as HTMLInputElement;
-            const title = titleElement?.value || "";
-            // 从编辑器获取代码
-            const editorElement = dialog.querySelector(".cm-editor") as HTMLElement;
-            const editorView = (editorElement as any).cmView as EditorView;
-            const code = editorView.state.doc.toString() || "";
-            if (
-                (snippet && (title !== snippet.name || code !== snippet.content)) // 已存在的代码片段，判断标题或内容是否有变更
-                || (!snippet && (title !== "" || code !== ""))                    // 新建代码片段，判断是否有内容
-            ) {
-                // 只要有一个未保存变更就停止循环
-                needConfirm = true;
-                break;
-            }
-        }
-
-        if (needConfirm) {
-            this.snippetsDialog.openConfirm(this.i18n.reloadUIConfirm, this.i18n.reloadUIConfirmDescription, "jcsm-reload-ui-confirm", undefined, undefined, () => {
-                this.postReloadUI();
-            });
-        } else {
-            this.postReloadUI();
-        }
-    }
-
-    /**
-     * 发送重新加载界面请求（SnippetsMenu/各服务直连访问，故公开）
+     * 发送重新加载界面请求（SnippetsMenu/FileWatchService/SnippetsDialog/各服务直连访问，故公开）
      */
     postReloadUI() {
         fetchPost("/api/ui/reloadUI", (response: any) => {
