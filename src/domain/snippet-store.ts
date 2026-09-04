@@ -54,4 +54,40 @@ export class SnippetStore {
         this.eventBus.emit(SNIPPETS_CHANGED, id);
         return true;
     }
+
+    /**
+     * 新增或更新代码片段
+     * 存在同 ID 片段时整体替换；不存在时按类型分区插入（CSS 保持在前、JS 保持在后，
+     * 与思源原生列表的分区规则一致：JS 插入到当前首个 JS 片段之前，无 JS 片段时追加到末尾）。
+     * 列表变更后统一触发 SNIPPETS_CHANGED 事件。
+     * @param snippet 代码片段
+     * @returns 变更详情：added 表示是否为新增；oldSnippet 为被替换的旧片段（更新时存在）
+     */
+    upsert(snippet: Snippet): { added: boolean; oldSnippet?: Snippet } {
+        const oldList = this.storage.get();
+        const oldSnippet = oldList.find((s: Snippet) => s.id === snippet.id);
+        if (oldSnippet) {
+            // 更新：整体替换同 ID 片段
+            this.storage.set(oldList.map((s: Snippet) => (s.id === snippet.id ? snippet : s)));
+        } else {
+            // 新增：按类型分区插入
+            const newList = [...oldList];
+            if (snippet.type === "css") {
+                // CSS 插入到开头
+                newList.unshift(snippet);
+            } else {
+                // 找到第一个 JS 代码片段，插入到它的前面，保证 CSS 在前，JS 在后
+                const firstJsIndex = newList.findIndex((s: Snippet) => s.type === "js");
+                if (firstJsIndex >= 0) {
+                    newList.splice(firstJsIndex, 0, snippet);
+                } else {
+                    // 不存在 JS 代码片段，则直接插入到末尾
+                    newList.push(snippet);
+                }
+            }
+            this.storage.set(newList);
+        }
+        this.eventBus.emit(SNIPPETS_CHANGED, snippet.id);
+        return { added: !oldSnippet, oldSnippet };
+    }
 }
