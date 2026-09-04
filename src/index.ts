@@ -1,7 +1,7 @@
 import "./index.scss";
 import {FileState, ListenersArray, Snippet} from "./types";
 import {isValidJavaScriptCode} from "./domain/snippet";
-import {getHotkeyDisplayText, hideTooltip, isInputElementActive, showElementTooltip} from "./utils";
+import {hideTooltip, isInputElementActive, showElementTooltip} from "./utils";
 
 // 思源插件 API
 import {
@@ -13,6 +13,7 @@ import {
     hideMessage,
     Menu,
     openSetting,
+    platformUtils,
     Plugin,
     saveExportFile,
     Setting,
@@ -116,7 +117,7 @@ export default class PluginSnippets extends Plugin {
      */
     private async topBarInit() {
         const topBarKeymap = this.getCustomKeymapByCommand("openSnippetsManager");
-        const title = !this.isMobile && topBarKeymap ? this.displayName + " " + getHotkeyDisplayText(topBarKeymap) : this.displayName;
+        const title = !this.isMobile && topBarKeymap ? this.displayName + " " + platformUtils.updateHotkeyTip(topBarKeymap) : this.displayName;
         this.topBarElement = this.addTopBar({
             icon: "iconJcsm",
             title: title,
@@ -1227,7 +1228,7 @@ export default class PluginSnippets extends Plugin {
         newSnippetButton.setAttribute("aria-label", this.i18n.add + " " + this.snippetsType.toUpperCase());
         const reloadUIButton = menuTop.querySelector("button[data-type='reload']") as HTMLButtonElement;
         const reloadUIKeymap = this.getCustomKeymapByCommand("reloadUI");
-        reloadUIButton.setAttribute("aria-label", (!this.isMobile && reloadUIKeymap) ? this.i18n.reloadUI + " " + getHotkeyDisplayText(reloadUIKeymap) : this.i18n.reloadUI);
+        reloadUIButton.setAttribute("aria-label", (!this.isMobile && reloadUIKeymap) ? this.i18n.reloadUI + " " + platformUtils.updateHotkeyTip(reloadUIKeymap) : this.i18n.reloadUI);
 
         this.menuItems.append(menuTop);
 
@@ -1374,7 +1375,7 @@ export default class PluginSnippets extends Plugin {
             this.topBarElement.classList.remove("toolbar__item--active");
             // topBarCommand 有可能变，所以每次都重新获取
             const topBarKeymap = this.getCustomKeymapByCommand("openSnippetsManager");
-            const title = topBarKeymap ? this.displayName + " " + getHotkeyDisplayText(topBarKeymap) : this.displayName;
+            const title = topBarKeymap ? this.displayName + " " + platformUtils.updateHotkeyTip(topBarKeymap) : this.displayName;
             this.topBarElement.setAttribute("aria-label", title);
         }
 
