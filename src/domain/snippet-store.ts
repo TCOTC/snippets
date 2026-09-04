@@ -40,6 +40,16 @@ export class SnippetStore {
     }
 
     /**
+     * 整表替换代码片段列表（导入覆盖/追加后使用）
+     * 列表变更后统一触发 SNIPPETS_CHANGED 事件；整表替换无单一关联片段，事件载荷传空字符串。
+     * @param snippetsList 新的代码片段列表
+     */
+    replaceAll(snippetsList: Snippet[]): void {
+        this.storage.set(snippetsList);
+        this.eventBus.emit(SNIPPETS_CHANGED, "");
+    }
+
+    /**
      * 删除指定 ID 的代码片段
      * @param id 代码片段 ID
      * @returns 列表中存在该 ID 并实际删除时为 true

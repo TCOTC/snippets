@@ -1813,7 +1813,8 @@ export default class PluginSnippets extends Plugin {
                 const snippet = this.snippetsList.find((snippet: Snippet) => snippet.id === snippetId);
                 if (snippet) {
                     await this.updateSnippetElement(snippet, false); // 必须移除元素
-                    this.snippetsList = this.snippetsList.filter((snippet: Snippet) => snippet.id !== snippetId);
+                    // 从 Store 中删除：统一更新列表并触发计数刷新事件
+                    this.snippetStore.remove(snippetId);
                 }
             }
         } else {
@@ -5511,11 +5512,11 @@ export default class PluginSnippets extends Plugin {
 
                     // 保存新的代码片段列表
                     void this.saveSnippetsList(newSnippetsList);
-                    this.snippetsList = newSnippetsList;
+                    // 整表替换到 Store：计数由 SNIPPETS_CHANGED 事件统一刷新（菜单打开时）
+                    this.snippetStore.replaceAll(newSnippetsList);
 
-                    // 更新菜单显示
+                    // 更新菜单显示（类型开关状态等）
                     if (this.menu) {
-                        this.setMenuSnippetCount();
                         this.setMenuSnippetsType(this.snippetsType);
                     }
 
