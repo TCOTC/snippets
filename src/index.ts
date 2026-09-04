@@ -92,7 +92,7 @@ export default class PluginSnippets extends Plugin {
     /**
      * 设置对话框管理器（装配与交互见 src/ui/setting-dialog.ts，公开 openSetting 委托到它）
      */
-    private settingDialog!: SettingDialog;
+    settingDialog!: SettingDialog;
 
     /**
      * 对话框管理器（代码片段编辑/确认对话框与按元素关闭见 src/ui/snippets-dialog.ts SnippetsDialog）
@@ -100,9 +100,9 @@ export default class PluginSnippets extends Plugin {
     snippetsDialog!: SnippetsDialog;
 
     /**
-     * 配置服务（装配/持久化/热应用见 src/config/config-service.ts）
+     * 配置服务（装配/持久化/热应用见 src/config/config-service.ts；SettingDialog 直连访问，故公开）
      */
-    private configService!: ConfigService;
+    configService!: ConfigService;
 
     /**
      * 文件监听服务（文件夹代码片段监听见 src/services/file-watch.ts）
@@ -110,9 +110,9 @@ export default class PluginSnippets extends Plugin {
     private fileWatchService!: FileWatchService;
 
     /**
-     * 导入导出服务（代码片段导出/导入见 src/services/import-export.ts）
+     * 导入导出服务（代码片段导出/导入见 src/services/import-export.ts；SettingDialog 直连访问，故公开）
      */
-    private importExportService!: ImportExportService;
+    importExportService!: ImportExportService;
 
     /**
      * 通知/错误提示服务（实现见 src/services/feedback.ts，showNotification/showErrorMessage 委托到它）
@@ -148,22 +148,8 @@ export default class PluginSnippets extends Plugin {
         // 初始化配置服务（直连本实例；配置读写经本模块自持存储键名与插件生命周期数据方法）
         this.configService = new ConfigService(this);
 
-        // 初始化设置对话框管理器（运行态经读取器/动作实时转发：设置项列表等需在配置装配完成后才有，openSetting 打开时才会读取）
-        this.settingDialog = new SettingDialog({
-            logger: this.console,
-            displayName: () => this.displayName,
-            i18n: () => this.i18n,
-            isMobile: () => this.isMobile,
-            app: () => this.app,
-            settingItems: () => this.setting.items,
-            addListener: (element, event, fn, options) => this.addListener(element, event, fn, options),
-            closeDialog: (dialogElement) => this.snippetsDialog.closeByElement(dialogElement),
-            saveSetting: (dialogElement) => this.configService.saveFromDialog(dialogElement),
-            closeMenu: () => this.menuView.close(),
-            exportSnippets: () => void this.importExportService.exportSnippetsToFile(),
-            importSnippets: (overwrite) => void this.importExportService.importSnippets(overwrite),
-            globalKeyDownHandler: () => this.menuView.globalKeyDownHandler,
-        });
+        // 初始化设置对话框管理器（直连本实例）
+        this.settingDialog = new SettingDialog(this);
 
         // 初始化文件监听服务（直连本实例，配置镜像经实例读取）
         this.fileWatchService = new FileWatchService(this);
