@@ -3,7 +3,7 @@
 // 通用确认对话框、按元素关闭对话框（含 CodeMirror 编辑器销毁、监听器移除与 destroyCallback/超时兜底）、
 // 收集已打开的插件模态对话框。
 import {Constants, Dialog} from "siyuan";
-import {attachDialogObject, genSnippetSwitchHtml, getDialogObject, moveElementToTop, SNIPPET_DIALOG_DATA_KEY, SNIPPET_DIALOG_SELECTOR} from "../utils";
+import {attachDialogObject, genSnippetSwitchHtml, getDialogObject, isDialogButtonFocused, moveElementToTop, setDialogKeyHandler, SNIPPET_DIALOG_DATA_KEY, SNIPPET_DIALOG_SELECTOR} from "../utils";
 import {createCodeMirrorEditor, getEditorView} from "./editor-manager";
 import type PluginSnippets from "../index";
 import type {Snippet} from "../types";
@@ -277,6 +277,14 @@ export class SnippetsDialog {
             cancelHandler();
         };
 
+        // 登记对话框级键盘动作（全局键盘协调器在焦点不在对话框内时 Esc 直调；
+        // 焦点在对话框内时由上面的元素 keydown 监听器处理，两者只走其一）
+        setDialogKeyHandler(dialog.element, (key) => {
+            if (key === "Escape") {
+                void cancelHandler();
+            }
+        });
+
         const isOnlyCtrl = (event: KeyboardEvent) => event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey;
 
         // 处理标题区跳转和 Ctrl+Enter 保存
@@ -389,10 +397,9 @@ export class SnippetsDialog {
         const scrimElement = dialog.element.querySelector(".b3-dialog__scrim") as HTMLElement;
         // 代码片段编辑对话框的 .b3-dialog__scrim 元素只在桌面端被移除，移动端还是有的，所以要处理点击
 
-        this.plugin.addListener(dialog.element, "click", async (event: MouseEvent | CustomEvent) => {
+        this.plugin.addListener(dialog.element, "click", async (event: MouseEvent) => {
             const target = event.target as HTMLElement;
             const tagName = target.tagName.toLowerCase();
-            const isDispatch = typeof event.detail === "string";
             if (tagName === "input" && target === snippetSwitchInput) {
                 // 切换代码片段的开关状态
                 if (this.plugin.config.realTimePreview && snippet.type === "css") {
@@ -431,7 +438,7 @@ export class SnippetsDialog {
                         void saveHandler();
                         break;
                 }
-            } else if (target === closeElement || target === scrimElement || (isDispatch && event.detail === "Escape")) {
+            } else if (target === closeElement || target === scrimElement) {
                 // 阻止冒泡，否则点击会导致 menu 关闭
                 event.stopPropagation();
                 void cancelHandler();
@@ -550,6 +557,12 @@ export class SnippetsDialog {
         const container = dialog.element.querySelector(".b3-dialog__container") as HTMLElement;
         if (container) container.style.maxHeight = "90vh";
 
+        // 删除确认对话框默认聚焦红色删除按钮（确认即删除，Esc 仍可取消）
+        if (dataKey === "jcsm-snippet-delete") {
+            const confirmButton = dialog.element.querySelector("button[data-type='confirm']") as HTMLButtonElement;
+            confirmButton?.focus();
+        }
+
         const closeElement = dialog.element.querySelector(".b3-dialog__close") as HTMLElement;
         const scrimElement = dialog.element.querySelector(".b3-dialog__scrim") as HTMLElement;
 
@@ -560,30 +573,31 @@ export class SnippetsDialog {
             this.closeByElement(dialog.element);
         };
 
+        // 登记对话框级键盘动作（全局键盘协调器在焦点不在对话框内时 Esc/Enter 直调）
+        setDialogKeyHandler(dialog.element, (key) => {
+            if (key === "Escape") {
+                cancel?.();
+                this.closeByElement(dialog.element);
+            } else if (key === "Enter") {
+                // 焦点在对话框内按钮上时交还浏览器默认行为触发该按钮 click（由其鼠标路径处理），
+                // 避免与下方 click 处理器重复执行 confirm/cancel；无焦点按钮时默认确认
+                if (isDialogButtonFocused(dialog.element)) return;
+                confirm?.();
+                this.closeByElement(dialog.element);
+            }
+        });
+
         // 在菜单打开的情况下，移动端无法上下划动对话框中的滚动容器，需要阻止事件冒泡
         this.plugin.addListener(dialog.element, "touchmove", (event: TouchEvent) => {
             event.stopPropagation();
         }, {passive: true});
 
-        this.plugin.addListener(dialog.element, "click", (event: KeyboardEvent) => {
+        this.plugin.addListener(dialog.element, "click", (event: MouseEvent) => {
             this.plugin.console.log("confirmDialog click", event);
             // 阻止冒泡，否则点击 Dialog 时会导致 menu 关闭
             event.stopPropagation();
-            const isDispatch = typeof event.detail === "string";
-            if (isDispatch) {
-                // 键盘派发（全局键盘协调器会把任意 keydown 以 detail 派发到最顶层模态对话框）：
-                // 只处理 Esc/Enter，其余按键忽略，避免 DOM 向上遍历到 null 时抛 TypeError
-                if (event.detail === "Escape") {
-                    cancel?.();
-                    this.closeByElement(dialog.element);
-                } else if (event.detail === "Enter") {
-                    confirm?.();
-                    this.closeByElement(dialog.element);
-                }
-                return;
-            }
 
-            // 鼠标路径：沿事件目标向上查找按钮
+            // 鼠标路径：沿事件目标向上查找按钮（键盘 Esc/Enter 由登记的对话框级键盘动作处理）
             let target = event.target as HTMLElement;
             while (target && target !== dialog.element) {
                 if (target.dataset.type === "cancel") {

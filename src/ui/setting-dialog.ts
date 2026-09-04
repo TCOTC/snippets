@@ -2,7 +2,7 @@
 // 职责：插件自己的设置对话框（打开/保存/导入导出入口/键盘与滚轮拦截/原生设置跳转），
 // 参考原生代码 app/src/plugin/Setting.ts Setting.open 方法。
 import {Constants, Dialog, openSetting} from "siyuan";
-import {attachDialogObject} from "../utils";
+import {attachDialogObject, isDialogButtonFocused, setDialogKeyHandler} from "../utils";
 import type PluginSnippets from "../index";
 
 // 思源 3.7.0+ 的 openSetting 支持第二个参数 tab 用于指定初始选项卡
@@ -99,7 +99,19 @@ export class SettingDialog {
             this.plugin.snippetsDialog.closeByElement(dialog.element);
         };
 
-        // 设置对话框点击事件
+        // 登记对话框级键盘动作（全局键盘协调器在焦点不在对话框内时 Esc/Enter 直调）
+        setDialogKeyHandler(dialog.element, (key) => {
+            if (key === "Escape") {
+                this.plugin.snippetsDialog.closeByElement(dialog.element);
+            } else if (key === "Enter") {
+                // 焦点在对话框内按钮上时交还浏览器默认行为触发该按钮 click（由其鼠标路径处理），
+                // 避免与下方 dialogClickHandler 重复执行保存/取消；无焦点按钮时默认保存
+                if (isDialogButtonFocused(dialog.element)) return;
+                this.plugin.configService.saveFromDialog(dialog.element);
+            }
+        });
+
+        // 设置对话框点击事件（键盘 Esc/Enter 由登记的对话框级键盘动作处理，此处仅鼠标路径）
         const dialogClickHandler = (event: MouseEvent) => {
             // 阻止冒泡，否则点击 Dialog 时会导致 menu 关闭
             event.stopPropagation();
@@ -107,13 +119,12 @@ export class SettingDialog {
             const target = event.target as HTMLElement;
             const tagName = target.tagName.toLowerCase();
             const isScrim = target.classList.contains("b3-dialog__scrim");
-            const isDispatch = typeof event.detail === "string";
-            if (tagName === "button" || isScrim || isDispatch) {
+            if (tagName === "button" || isScrim) {
                 const type = target.dataset.type;
-                if (type === "cancel" || isScrim || (isDispatch && event.detail === "Escape")) {
+                if (type === "cancel" || isScrim) {
                     event.stopPropagation();
                     this.plugin.snippetsDialog.closeByElement(dialog.element);
-                } else if (type === "confirm" || (isDispatch && event.detail === "Enter")) {
+                } else if (type === "confirm") {
                     event.stopPropagation();
                     this.plugin.configService.saveFromDialog(dialog.element);
                 }

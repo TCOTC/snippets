@@ -49,6 +49,50 @@ export const getDialogObject = (element: HTMLElement): Dialog | undefined =>
     (element as HTMLElement & { dialogObject?: Dialog }).dialogObject;
 
 /**
+ * 对话框级键盘动作处理器（按 key 执行 Esc/Enter 对应的关闭/确认动作）
+ * 供全局键盘协调器（SnippetsMenu.globalKeyDownHandler）在焦点不在对话框内时直接路由调用，
+ * 避免把按键合成 click 事件中转（click 处理器保持纯鼠标语义）；焦点在对话框内时由其自身
+ * 元素 keydown 监听器处理，两者只走其一。
+ * @param key 按键标识（KeyboardEvent.key）
+ */
+export type DialogKeyHandler = (key: string) => void;
+
+/**
+ * 对话框键盘动作登记表（WeakMap：对话框元素随关闭移除后条目自动回收，无需显式清理）
+ */
+const dialogKeyHandlers = new WeakMap<HTMLElement, DialogKeyHandler>();
+
+/**
+ * 登记对话框级键盘动作（打开对话框时调用；Esc/Enter 之外的按键由调用方自行忽略）
+ * @param element 对话框元素（dialog.element）
+ * @param handler 键盘动作处理器
+ */
+export const setDialogKeyHandler = (element: HTMLElement, handler: DialogKeyHandler) => {
+    dialogKeyHandlers.set(element, handler);
+};
+
+/**
+ * 取回对话框级键盘动作处理器（未登记时为 undefined）
+ * @param element 对话框元素
+ * @returns 键盘动作处理器
+ */
+export const getDialogKeyHandler = (element: HTMLElement): DialogKeyHandler | undefined =>
+    dialogKeyHandlers.get(element);
+
+/**
+ * 当前焦点是否为对话框内的按钮
+ * 用于回车键处理：焦点在按钮上时交还浏览器默认行为触发该按钮的 click（对应按钮的鼠标路径处理），
+ * 而不是执行对话框的默认确认动作——与思源原生 confirm 对话框的 Enter 语义一致
+ * （app/src/boot/globalEvent/keydown.ts：activeElement 为对话框内按钮时直接 click 它）。
+ * @param element 对话框元素（dialog.element）
+ * @returns 焦点是否在对话框内的按钮上
+ */
+export const isDialogButtonFocused = (element: HTMLElement): boolean => {
+    const activeElement = document.activeElement;
+    return activeElement instanceof HTMLButtonElement && element.contains(activeElement);
+};
+
+/**
  * 生成代码片段开关 input 的 HTML（菜单项与编辑对话框共用同一模板，仅 class 前缀差异）
  * @param type 开关类型：snippetSwitch（启用）/ publishSwitch（发布服务中显示）
  * @param checked 是否勾选（publishSwitch 为 !disabledInPublish）

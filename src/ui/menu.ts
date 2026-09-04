@@ -3,7 +3,7 @@
 // 菜单项生成与计数/选中/编辑按钮高亮、菜单位置、关闭回调（含自动重载界面联动）、拖拽排序（见 menu-drag-sort.ts）、
 // 以及菜单 + 对话框的全局键盘协调（Esc/Enter/方向键按 zIndex 与开合状态分发）。
 import {Menu, platformUtils} from "siyuan";
-import {genSnippetSwitchHtml, hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, PLUGIN_NAME, showElementTooltip, SNIPPET_DIALOG_SELECTOR} from "../utils";
+import {genSnippetSwitchHtml, getDialogKeyHandler, hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, PLUGIN_NAME, showElementTooltip, SNIPPET_DIALOG_SELECTOR} from "../utils";
 import {filterSnippetsByKeyword, isSnippetsTypeEnabled, snippetTitle, sortSnippets} from "../domain/snippet";
 import {MenuDragSort} from "./menu-drag-sort";
 import type PluginSnippets from "../index";
@@ -383,6 +383,72 @@ export class SnippetsMenu {
     }
 
     /**
+     * 菜单键盘动作分发（全局键盘协调器在焦点位于 body 且菜单打开时直调，不再合成 click 事件中转）
+     * @param key 按键标识（KeyboardEvent.key）
+     */
+    private handleMenuKey = async (key: string) => {
+        if (key === "Escape") {
+            // 按 Esc 关闭菜单
+            this.menu?.close();
+        } else if (key === "Enter") {
+            // 按回车激活当前选中项：新建代码片段或切换其启用开关
+            // 注意：必须精确定位 snippetSwitch——菜单项内 publishSwitch 排在其前，
+            // 用 input[type='checkbox'] 会误切到发布服务开关
+            const snippetElement = this.menuItems.querySelector(`.${CURRENT_ITEM_CLASS}`) as HTMLElement;
+            const type = snippetElement?.dataset.type;
+            if (!snippetElement) return;
+            if (type === "new") {
+                this.plugin.snippetManager.createSnippet();
+                return;
+            }
+            const input = snippetElement.querySelector("input[data-type='snippetSwitch']") as HTMLInputElement;
+            const snippet = await this.plugin.snippetManager.getSnippetById(snippetElement.dataset.id!);
+            if (input && snippet) {
+                input.checked = !input.checked;
+                void this.plugin.snippetManager.toggleSnippet(snippet, input.checked);
+            }
+        } else if (key === "ArrowUp" || key === "ArrowDown") {
+            // 按上下方向键循环切换代码片段选项
+            // 获取当前代码片段类型的所有可见菜单项（排除带有 .fn__none 类的元素）
+            const visibleMenuItems = Array.from(this.menuItems.querySelectorAll(`.jcsm-snippet-item[data-type="${this.plugin.snippetsType}"]:not(.fn__none)`)) as HTMLElement[];
+            const currentMenuItem = this.menuItems.querySelector(`.${CURRENT_ITEM_CLASS}`) as HTMLElement;
+
+            let nextMenuItem: HTMLElement | undefined;
+            if (visibleMenuItems.length === 0) {
+                // 没有可见代码片段时，选中新建按钮
+                nextMenuItem = this.menuItems.querySelector(`.jcsm-snippet-item[data-type="new"][data-snippet-type="${this.plugin.snippetsType}"]`) as HTMLElement || undefined;
+            } else if (visibleMenuItems.length === 1) {
+                // 只有一个可见代码片段时，切换到该代码片段
+                nextMenuItem = visibleMenuItems[0];
+            } else {
+                // 获取当前选中项在可见菜单项中的索引，如果没有选中项则设为 -1
+                const currentIndex = currentMenuItem ? visibleMenuItems.indexOf(currentMenuItem) : -1;
+                // 向上键循环上一个、向下键循环下一个
+                const newIndex = key === "ArrowUp"
+                    ? (currentIndex <= 0 ? visibleMenuItems.length - 1 : currentIndex - 1)
+                    : (currentIndex >= visibleMenuItems.length - 1 ? 0 : currentIndex + 1);
+                nextMenuItem = visibleMenuItems[newIndex];
+            }
+            if (nextMenuItem) {
+                this.selectMenuItem(nextMenuItem);
+            }
+        } else if (key === "ArrowLeft" || key === "ArrowRight") {
+            // 按左右方向键切换代码片段类型
+            const newType = this.plugin.snippetsType === "css" ? "js" : "css";
+
+            // 切换选项卡元素
+            const newTypeRadio = this.menuItems.querySelector(`[data-snippet-type="${newType}"]`) as HTMLInputElement;
+            if (newTypeRadio) {
+                newTypeRadio.checked = true;
+            }
+
+            // 切换代码片段类型
+            this.plugin.snippetsType = newType;
+            this.setMenuSnippetsType(newType);
+        }
+    };
+
+    /**
      * 菜单点击事件处理
      * @param event 鼠标事件
      */
@@ -403,72 +469,6 @@ export class SnippetsMenu {
 
         // 移除按钮上的焦点，避免后续回车还会触发按钮。但不移除搜索输入框的焦点，让用户可以正常输入
         if (tagName === "button") target.blur();
-
-        // 键盘操作
-        if (typeof event.detail === "string") {
-            this.plugin.console.log("menuClickHandler event:", event);
-            if (event.detail=== "Escape") {
-                // 按 Esc 关闭菜单
-                this.menu!.close();
-            } else if (event.detail === "Enter") {
-                const snippetElement = this.menuItems.querySelector(`.${CURRENT_ITEM_CLASS}`) as HTMLElement;
-                const type = snippetElement?.dataset.type;
-                if (snippetElement) {
-                    if (type === "new") {
-                        // 按回车新建代码片段
-                        this.plugin.snippetManager.createSnippet();
-                    } else {
-                        // 按回车切换代码片段的开关状态
-                        const input = snippetElement.querySelector("input[type='checkbox']") as HTMLInputElement;
-                        const snippet = await this.plugin.snippetManager.getSnippetById(snippetElement.dataset.id!);
-                        if (input && snippet) {
-                            input.checked = !input.checked;
-                            void this.plugin.snippetManager.toggleSnippet(snippet, input.checked);
-                        }
-                    }
-                }
-            } else if (event.detail === "ArrowUp" || event.detail === "ArrowDown") {
-                // 按上下方向键切换代码片段选项
-                // 获取当前代码片段类型的所有可见菜单项（排除带有 .fn__none 类的元素）
-                const visibleMenuItems = Array.from(this.menuItems.querySelectorAll(`.jcsm-snippet-item[data-type="${this.plugin.snippetsType}"]:not(.fn__none)`)) as HTMLElement[];
-                const currentMenuItem = this.menuItems.querySelector(`.${CURRENT_ITEM_CLASS}`) as HTMLElement;
-
-                let nextMenuItem: HTMLElement | undefined;
-                if (visibleMenuItems.length === 0) {
-                    // 没有可见代码片段时，选中新建按钮
-                    nextMenuItem = this.menuItems.querySelector(`.jcsm-snippet-item[data-type="new"][data-snippet-type="${this.plugin.snippetsType}"]`) as HTMLElement || undefined;
-                } else if (visibleMenuItems.length === 1) {
-                    // 只有一个可见代码片段时，切换到该代码片段
-                    nextMenuItem = visibleMenuItems[0];
-                } else {
-                    // 获取当前选中项在可见菜单项中的索引，如果没有选中项则设为 -1
-                    const currentIndex = currentMenuItem ? visibleMenuItems.indexOf(currentMenuItem) : -1;
-                    // 向上键循环上一个、向下键循环下一个
-                    const newIndex = event.detail === "ArrowUp"
-                        ? (currentIndex <= 0 ? visibleMenuItems.length - 1 : currentIndex - 1)
-                        : (currentIndex >= visibleMenuItems.length - 1 ? 0 : currentIndex + 1);
-                    nextMenuItem = visibleMenuItems[newIndex];
-                }
-                if (nextMenuItem) {
-                    this.selectMenuItem(nextMenuItem);
-                }
-            } else if (event.detail === "ArrowLeft" || event.detail === "ArrowRight") {
-                // 按左右方向键切换代码片段类型
-                const newType = this.plugin.snippetsType === "css" ? "js" : "css";
-
-                // 切换选项卡元素
-                const newTypeRadio = this.menuItems.querySelector(`[data-snippet-type="${newType}"]`) as HTMLInputElement;
-                if (newTypeRadio) {
-                    newTypeRadio.checked = true;
-                }
-
-                // 切换代码片段类型
-                this.plugin.snippetsType = newType;
-                this.setMenuSnippetsType(newType);
-            }
-            // 键盘派发的事件处理完毕，直接返回；避免继续落入鼠标分支空转（键盘派发时 event.target 是菜单根元素）
-            return;
-        }
 
         // 点击顶部
         if (target.closest(".jcsm-top-container")) {
@@ -823,15 +823,15 @@ export class SnippetsMenu {
      * @param event 键盘事件
      */
     globalKeyDownHandler = (event: KeyboardEvent) => {
-        // 获取所有打开的插件模态对话框，把按键操作发送给 DOM 最下方，也就是最顶层的对话框
+        // 获取所有打开的插件模态对话框，把按键动作直接路由到最顶层对话框登记的处理函数
+        // （见 utils.setDialogKeyHandler；不再合成 click 事件，click 处理器保持纯鼠标语义）
         // 无法判断是在操作哪个代码片段编辑对话框（非模态），所以此处忽略代码片段编辑对话框 jcsm-snippet-dialog 的操作
         const dialogElements = this.plugin.snippetsDialog.getAllModalElements();
         const dialogElement = dialogElements[dialogElements.length - 1];
         if (dialogElement) {
             // 阻止冒泡，避免触发原生监听器导致菜单关闭
             event.stopPropagation();
-            // 触发 Dialog 的 click 事件，传递按键（参考原生方法：https://github.com/siyuan-note/siyuan/blob/c88f99646c4c1139bcfc551b4f24b7cbea151751/app/src/boot/globalEvent/keydown.ts#L1394-L1406 ）
-            dialogElement.dispatchEvent(new CustomEvent("click", {detail: event.key}));
+            getDialogKeyHandler(dialogElement)?.(event.key);
             return;
         }
 
@@ -856,11 +856,11 @@ export class SnippetsMenu {
                 handleMenu = false;
             }
 
-            // 把事件 dispatchEvent 到最高 zIndex 的 snippetDialogElement 上，让 Dialog 处理 Esc 键
+            // 把 Esc 直接路由到最高 zIndex 的非模态编辑对话框登记的处理函数
             if (!this.menu && maxZIndexElement) {
                 event.stopPropagation();
-                this.plugin.console.log("globalKeyDownHandler: Esc, dispatchEvent to maxZIndexElement", maxZIndexElement);
-                maxZIndexElement.dispatchEvent(new CustomEvent("click", {detail: event.key}));
+                this.plugin.console.log("globalKeyDownHandler: Esc, dispatch to maxZIndexElement", maxZIndexElement);
+                getDialogKeyHandler(maxZIndexElement)?.("Escape");
             }
         }
 
@@ -877,7 +877,7 @@ export class SnippetsMenu {
             // 如果当前在输入框中使用键盘，则不处理菜单按键事件
             if (isInputElementActive()) return;
 
-            this.menu.element.dispatchEvent(new CustomEvent("click", {detail: event.key}));
+            void this.handleMenuKey(event.key);
             return;
         }
 
