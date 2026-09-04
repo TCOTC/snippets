@@ -132,30 +132,42 @@ export interface BroadcastLogger {
 }
 
 /**
- * 业务消息处理回调
- * 收到来自其他窗口的业务消息（已过滤自身消息与窗口保活消息）时调用。
+ * 业务消息处理器注册表
+ * 键为协议消息 type，值为该消息对应的处理函数（参数为该 type 收窄后的载荷，无需处理信封）；
+ * 由 BroadcastService 收到业务消息后查表分发，上层（插件）只负责实现各键的业务映射。
  */
-export type BroadcastMessageHandler = (message: SnippetBusinessMessage) => void | Promise<void>;
+export interface BroadcastHandlers {
+    snippet_toggle: (payload: SnippetTogglePayload) => void | Promise<void>;
+    snippet_toggle_publish: (payload: SnippetTogglePublishPayload) => void | Promise<void>;
+    snippet_toggle_global: (payload: SnippetToggleGlobalPayload) => void | Promise<void>;
+    snippet_save: (payload: SnippetSavePayload) => void | Promise<void>;
+    snippet_delete: (payload: SnippetDeletePayload) => void | Promise<void>;
+    snippet_element_update: (payload: SnippetElementUpdatePayload) => void | Promise<void>;
+    snippet_element_remove: (payload: SnippetElementRemovePayload) => void | Promise<void>;
+    snippets_sort: () => void | Promise<void>;
+    setting_apply: (payload: SettingApplyPayload) => void | Promise<void>;
+}
 
 /**
  * BroadcastService 构造参数
  */
 export interface BroadcastServiceOptions {
     logger: BroadcastLogger;
-    onBusinessMessage: BroadcastMessageHandler;
+    /** 业务消息处理器注册表（可缺省部分 type，未注册的 type 仅记录告警） */
+    handlers: Partial<BroadcastHandlers>;
 }
 
 /**
  * 基于思源内核 broadcast API 的跨窗口广播服务（阶段 3：传输 + 窗口保活 + 类型化广播收敛于此）
  * - 统一维护当前窗口唯一标识、其他窗口在线集合与 WebSocket 连接（含自动重连与页面卸载通知）；
  * - 内部消化窗口保活（window_online / window_online_feedback / window_offline），上层无需感知；
- * - 业务消息统一经 onBusinessMessage 回调交给上层分发；
+ * - 业务消息按 type 查表分发到 BroadcastHandlers 对应处理器（处理器直接拿到收窄后的载荷）；
  * - 发送侧受 SnippetBroadcastBody 协议约束：调用方传字面量 type 即自动获得对应 payload 的类型校验，
  *   信封字段（windowId / timestamp）由本服务自动附加。
  */
 export class BroadcastService {
     private readonly logger: BroadcastLogger;
-    private readonly onBusinessMessage: BroadcastMessageHandler;
+    private readonly handlers: Partial<BroadcastHandlers>;
 
     /** 当前窗口的唯一标识 */
     private windowId = "";
@@ -177,7 +189,7 @@ export class BroadcastService {
 
     constructor(options: BroadcastServiceOptions) {
         this.logger = options.logger;
-        this.onBusinessMessage = options.onBusinessMessage;
+        this.handlers = options.handlers;
         this.beforeunloadHandler = () => {
             this.sendOfflineNotification();
         };
@@ -298,7 +310,7 @@ export class BroadcastService {
 
     /**
      * 处理收到的广播消息：忽略自身消息、维护其他窗口在线集合；
-     * 窗口保活消息在此消化，业务消息转交上层回调
+     * 窗口保活消息在此消化，业务消息查表分发到 handlers
      * @param message 消息数据
      */
     private handleIncomingMessage(message: SnippetBroadcastMessage) {
@@ -325,9 +337,16 @@ export class BroadcastService {
             case "window_offline":
                 this.handleWindowOffline(message.windowId);
                 break;
-            default:
-                // 业务消息：转交上层分发（TS 穷尽后此处即为 SnippetBusinessMessage）
-                void this.onBusinessMessage(message);
+            default: {
+                // 业务消息：按 type 查表分发（TS 穷尽后此处 message 即为 SnippetBusinessMessage，
+                // 载荷字段已由协议保证完整；处理器内部按自己的收窄载荷消费对应字段）
+                const handler = this.handlers[message.type] as ((payload: SnippetBusinessMessage) => void | Promise<void>) | undefined;
+                if (handler) {
+                    void handler(message);
+                } else {
+                    this.logger.warn("No handler registered for broadcast message type:", message.type);
+                }
+            }
         }
     }
 

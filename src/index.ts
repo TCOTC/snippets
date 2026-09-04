@@ -5,13 +5,11 @@ import {SNIPPETS_CHANGED, SnippetStore} from "./domain/snippet-store";
 import {BroadcastService} from "./services/sync";
 import type {
     SettingApplyPayload,
-    SnippetBusinessMessage,
     SnippetDeletePayload,
     SnippetElementRemovePayload,
     SnippetElementUpdatePayload,
     SnippetSavePayload,
     SnippetToggleGlobalPayload,
-    SnippetTogglePayload,
     SnippetTogglePublishPayload
 } from "./services/sync";
 import {hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, showElementTooltip} from "./utils";
@@ -240,11 +238,27 @@ export default class PluginSnippets extends Plugin {
         // 获取已打开的所有自定义页签
         // this.getOpenedTab();
 
-        // 初始化跨窗口同步服务用于跨窗口通信（需要等插件设置加载完成；传输 + 窗口保活收敛于 services/sync.ts）
+        // 初始化跨窗口同步服务用于跨窗口通信（需要等插件设置加载完成；传输 + 窗口保活 + 业务分发收敛于 services/sync.ts）
         this.syncService = new BroadcastService({
             logger: this.console,
-            onBusinessMessage: (message) => {
-                void this.handleBroadcastMessage(message);
+            handlers: {
+                snippet_toggle: async ({snippetId, enabled}) => {
+                    // 远程开关：先自拉权威数据（协议不含片段原文），再走与本地相同的 toggleSnippet 路径
+                    const snippet = await this.getSnippetById(snippetId);
+                    if (!snippet) {
+                        this.console.error("snippet_toggle: Snippet not found:", snippetId);
+                        return;
+                    }
+                    await this.toggleSnippet(snippet, enabled, "remote");
+                },
+                snippet_toggle_publish: (payload) => this.toggleSnippetPublishSync(payload),
+                snippet_toggle_global: (payload) => this.globalToggleSnippetSync(payload),
+                snippet_save: (payload) => this.saveSnippetSync(payload),
+                snippet_delete: (payload) => this.deleteSnippetSync(payload),
+                snippet_element_update: (payload) => this.updateSnippetElementSync(payload),
+                snippet_element_remove: (payload) => this.removeSnippetElementSync(payload),
+                snippets_sort: () => this.snippetsSortSync(),
+                setting_apply: (payload) => this.applySettingSync(payload),
             },
         });
         await this.syncService.start();
@@ -1545,7 +1559,7 @@ export default class PluginSnippets extends Plugin {
                         const snippet = await this.getSnippetById(snippetElement.dataset.id!);
                         if (input && snippet) {
                             input.checked = !input.checked;
-                            this.toggleSnippet(snippet, input.checked);
+                            void this.toggleSnippet(snippet, input.checked);
                         }
                     }
                 }
@@ -1703,7 +1717,7 @@ export default class PluginSnippets extends Plugin {
                 if (type === "snippetSwitch") {
                     const snippet = await this.getSnippetById(snippetMenuItem.dataset.id!);
                     if (snippet) {
-                        this.toggleSnippet(snippet, (target as HTMLInputElement).checked);
+                        void this.toggleSnippet(snippet, (target as HTMLInputElement).checked);
                     }
                 } else if (type === "publishSwitch") {
                     const snippet = await this.getSnippetById(snippetMenuItem.dataset.id!);
@@ -1722,7 +1736,7 @@ export default class PluginSnippets extends Plugin {
                     snippetSwitchCheckBox.checked = !snippetSwitchCheckBox.checked;
                     const snippet = await this.getSnippetById(snippetMenuItem.dataset.id!);
                     if (snippet) {
-                        this.toggleSnippet(snippet, snippetSwitchCheckBox.checked);
+                        void this.toggleSnippet(snippet, snippetSwitchCheckBox.checked);
                     }
                 } else if (this.snippetOptionClickBehavior === 2) {
                     // 打开代码片段编辑器
@@ -1747,13 +1761,32 @@ export default class PluginSnippets extends Plugin {
     };
 
     /**
-     * 切换代码片段的开关状态
-     * @param snippet 代码片段
+     * 切换代码片段的开关状态（本地操作与跨窗口同步共用同一路径，阶段 3：消灭 toggleSnippetSync 镜像）
+     * - 本地（origin 缺省为 local）：改内存 → 落库 → 更新元素 → 广播；若已打开该片段的 CSS 实时预览
+     *   对话框，则跳过广播（开关状态由预览中的对话框接管，广播方窗口不推送）；
+     * - 远程（origin 为 remote）：广播窗口已落库，本窗口仅同步元素与菜单开关 UI，不落库、不广播。
+     * @param snippet 代码片段（本地取自列表/自拉；远程为按 snippetId 自拉的权威对象）
      * @param enabled 是否启用
+     * @param origin 变更来源：local（本窗口操作）| remote（其他窗口广播）
      */
-    private toggleSnippet(snippet: Snippet, enabled: boolean) {
+    private async toggleSnippet(snippet: Snippet, enabled: boolean, origin: "local" | "remote" = "local") {
         // 在菜单上切换代码片段的开关状态要实时保存
         snippet.enabled = enabled;
+
+        if (origin === "remote") {
+            this.console.log("Handling switch state synchronization:", {snippetId: snippet.id, enabled});
+            // 更新代码片段元素
+            await this.updateSnippetElement(snippet);
+
+            // 更新菜单中的开关状态（如果菜单已打开）
+            if (this.menuItems) {
+                const checkbox = this.menuItems.querySelector(`.jcsm-snippet-item[data-id="${snippet.id}"] input[data-type='snippetSwitch']`) as HTMLInputElement;
+                checkbox && (checkbox.checked = enabled);
+                this.console.log("toggleSnippetSync: checkbox", checkbox, "enabled", enabled);
+            }
+            return;
+        }
+
         void this.saveSnippetsList(this.snippetsList);
         void this.updateSnippetElement(snippet);
 
@@ -1768,31 +1801,6 @@ export default class PluginSnippets extends Plugin {
             snippetId: snippet.id,
             enabled: snippet.enabled,
         });
-    }
-
-    /**
-     * 处理代码片段开关状态同步
-     * @param data 消息数据
-     */
-    private async toggleSnippetSync(data: SnippetTogglePayload) {
-        const { snippetId, enabled } = data;
-        this.console.log("Handling switch state synchronization:", { snippetId, enabled });
-        // 先更新本地数据
-        const snippet = await this.getSnippetById(snippetId);
-        if (snippet) {
-            // 更新代码片段状态
-            snippet.enabled = enabled;
-            // 更新代码片段元素
-            await this.updateSnippetElement(snippet);
-
-            // 更新菜单中的开关状态（如果菜单已打开）
-            if (!this.menuItems) return;
-            const checkbox = this.menuItems.querySelector(`.jcsm-snippet-item[data-id="${snippetId}"] input[data-type='snippetSwitch']`) as HTMLInputElement;
-            checkbox && (checkbox.checked = enabled);
-            this.console.log("toggleSnippetSync: checkbox", checkbox, "enabled", enabled);
-        } else {
-            this.console.error("toggleSnippetSync: Snippet not found:", snippetId);
-        }
     }
 
     /**
@@ -5807,46 +5815,7 @@ export default class PluginSnippets extends Plugin {
 
     /**
      * 跨窗口广播服务（阶段 3：传输 + 窗口保活收敛于 services/sync.ts）
-     * onLayoutReady 中创建并启动；业务消息经 handleBroadcastMessage 分发。
+     * onLayoutReady 中创建并启动；业务消息按 type 查表分发到 handlers 注册表（见构造处）。
      */
     private syncService: BroadcastService | null = null;
-
-    /**
-     * 处理来自其他窗口的业务广播消息
-     * 窗口保活（window_online / window_online_feedback / window_offline）与自身消息过滤已由
-     * BroadcastService 内部处理，此处只按 type 分发到对应的本地同步 handler；
-     * 协议类型保证各 case 载荷字段齐全（原先的 data as Xxx 断言随类型化一并移除）。
-     * @param data 业务消息
-     */
-    private async handleBroadcastMessage(data: SnippetBusinessMessage) {
-        switch (data.type) {
-            case "snippet_toggle":
-                await this.toggleSnippetSync(data);
-                break;
-            case "snippet_toggle_publish":
-                await this.toggleSnippetPublishSync(data);
-                break;
-            case "snippet_toggle_global":
-                await this.globalToggleSnippetSync(data);
-                break;
-            case "snippet_save":
-                await this.saveSnippetSync(data);
-                break;
-            case "snippet_delete":
-                await this.deleteSnippetSync(data);
-                break;
-            case "snippet_element_update":
-                await this.updateSnippetElementSync(data);
-                break;
-            case "snippet_element_remove":
-                this.removeSnippetElementSync(data);
-                break;
-            case "snippets_sort":
-                await this.snippetsSortSync();
-                break;
-            case "setting_apply":
-                await this.applySettingSync(data);
-                break;
-        }
-    }
 }
