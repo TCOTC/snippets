@@ -47,6 +47,7 @@
 ### 已建模块
 - `src/core/event-bus.ts`（类型化 pub/sub，`on/off/emit/clear`；注意：勿用字段名 `eventBus`，会与 siyuan `Plugin` 基类成员冲突，内部用 `internalEventBus`）
 - `src/services/storage.ts`（`getFile`/`putFile`/`renameFile`）
+- `src/services/sync.ts`（阶段 3 地基：广播通道常量 + 各消息 payload 接口 + `SnippetBroadcastMessage` 联合类型，含禁原文约束与 CSS 预览豁免注释）
 - `src/utils.ts`（含 `isPromiseFulfilled`/`hideTooltip`/`showElementTooltip`/`isInputElementActive`/`htmlToElement`/`moveElementToTop`）
 - `src/domain/snippet.ts`（`isValidJavaScriptCode`/`isSnippetsTypeEnabled`）
 - `src/domain/snippet-store.ts`（`SnippetStore`：`remove`/`upsert`/`insertBefore`/`move`/`replaceAll`，单一写路径 + 统一发 `SNIPPETS_CHANGED`）

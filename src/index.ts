@@ -2,6 +2,8 @@ import "./index.scss";
 import {FileState, ListenersArray, Snippet, SnippetType} from "./types";
 import {isSnippetsTypeEnabled, isValidJavaScriptCode} from "./domain/snippet";
 import {SNIPPETS_CHANGED, SnippetStore} from "./domain/snippet-store";
+import {BROADCAST_CHANNEL_NAME, SnippetSavePayload, SnippetDeletePayload, SnippetElementRemovePayload, SnippetElementUpdatePayload, SettingApplyPayload} from "./services/sync";
+import type {SnippetTogglePayload, SnippetTogglePublishPayload, SnippetToggleGlobalPayload} from "./services/sync";
 import {hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, showElementTooltip} from "./utils";
 import {getFile, putFile, renameFile} from "./services/storage";
 import {EventBus} from "./core/event-bus";
@@ -62,7 +64,6 @@ const STORAGE_NAME = "plugin-config.json";         // 配置文件名
 const LOG_NAME = "plugin-snippets.log";            // 日志文件名
 const TEMP_PLUGIN_PATH = "/temp/plugin-snippets/"; // 插件临时文件路径
 const TEMP_EXPORT_PATH = "/temp/export/";          // 导入导出临时文件路径
-const BROADCAST_CHANNEL_NAME = "snippets-plugin-sync"; // 广播通道名称
 // const TAB_TYPE = "custom-tab"; // 自定义标签页
 
 // 思源 3.7.0+ 的 openSetting 支持第二个参数 tab 用于指定初始选项卡
@@ -977,7 +978,7 @@ export default class PluginSnippets extends Plugin {
      * 处理设置应用同步
      * @param data 消息数据
      */
-    private async applySettingSync(data: any) {
+    private async applySettingSync(data: SettingApplyPayload) {
         const { config } = data;
         if (!config) {
             this.console.error("applySettingSync: Config is missing:", data);
@@ -1755,7 +1756,7 @@ export default class PluginSnippets extends Plugin {
      * 处理代码片段开关状态同步
      * @param data 消息数据
      */
-    private async toggleSnippetSync(data: any) {
+    private async toggleSnippetSync(data: SnippetTogglePayload) {
         const { snippetId, enabled } = data;
         this.console.log("Handling switch state synchronization:", { snippetId, enabled });
         // 先更新本地数据
@@ -1796,7 +1797,7 @@ export default class PluginSnippets extends Plugin {
      * 处理代码片段的发布服务开关状态同步
      * @param data 消息数据
      */
-    private async toggleSnippetPublishSync(data: any) {
+    private async toggleSnippetPublishSync(data: SnippetTogglePublishPayload) {
         const { snippetId, enabled } = data;
         this.console.log("toggleSnippetPublishSync:", { snippetId, enabled });
 
@@ -1879,7 +1880,7 @@ export default class PluginSnippets extends Plugin {
      * 处理全局开关状态同步
      * @param data 消息数据
      */
-    private async globalToggleSnippetSync(data: any) {
+    private async globalToggleSnippetSync(data: SnippetToggleGlobalPayload) {
         const { snippetType, enabled, previewingSnippetIds } = data;
         this.console.log("globalToggleSnippetSync:", { snippetType, enabled, previewingSnippetIds });
         
@@ -2760,7 +2761,7 @@ export default class PluginSnippets extends Plugin {
      * 处理代码片段保存同步
      * @param data 消息数据
      */
-    private async saveSnippetSync(data: any) {
+    private async saveSnippetSync(data: SnippetSavePayload) {
         const { snippetId, isCopy, copySnippetId } = data;
         if (!snippetId || isCopy === undefined || (isCopy && !copySnippetId)) {
             this.console.error("saveSnippetSync: Snippet or isCopy is missing:", data);
@@ -2770,7 +2771,7 @@ export default class PluginSnippets extends Plugin {
 
         if (isCopy) {
             // 消息不含原文：按副本 ID 自拉服务端权威数据（列表随之刷新，副本已按广播窗口顺序就位）
-            const copySnippet = await this.getSnippetById(copySnippetId);
+            const copySnippet = await this.getSnippetById(copySnippetId!);
             if (!copySnippet) {
                 this.console.error("saveSnippetSync: copySnippet not found:", copySnippetId);
                 return;
@@ -2864,7 +2865,7 @@ export default class PluginSnippets extends Plugin {
      * 处理代码片段删除同步
      * @param data 消息数据
      */
-    private async deleteSnippetSync(data: any) {
+    private async deleteSnippetSync(data: SnippetDeletePayload) {
         const { snippetId, snippetType, previewState } = data;
         if (!snippetId || !snippetType) {
             this.console.error("deleteSnippetSync: Snippet is missing:", data);
@@ -5989,31 +5990,31 @@ export default class PluginSnippets extends Plugin {
                 this.handleWindowOffline(data.windowId);
                 break;
             case "snippet_toggle":
-                await this.toggleSnippetSync(data);
+                await this.toggleSnippetSync(data as SnippetTogglePayload);
                 break;
             case "snippet_toggle_publish":
-                await this.toggleSnippetPublishSync(data);
+                await this.toggleSnippetPublishSync(data as SnippetTogglePublishPayload);
                 break;
             case "snippet_toggle_global":
-                await this.globalToggleSnippetSync(data);
+                await this.globalToggleSnippetSync(data as SnippetToggleGlobalPayload);
                 break;
             case "snippet_save":
-                await this.saveSnippetSync(data);
+                await this.saveSnippetSync(data as SnippetSavePayload);
                 break;
             case "snippet_delete":
-                await this.deleteSnippetSync(data);
+                await this.deleteSnippetSync(data as SnippetDeletePayload);
                 break;
             case "snippet_element_update":
-                await this.updateSnippetElementSync(data);
+                await this.updateSnippetElementSync(data as SnippetElementUpdatePayload);
                 break;
             case "snippet_element_remove":
-                this.removeSnippetElementSync(data);
+                this.removeSnippetElementSync(data as SnippetElementRemovePayload);
                 break;
             case "snippets_sort":
                 await this.snippetsSortSync();
                 break;
             case "setting_apply":
-                await this.applySettingSync(data);
+                await this.applySettingSync(data as SettingApplyPayload);
                 break;
             default:
                 this.console.log("Unknown broadcast message type:", data.type);
