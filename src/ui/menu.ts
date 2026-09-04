@@ -9,6 +9,9 @@ import {MenuDragSort} from "./menu-drag-sort";
 import type PluginSnippets from "../index";
 import type {Snippet, SnippetType} from "../types";
 
+/** 菜单当前选中项类名（方向键/回车定位用） */
+const CURRENT_ITEM_CLASS = "b3-menu__item--current";
+
 /**
  * 顶栏菜单管理器
  * 菜单状态（menu/menuItems/呼吸标志）为本类内部状态，拖拽交互与拖拽状态见 MenuDragSort（src/ui/menu-drag-sort.ts）；
@@ -29,9 +32,9 @@ export class SnippetsMenu {
     }
 
     /**
-     * 顶栏菜单对象 this.menu.element === #commonMenu，菜单关闭时 === undefined
+     * 顶栏菜单对象（关闭后为 undefined；打开期间的调用点均先经 new Menu 赋值或守卫）
      */
-    menu!: Menu;
+    menu: Menu | undefined;
 
     /**
      * 菜单列表容器 #commonMenu > .b3-menu__items
@@ -91,8 +94,7 @@ export class SnippetsMenu {
      * 顶栏按钮即菜单入口：schema onApply（topBarPosition 变更）/生命周期装配均调用本方法。
      */
     async initTopBar() {
-        const topBarKeymap = this.getCustomKeymapByCommand("openSnippetsManager");
-        const title = !this.plugin.isMobile && topBarKeymap ? this.plugin.displayName + " " + platformUtils.updateHotkeyTip(topBarKeymap) : this.plugin.displayName;
+        const title = this.buildTitle(this.plugin.displayName, "openSnippetsManager");
         this.topBarElement = this.plugin.addTopBar({
             icon: "iconJcsm",
             title: title,
@@ -101,6 +103,17 @@ export class SnippetsMenu {
                 this.openSnippetsManager();
             }
         });
+    }
+
+    /**
+     * 拼接带快捷键提示的标题（桌面端命令配置了快捷键时附加快捷键；移动端不显示）
+     * @param base 基础文案
+     * @param command 命令 langKey（用于查询用户自定义快捷键）
+     * @returns 完整标题
+     */
+    private buildTitle(base: string, command: string): string {
+        const keymap = this.getCustomKeymapByCommand(command);
+        return !this.plugin.isMobile && keymap ? base + " " + platformUtils.updateHotkeyTip(keymap) : base;
     }
 
     /**
@@ -116,14 +129,15 @@ export class SnippetsMenu {
      * 打开顶栏菜单
      */
     async open() {
-        this.menu = new Menu("PluginSnippets", () => {
+        const menu = new Menu("PluginSnippets", () => {
             // 此处会在菜单被关闭（this.menu.close();）时执行
             this.closeMenuCallback();
         });
+        this.menu = menu;
 
         // 如果菜单已存在，再次点击按钮就会移除菜单，此时直接返回
-        if (this.menu.isOpen) {
-            this.menu = undefined as unknown as Menu;
+        if (menu.isOpen) {
+            this.menu = undefined;
             if (!this.plugin.isMobile && this.topBarElement && this.topBarElement.matches(":hover")) {
                 // 只有当鼠标悬停在顶栏按钮上时才显示 tooltip
                 showElementTooltip(this.topBarElement);
@@ -134,12 +148,13 @@ export class SnippetsMenu {
         // 获取代码片段列表（失败时关闭菜单，getSnippetsList 已弹错误提示）
         this.plugin.console.log("openMenu: 获取代码片段列表");
         if (!(await this.plugin.snippetManager.refreshSnippetsList())) {
-            this.menu.close();
+            menu.close();
+            this.menu = undefined;
             return;
         }
 
         // 插入菜单顶部
-        this.menuItems = this.menu.element.querySelector(".b3-menu__items")!;
+        this.menuItems = menu.element.querySelector(".b3-menu__items")!;
         const menuTop = document.createElement("div");
         menuTop.className = "jcsm-top-container fn__flex";
         // 选项卡的实现参考：https://codepen.io/havardob/pen/ExVaELV
@@ -175,14 +190,13 @@ export class SnippetsMenu {
         const newSnippetButton = menuTop.querySelector("button[data-type='new']") as HTMLButtonElement;
         newSnippetButton.setAttribute("aria-label", this.plugin.i18n.add + " " + this.plugin.snippetsType.toUpperCase());
         const reloadUIButton = menuTop.querySelector("button[data-type='reload']") as HTMLButtonElement;
-        const reloadUIKeymap = this.getCustomKeymapByCommand("reloadUI");
-        reloadUIButton.setAttribute("aria-label", (!this.plugin.isMobile && reloadUIKeymap) ? this.plugin.i18n.reloadUI + " " + platformUtils.updateHotkeyTip(reloadUIKeymap) : this.plugin.i18n.reloadUI);
+        reloadUIButton.setAttribute("aria-label", this.buildTitle(this.plugin.i18n.reloadUI, "reloadUI"));
 
         this.menuItems.append(menuTop);
 
         // 插入搜索输入框
-        const searchInput = '<input class="jcsm-snippets-search b3-text-field fn__none" data-action="search" type="text">';
-        this.menuItems.insertAdjacentHTML("beforeend", searchInput);
+        const searchInputHtml = '<input class="jcsm-snippets-search b3-text-field fn__none" data-action="search" type="text">';
+        this.menuItems.insertAdjacentHTML("beforeend", searchInputHtml);
 
         // 初始化代码片段列表容器
         this.initSnippetsContainer();
@@ -192,27 +206,25 @@ export class SnippetsMenu {
         this.setAllSnippetsEditButtonActive();
 
         // 事件监听
-        this.plugin.addListener(this.menu.element, "click", this.menuClickHandler);
-        this.plugin.addListener(this.menu.element, "mousedown", () => {
+        this.plugin.addListener(menu.element, "click", this.menuClickHandler);
+        this.plugin.addListener(menu.element, "mousedown", () => {
             // 点击菜单时要显示在最上层
-            moveElementToTop(this.menu.element);
+            moveElementToTop(menu.element);
         });
-        this.plugin.addListener(this.menu.element, "input", (event: InputEvent) => {
+        this.plugin.addListener(menu.element, "input", (event: InputEvent) => {
             const target = event.target as HTMLInputElement;
-            const tagName = target.tagName.toLowerCase();
-            if (tagName === "input" && target.dataset.action === "search") {
+            if (target.tagName.toLowerCase() === "input" && target.dataset.action === "search") {
                 // 筛选代码片段（过滤逻辑见 domain/snippet.ts filterSnippetsByKeyword）
                 const filterSnippetsIds = filterSnippetsByKeyword(this.plugin.snippetsList, this.plugin.config.snippetSearchType, target.value);
+                const snippetItems = this.menuItems.querySelectorAll(".jcsm-snippet-item");
                 if (filterSnippetsIds) {
-                    this.menuItems.querySelectorAll(".jcsm-snippet-item").forEach((item: HTMLElement) => {
-                        if (filterSnippetsIds.includes(item.dataset.id!)) {
-                            item.classList.remove("fn__none");
-                        } else {
-                            item.classList.add("fn__none");
-                        }
+                    // 仅显示命中的片段
+                    snippetItems.forEach((item: HTMLElement) => {
+                        item.classList.toggle("fn__none", !filterSnippetsIds.includes(item.dataset.id!));
                     });
                 } else {
-                    this.menuItems.querySelectorAll(".jcsm-snippet-item").forEach((item: HTMLElement) => {
+                    // 禁用搜索或关键字为空时显示全部
+                    snippetItems.forEach((item: HTMLElement) => {
                         item.classList.remove("fn__none");
                     });
                 }
@@ -223,21 +235,19 @@ export class SnippetsMenu {
                 }
             }
         });
-        // 监听按键操作，在选项上按回车时切换开关/特定交互、按 Delete 时删除代码片段、按 Tab 可以在各个可交互的元素上轮流切换
-        // 处理太麻烦，先不做了，有其他人需要再说
         this.plugin.addListener(document.documentElement, "keydown", this.globalKeyDownHandler);
         // 添加鼠标事件监听（用于桌面端拖拽排序；拖拽交互实现见 src/ui/menu-drag-sort.ts MenuDragSort）
-        this.plugin.addListener(this.menu.element, "mousedown", (event: MouseEvent) => {
+        this.plugin.addListener(menu.element, "mousedown", (event: MouseEvent) => {
             this.dragSort.handleMenuMousedown(event);
         });
         // 添加触摸事件监听（用于移动端拖拽排序）
-        this.plugin.addListener(this.menu.element, "touchstart", (event: TouchEvent) => {
+        this.plugin.addListener(menu.element, "touchstart", (event: TouchEvent) => {
             this.dragSort.handleMenuTouchstart(event);
         }, { passive: true });
 
         // 弹出菜单
         if (this.plugin.isMobile) {
-            this.menu.fullscreen();
+            menu.fullscreen();
         } else {
             this.setMenuPosition();
         }
@@ -268,6 +278,8 @@ export class SnippetsMenu {
      */
     setMenuPosition(isUpdate = false) {
         this.plugin.console.log("setMenuPosition: isUpdate =", isUpdate);
+        const menu = this.menu;
+        if (!menu) return;
 
         let rect = this.topBarElement.getBoundingClientRect();
         // 如果被隐藏，则使用更多按钮
@@ -284,20 +296,20 @@ export class SnippetsMenu {
         const dockWidth = ((dockRect?.width || 0) + 1).toString() + "px";
 
         if (!isUpdate) {
-            this.menu.open({
+            menu.open({
                 x: rect.right,
                 y: rect.bottom + 1,
                 isLeft: false,
             });
         }
         // 不要用鼠标位置、菜单要固定宽度，否则切换 CSS 和 JS 时，菜单可能会大幅抖动或者超出窗口边界
-        this.menu.element.style.width = "min(400px, 90vw)";
+        menu.element.style.width = "min(400px, 90vw)";
         if (this.plugin.config.topBarPosition === "left") {
-            this.menu.element.style.right = "";
-            this.menu.element.style.left = dockWidth;
+            menu.element.style.right = "";
+            menu.element.style.left = dockWidth;
         } else {
-            this.menu.element.style.right = dockWidth;
-            this.menu.element.style.left = "";
+            menu.element.style.right = dockWidth;
+            menu.element.style.left = "";
         }
 
         // 顶栏按钮样式
@@ -317,14 +329,14 @@ export class SnippetsMenu {
             // topBarElement 不存在时说明 isMobile 为 true，此时不需要修改顶栏按钮样式
             this.topBarElement.classList.remove("toolbar__item--active");
             // topBarCommand 有可能变，所以每次都重新获取
-            const topBarKeymap = this.getCustomKeymapByCommand("openSnippetsManager");
-            const title = topBarKeymap ? this.plugin.displayName + " " + platformUtils.updateHotkeyTip(topBarKeymap) : this.plugin.displayName;
-            this.topBarElement.setAttribute("aria-label", title);
+            this.topBarElement.setAttribute("aria-label", this.buildTitle(this.plugin.displayName, "openSnippetsManager"));
         }
 
         // 移除事件监听
-        this.plugin.removeListener(this.menu.element);
-        this.menu = undefined as unknown as Menu;
+        if (this.menu) {
+            this.plugin.removeListener(this.menu.element);
+            this.menu = undefined;
+        }
         this.destroyGlobalKeyDownHandler();
 
         // 自动重新加载界面（无打开的编辑对话框时才重载，判断见 EditorManager.maybeAutoReloadUI）
@@ -397,9 +409,9 @@ export class SnippetsMenu {
             this.plugin.console.log("menuClickHandler event:", event);
             if (event.detail=== "Escape") {
                 // 按 Esc 关闭菜单
-                this.menu.close();
+                this.menu!.close();
             } else if (event.detail === "Enter") {
-                const snippetElement = this.menuItems.querySelector(".b3-menu__item--current") as HTMLElement;
+                const snippetElement = this.menuItems.querySelector(`.${CURRENT_ITEM_CLASS}`) as HTMLElement;
                 const type = snippetElement?.dataset.type;
                 if (snippetElement) {
                     if (type === "new") {
@@ -419,42 +431,26 @@ export class SnippetsMenu {
                 // 按上下方向键切换代码片段选项
                 // 获取当前代码片段类型的所有可见菜单项（排除带有 .fn__none 类的元素）
                 const visibleMenuItems = Array.from(this.menuItems.querySelectorAll(`.jcsm-snippet-item[data-type="${this.plugin.snippetsType}"]:not(.fn__none)`)) as HTMLElement[];
-                const currentMenuItem = this.menuItems.querySelector(".b3-menu__item--current") as HTMLElement;
+                const currentMenuItem = this.menuItems.querySelector(`.${CURRENT_ITEM_CLASS}`) as HTMLElement;
 
-                // 如果当前代码片段类型没有可见的 .jcsm-snippet-item 元素，则选中新建按钮
+                let nextMenuItem: HTMLElement | undefined;
                 if (visibleMenuItems.length === 0) {
-                    const newSnippetButton = this.menuItems.querySelector(`.jcsm-snippet-item[data-type="new"][data-snippet-type="${this.plugin.snippetsType}"]`) as HTMLElement;
-                    if (newSnippetButton) {
-                        currentMenuItem?.classList.remove("b3-menu__item--current");
-                        newSnippetButton.classList.add("b3-menu__item--current");
-                        this.scrollToMenuItem(newSnippetButton);
-                    }
+                    // 没有可见代码片段时，选中新建按钮
+                    nextMenuItem = this.menuItems.querySelector(`.jcsm-snippet-item[data-type="new"][data-snippet-type="${this.plugin.snippetsType}"]`) as HTMLElement || undefined;
                 } else if (visibleMenuItems.length === 1) {
                     // 只有一个可见代码片段时，切换到该代码片段
-                    currentMenuItem?.classList.remove("b3-menu__item--current");
-                    visibleMenuItems[0].classList.add("b3-menu__item--current");
-                    this.scrollToMenuItem(visibleMenuItems[0]);
-                } else if (visibleMenuItems.length > 1) {
+                    nextMenuItem = visibleMenuItems[0];
+                } else {
                     // 获取当前选中项在可见菜单项中的索引，如果没有选中项则设为 -1
                     const currentIndex = currentMenuItem ? visibleMenuItems.indexOf(currentMenuItem) : -1;
-
-                    // 根据按键方向计算新的索引
-                    let newIndex: number;
-                    if (event.detail === "ArrowUp") {
-                        // 向上键：切换到前一个元素，如果是第一个则切换到最后一个
-                        newIndex = currentIndex <= 0 ? visibleMenuItems.length - 1 : currentIndex - 1;
-                    } else {
-                        // 向下键：切换到后一个元素，如果是最后一个则切换到第一个
-                        newIndex = currentIndex >= visibleMenuItems.length - 1 ? 0 : currentIndex + 1;
-                    }
-
-                    // 移除当前选中状态
-                    currentMenuItem?.classList.remove("b3-menu__item--current");
-                    // 添加新的选中状态
-                    visibleMenuItems[newIndex].classList.add("b3-menu__item--current");
-
-                    // 确保选中的代码片段在滚动容器中可见
-                    this.scrollToMenuItem(visibleMenuItems[newIndex]);
+                    // 向上键循环上一个、向下键循环下一个
+                    const newIndex = event.detail === "ArrowUp"
+                        ? (currentIndex <= 0 ? visibleMenuItems.length - 1 : currentIndex - 1)
+                        : (currentIndex >= visibleMenuItems.length - 1 ? 0 : currentIndex + 1);
+                    nextMenuItem = visibleMenuItems[newIndex];
+                }
+                if (nextMenuItem) {
+                    this.selectMenuItem(nextMenuItem);
                 }
             } else if (event.detail === "ArrowLeft" || event.detail === "ArrowRight") {
                 // 按左右方向键切换代码片段类型
@@ -534,18 +530,9 @@ export class SnippetsMenu {
         const snippetMenuItem = target.closest(".b3-menu__item") as HTMLElement;
         if (snippetMenuItem) {
             if (tagName === "button") {
-                // 点击按钮
-
                 // 点击按钮不会改变代码片段的开关状态，所以直接从 snippetsList 中获取当前代码片段
-                const snippet = await this.plugin.snippetManager.getSnippetById(snippetMenuItem.dataset.id!);
-                if (snippet === undefined) {
-                    // undefined 是数组中没有
-                    this.plugin.showErrorMessage(this.plugin.i18n.getSnippetFailed);
-                    return;
-                } else if (snippet === false) {
-                    // false 是调用 API 返回错误
-                    return;
-                }
+                const snippet = await this.fetchSnippetForMenu(snippetMenuItem.dataset.id!);
+                if (!snippet) return;
 
                 const buttonType = target.dataset.type;
                 if (buttonType === "duplicate") {
@@ -594,15 +581,8 @@ export class SnippetsMenu {
                     }
                 } else if (this.plugin.config.snippetOptionClickBehavior === 2) {
                     // 打开代码片段编辑器
-                    const snippet = await this.plugin.snippetManager.getSnippetById(snippetMenuItem.dataset.id!);
-                    if (snippet === undefined) {
-                        // undefined 是数组中没有
-                        this.plugin.showErrorMessage(this.plugin.i18n.getSnippetFailed);
-                        return;
-                    } else if (snippet === false) {
-                        // false 是调用 API 返回错误
-                        return;
-                    }
+                    const snippet = await this.fetchSnippetForMenu(snippetMenuItem.dataset.id!);
+                    if (!snippet) return;
                     void this.plugin.snippetsDialog.openEditDialog(snippet);
                 }
             }
@@ -619,6 +599,22 @@ export class SnippetsMenu {
      */
     isShowPublishCheckbox() {
         return this.plugin.config.showPublishCheckbox === 0 ? window.siyuan.config!.publish.enable === true : this.plugin.config.showPublishCheckbox === 1;
+    }
+
+    /**
+     * 自拉代码片段用于菜单项操作，并对异常统一处理：undefined（列表中无该片段）弹错误提示，
+     * false（自拉 API 失败）静默返回；成功返回片段。
+     * @param snippetId 代码片段 ID
+     * @returns 代码片段（异常时为 undefined，调用方直接 return 即可）
+     */
+    private async fetchSnippetForMenu(snippetId: string): Promise<Snippet | undefined> {
+        const snippet = await this.plugin.snippetManager.getSnippetById(snippetId);
+        if (snippet === undefined) {
+            // undefined 是数组中没有
+            this.plugin.showErrorMessage(this.plugin.i18n.getSnippetFailed);
+        }
+        // false（调用 API 返回错误）不弹窗，静默返回
+        return snippet === false ? undefined : snippet;
     }
 
     /**
@@ -705,19 +701,25 @@ export class SnippetsMenu {
     }
 
     /**
+     * 选中菜单项（清除其他选中并滚动到该项，方向键/首次选中复用）
+     * @param menuItem 要选中的菜单项
+     */
+    private selectMenuItem(menuItem: HTMLElement) {
+        this.clearMenuSelection();
+        menuItem.classList.add(CURRENT_ITEM_CLASS);
+        this.scrollToMenuItem(menuItem);
+    }
+
+    /**
      * 设置菜单代码片段类型当前选中项
      * @param snippetType 代码片段类型
      */
     private setMenuSelection(snippetType: string) {
-        // 移除其他选项上的 .b3-menu__item--current 类名
-        this.clearMenuSelection();
-        // 给首个该类型的选项添加 .b3-menu__item--current 类名；搜索时排除的选项会添加 .fn__none 类名
+        // 给首个该类型的选项添加选中类名；搜索时排除的选项会添加 .fn__none 类名
         const firstMenuItem = this.menuItems?.querySelector(`.b3-menu__item[data-type="${snippetType}"]:not(.fn__none)`) as HTMLElement ||
                               this.menuItems?.querySelector(`.b3-menu__item[data-type="new"][data-snippet-type="${snippetType}"]`) as HTMLElement;
         if (firstMenuItem) {
-            firstMenuItem.classList.add("b3-menu__item--current");
-            // 确保选中的代码片段在滚动容器中可见
-            this.scrollToMenuItem(firstMenuItem);
+            this.selectMenuItem(firstMenuItem);
         }
     }
 
@@ -725,8 +727,8 @@ export class SnippetsMenu {
      * 清除菜单选中
      */
     clearMenuSelection() {
-        this.menuItems?.querySelectorAll(".b3-menu__item--current").forEach((item: HTMLElement) => {
-            item.classList.remove("b3-menu__item--current");
+        this.menuItems?.querySelectorAll(`.${CURRENT_ITEM_CLASS}`).forEach((item: HTMLElement) => {
+            item.classList.remove(CURRENT_ITEM_CLASS);
         });
     }
 
@@ -826,11 +828,6 @@ export class SnippetsMenu {
         const dialogElements = this.plugin.snippetsDialog.getAllModalElements();
         const dialogElement = dialogElements[dialogElements.length - 1];
         if (dialogElement) {
-            // // 如果按 Esc 时焦点在输入框里，移除焦点
-            // if (event.key === "Escape" && isInputElementActive()) {
-            //     (document.activeElement as HTMLElement).blur();
-            //     return;
-            // }
             // 阻止冒泡，避免触发原生监听器导致菜单关闭
             event.stopPropagation();
             // 触发 Dialog 的 click 事件，传递按键（参考原生方法：https://github.com/siyuan-note/siyuan/blob/c88f99646c4c1139bcfc551b4f24b7cbea151751/app/src/boot/globalEvent/keydown.ts#L1394-L1406 ）
