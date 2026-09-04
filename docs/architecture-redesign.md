@@ -19,6 +19,7 @@
 ### 已完成提交（main，最新在上）
 | commit | 内容 |
 |---|---|
+| `29b9e31` | refactor: window.siyuan.jcsm 全量收敛移除（阶段 6 收官）——运行态标志/片段缓存/监听簿记/主题 observer 改由实例承载，通知按钮去全局函数 |
 | `7721307` | refactor: 配置镜像收敛出 jcsm（ConfigService 内部缓存承载，阶段 6 第一刀） |
 | `6d08340` | refactor: 自动重载前的编辑对话框判断收敛为 editorManager.hasEditorDialogsOpen() |
 | `ed0774f` | refactor: 菜单排序与搜索过滤纯逻辑下沉 domain/snippet.ts（sortSnippets/filterSnippetsByKeyword） |
@@ -97,13 +98,13 @@
 | `dd296e9` | refactor: 抽取纯工具函数到 `utils.ts` |
 | `4f2773e` | refactor: 抽取 `isValidJavaScriptCode` 到 `domain/snippet.ts` |
 
-当前工作区：**干净**（7721307 已提交；阶段 3（sync 收敛）、阶段 4（config 声明式 + 拆分瘦身）收官，index.ts 由 ~6200 行降至 ~650 行；阶段 5 进行中（menu.ts 已由 1344 行降至 ~860 行：拖拽组外迁 menu-drag-sort.ts、排序/过滤纯逻辑下沉 domain/snippet.ts）；阶段 6 已起步（配置镜像收敛出 jcsm → ConfigService 内部缓存，7721307）。各批外迁细目、Host 注入根除与保留门面清单见下方「依赖注入收敛」与「已建模块」小节；阶段 5/6 继续方向见「下一步建议」）。
+当前工作区：**干净**（29b9e31 已提交；阶段 3（sync 收敛）、阶段 4（config 声明式 + 拆分瘦身）收官，index.ts 由 ~6200 行降至 ~650 行；阶段 5 进行中（menu.ts 已由 1344 行降至 ~860 行：拖拽组外迁 menu-drag-sort.ts、排序/过滤纯逻辑下沉 domain/snippet.ts）；**阶段 6（jcsm 收敛）已收官**——window.siyuan.jcsm 不再被本插件使用，全量状态改由模块/实例承载（见「jcsm 收敛（阶段 6 收官）」节）。各批外迁细目、Host 注入根除与保留门面清单见下方「依赖注入收敛」与「已建模块」小节；后续方向见「下一步建议」）。
 
 ### 依赖注入收敛（2026-09-04 用户方向反馈，已全部落实）
 - 用户反馈：①**现有 Host 接口注入过多、不简洁**；②**index 内一层层纯转发的中转（薄壳）方法要去掉**。
-- **已全部落实（1d68177 收官）**：**所有 Host/interface 注入形态已从代码库根除**——新外迁模块一律 `class Xxx(private readonly plugin: PluginSnippets)` + `import type PluginSnippets from "../index"`（类型导入，无运行时循环），插件实例 `new Xxx(this)` 直接注入；插件侧被直连成员 public 化。已转换：SnippetsMenu（3981e9b，含顶栏菜单整体与全局键盘协调 9c8f008）、SnippetManager、SnippetsDialog、FileWatchService、FeedbackService、ListenerRegistry、EditorManager、ImportExportService、ConfigService（存储键 STORAGE_NAME 转由 config-service 导出、index 改导入）、SettingDialog（app/configService/importExportService public 化）。index 的薄壳中转方法均已删除、调用点直连。schema.ts 的 ctx 读取器形态为构建时上下文，保留；snippetStore 的 get/set 小对象为 jcsm 转发，保留。
+- **已全部落实（1d68177 收官）**：**所有 Host/interface 注入形态已从代码库根除**——新外迁模块一律 `class Xxx(private readonly plugin: PluginSnippets)` + `import type PluginSnippets from "../index"`（类型导入，无运行时循环），插件实例 `new Xxx(this)` 直接注入；插件侧被直连成员 public 化。已转换：SnippetsMenu（3981e9b，含顶栏菜单整体与全局键盘协调 9c8f008）、SnippetManager、SnippetsDialog、FileWatchService、FeedbackService、ListenerRegistry、EditorManager、ImportExportService、ConfigService（存储键 STORAGE_NAME 转由 config-service 导出、index 改导入）、SettingDialog（app/configService/importExportService public 化）。index 的薄壳中转方法均已删除、调用点直连。schema.ts 的 ctx 读取器形态为构建时上下文，保留；snippetStore 的 get/set 小对象为 snippetsList 缓存转发，保留。
 - **保留的高频门面**（非业务中转，调用点 30+，保留更简洁）：`showNotification`/`showErrorMessage`/`addListener`/`removeListener` 与实例属性访问器（isMobile/snippetsList/snippetsType/isReloadUIRequired 等）留在插件类上，供内部与各 UI/服务类直连；`genNewSnippetId`/`isPreviewingSnippet` 纯逻辑下沉 `utils.ts`。
-- **index.ts 当前规模 ~648 行**（原 ~6200）：主体为生命周期/装配（onload 各服务一行 `new Xxx(this)`；onLayoutReady 的 sync 分发注册表已外迁 `SnippetManager.buildSyncHandlers()`（b206b50），仅剩 BroadcastService 装配与 start；顶栏按钮图标注册 `SnippetsMenu.initIcons()` 与顶栏按钮创建/打开回调（initTopBar/openSnippetsManager，694bd0f）同迁 menu.ts）、initConfigItems ctx 装配、配置镜像 declare + 状态访问器（jcsm 读写）、syncService/console 等少量门面。卸载清理已收口（1785676）：Dialog 清理 → `SnippetsDialog.closeAllDialogs()`、CM 样式清理 → `EditorManager.cleanupEditorStyles()`。reloadUI 已外迁 `SnippetsDialog.reloadUI()`（2f399d5），`postReloadUI` 保留插件类门面（menu/file-watch/snippets-dialog 5 处直连）。各 Host 模块也已全部转为同一直连形态。
+- **index.ts 当前规模 ~650 行**（原 ~6200）：主体为生命周期/装配（onload 各服务一行 `new Xxx(this)`；onLayoutReady 的 sync 分发注册表已外迁 `SnippetManager.buildSyncHandlers()`（b206b50），仅剩 BroadcastService 装配与 start；顶栏按钮图标注册 `SnippetsMenu.initIcons()` 与顶栏按钮创建/打开回调（initTopBar/openSnippetsManager，694bd0f）同迁 menu.ts）、initConfigItems ctx 装配、配置镜像 declare、syncService/console 等少量门面。卸载清理已收口（1785676）：Dialog 清理 → `SnippetsDialog.closeAllDialogs()`、CM 样式清理 → `EditorManager.cleanupEditorStyles()`。reloadUI 已外迁 `SnippetsDialog.reloadUI()`（2f399d5），`postReloadUI` 保留插件类门面（menu/file-watch/snippets-dialog 5 处直连）。各 Host 模块也已全部转为同一直连形态。
 
 ### 已建模块
 - `src/core/event-bus.ts`（类型化 pub/sub，`on/off/emit/clear`；注意：勿用字段名 `eventBus`，会与 siyuan `Plugin` 基类成员冲突，内部用 `internalEventBus`）
@@ -111,33 +112,45 @@
 - `src/services/sync.ts`（阶段 3：协议类型 + 传输 + 分发。协议：payload 接口 + `SnippetBroadcastBody`（消息体）→ `WithEnvelope` 分配式生成 `SnippetBroadcastMessage`（信封 + 消息体），`SnippetBusinessMessage` 为去掉窗口保活后的业务子集；含禁原文约束与 CSS 预览豁免注释。传输与分发：`BroadcastService` 统一管理 windowId/其他窗口在线集合/WebSocket 连接与自动重连/页面卸载通知，内部消化窗口保活三消息；`broadcast<T extends SnippetBroadcastBody>` 类型化发送（信封由服务保证附加）；业务消息按 type 查表分发到构造入参 `handlers: Partial<BroadcastHandlers>`（各键处理器直接拿到收窄后的 payload），未注册 type 仅告警；日志经 `BroadcastLogger` 注入）
 - `src/config/schema.ts`（阶段 4：`SnippetsConfigItem`/`SnippetsConfigOption` 类型与 `createSnippetsConfigItems(ctx)` 条目构建；ctx 为 `SnippetsConfigContext` 读取器/动作函数集（isMobile()/i18n()/menuItems()/menuOpen()/menuSnippetsItemsHtml()/updateAllEditorConfigs()/removeTopBarElement()/initTopBar()/setMenuPosition()/startFileWatch()/stopFileWatch()/handleFileWatchPathChange()/handleFileWatchIntervalChange()），条目构建时的静态值（ignore/description 等）在构建时刻求值，条目内箭头函数体（createActionElement/onApply）中的读取器/动作在调用时才执行，保证运行态实时、规避 no-this-alias）
 - `src/ui/codemirror.ts`（阶段 4：纯编辑器工厂 `getEditorIndentUnit`/`createEditorExtensions`/`createCodeMirrorEditor`，参数化 indentUnitConfig/i18n；`SnippetsEditorI18n = Record<string, string>` 兼容插件 i18n 类型）
-- `src/ui/editor-manager.ts`（阶段 4：`EditorManager` 类——主题模式监听启停/检查（observer 挂 window.siyuan.jcsm）、已打开对话框编辑器更新 `updateAllEditorConfigs`/重建 `recreateEditor`；运行态经 `EditorManagerHost` 读取器注入；`onunload`/`uninstall` 的清理由 `stopThemeModeWatch()` 收敛，消除重复）
+- `src/ui/editor-manager.ts`（阶段 4/6：**新风格——直连插件实例，无 Host**。`EditorManager`——主题模式监听启停/检查（observer 收敛为实例字段，29b9e31）、已打开对话框编辑器更新 `updateAllEditorConfigs`/重建 `recreateEditor`；`onunload`/`uninstall` 的清理由 `stopThemeModeWatch()`/`cleanupEditorStyles()` 收敛）
 - `src/ui/setting-dialog.ts`（阶段 4：`SettingDialog` 类 + `SettingDialogHost` 读取器/动作注入——原 `openSetting` 方法整体外迁（对话框装配/设置项渲染/点击与全局按键/滚轮/touchmove 监听/原生设置跳转两段异步重试）；`openSettingTab` 辅助与 `SETTING_TAB_MOUNT_MAX_RETRIES` 常量随迁为模块级；index.ts 侧 `openSetting` 收口为 `this.settingDialog.open()` 委托）
-- `src/config/config-service.ts`（阶段 4：`ConfigService` 类 + `ConfigServiceHost` 注入——原 `initSetting`+`loadConfig`（读取/版本校验/写默认值/defineProperty 挂实例属性/装配 Setting）收编为 `init()`，`saveSetting` 收编为 `saveFromDialog()`，`applyConfig`/`onDataChanged` 方法体收编为 `applyConfig`/`reloadFromStorage()`，`disableNotification` 随迁；私有收口 `persistConfig`/`createSettingItem`（含 isPromiseFulfilled 语义原样保留）；存储键名与生命周期数据方法由 index 闭包转发，service 不感知具体键；index.ts 侧 `onDataChanged` 收口为 `configService.reloadFromStorage()`，`onLayoutReady` 改 `configService.init()` 后 `setting = configService.setting!`）
+- `src/config/config-service.ts`（阶段 4/6：**新风格——直连插件实例，无 Host**。`ConfigService`——原 `initSetting`+`loadConfig`（读取/版本校验/写默认值/defineProperty 挂实例属性/装配 Setting）收编为 `init()`，`saveSetting` 收编为 `saveFromDialog()`，`applyConfig`/`onDataChanged` 方法体收编为 `applyConfig`/`reloadFromStorage()`，`disableNotification` 随迁；配置镜像收敛为内部 Map（7721307）；私有收口 `persistConfig`/`createSettingItem`；存储键名 STORAGE_NAME 由本模块导出；index.ts 侧 `onDataChanged` 收口为 `configService.reloadFromStorage()`，`onLayoutReady` 改 `configService.init()` 后 `setting = configService.setting!`）
 - `src/services/file-watch.ts`（阶段 4：`FileWatchService` 类 + `FileWatchHost` 注入——原「文件监听功能」分节整体外迁：公开 `start`/`stop`/`handlePathChange`/`handleIntervalChange`，私有加载/轮询/单文件差异/元素应用与移除方法随迁，状态字段 `fileWatchFileStates`/`fileWatchIntervalId` 收敛为服务内部状态；JS 元素移除时的通知/呼吸高亮/自动重载 UI 经 host 动作保留；index.ts 仅保留 3 个 declare 配置镜像属性与分节标题，`onLayoutReady` 启动/`onunload`+`uninstall` 停止/schema ctx 动作转发均指向 service）
 - `src/services/import-export.ts`（阶段 4：`ImportExportService` 类 + `ImportExportHost` 注入——原「导出与导入功能」分节整体外迁：公开 `exportSnippetsToFile`/`importSnippets(overwrite)`，私有文件读取/格式校验/备份/ID 去重/zip 递归找 json 等随迁；`TEMP_EXPORT_PATH`/`TEMP_PLUGIN_PATH` 模块常量随迁（index 侧日志队列另保留 TEMP_PLUGIN_PATH）；`saveExportFile`/`renameFile` 引用随迁；index 侧 SettingDialog host 的 exportSnippets/importSnippets 改指向 service）
-- `src/services/feedback.ts`（阶段 4：`FeedbackService` 类 + `FeedbackHost` 注入——原「消息处理」分节外迁：`showNotification`（设置内通知 + 不再提示按钮，消息 id 前缀 PLUGIN_NAME）与 `showErrorMessage`（错误提示）；**本地日志文件写入已移除（ff9ddea，用户拍板）**——原 addLogWriteTask/processLogQueue 队列与 temp 目录 plugin-snippets.log 落盘不再保留，i18n 键 getPluginLogFailed/writePluginLogFailed 随之删除，index.ts 仅保留 showNotification/showErrorMessage 委托壳）
-- `src/services/listener-registry.ts`（阶段 4：`ListenerRegistry` 类 + `ListenerRegistryHost` 注入——原「事件监听管理」分节外迁：公开 `add`/`remove`/`destroy`，私有簿记实现（listeners/listenerCheckIntervalId/isCheckingListeners 三对 getter/setter 仍存 jcsm 跨实例共用、checkListenerElement 周期检查 + 联动主题监听、start/stopListenerCheckInterval）随迁；index.ts 仅保留 addListener/removeListener 委托壳（方法签名不变，内部 20+ 调用点与 SettingDialog host 零改动）、isDialogAndMenuOpen 保留原位（globalKeyDownHandler 仍用），uninstall 的 destroyListeners 调用改指向 registry.destroy()）
+- `src/services/feedback.ts`（阶段 4/6：**新风格——直连插件实例，无 Host**。`FeedbackService`——`showNotification`（设置内通知 + “不再提示”按钮，消息 id 前缀 PLUGIN_NAME）与 `showErrorMessage`；**本地日志文件写入已移除（ff9ddea，用户拍板）**；“不再提示”按钮收敛为元素事件绑定（直连 configService.disableNotification，29b9e31，不再依赖 window 全局函数）
+- `src/services/listener-registry.ts`（阶段 4/6：**新风格——直连插件实例，无 Host**。`ListenerRegistry`——原「事件监听管理」分节外迁：公开 `add`/`remove`/`destroy`，私有簿记实现（listeners/listenerCheckIntervalId/isCheckingListeners 收敛为实例字段，29b9e31）、checkListenerElement 周期检查 + 联动主题监听、start/stopListenerCheckInterval）随迁；index.ts 仅保留 addListener/removeListener 委托壳（方法签名不变，内部 20+ 调用点零改动）、isDialogAndMenuOpen 保留原位（globalKeyDownHandler 仍用），uninstall 的 destroyListeners 调用改指向 registry.destroy()）
 - `src/ui/menu.ts`（阶段 4/5：**新风格——直连插件实例，无 Host**。`SnippetsMenu(plugin)` 承接原「顶栏菜单」分节整体：open/initSnippetsContainer/setMenuPosition/closeMenuCallback/scrollToMenuItem/menuClickHandler/isShowPublishCheckbox/genMenuSnippetsItems/setMenuSnippetsType/setMenuSnippetCount/setMenuSelection/clearMenuSelection/setReloadUIButtonBreathing/setSnippetsTypeSwitchBreathing/编辑按钮高亮组 + 菜单状态字段（menu/menuItems/呼吸标志）；随后全局键盘协调组（globalKeyDownHandler/destroyGlobalKeyDownHandler/isDialogAndMenuOpen）也随迁本类（9c8f008），顶栏按钮图标注册 initIcons/创建与打开回调（initTopBar/openSnippetsManager，694bd0f）同迁，拖拽排序组外迁 `src/ui/menu-drag-sort.ts`（c7c64a1），菜单项排序与搜索过滤纯逻辑下沉 `domain/snippet.ts`（ed0774f：genMenuSnippetsItems 改调 sortSnippets、input 搜索改调 filterSnippetsByKeyword）。SettingDialog/ListenerRegistry/SnippetsDialog host 相应改指 menuView。index 仅保留镜像属性 declare 与访问器；菜单打开与菜单项渲染相关调用点（schema ctx/snippets_sort/SNIPPETS_CHANGED/生命周期 close）直连 menuView）
 - `src/ui/menu-drag-sort.ts`（阶段 5：**新风格——直连插件实例，无 Host**。`MenuDragSort(plugin)` 承接原 SnippetsMenu 拖拽排序组（c7c64a1，menu.ts 1344 → 940 行）：公开 `isDragging`/`clearDragState`/`handleMenuMousedown`/`handleMenuTouchstart`，私有幽灵元素/边缘滚动/落点高亮/`executeDragSort`（自拉列表 → Store 移动 → DOM 顺序 → 落库 → snippets_sort 广播）；菜单列表容器经 `plugin.menuView.menuItems` 访问；menu 事件绑定与 menuClickHandler 的“拖拽回原位忽略点击”判断经 dragSort 直连）
 - `src/services/snippet-manager.ts`（阶段 4：**新风格——直连插件实例，无 Host**。`SnippetManager(plugin: PluginSnippets)` 持有 import type 的插件实例：`createSnippet`/`saveSnippet`（local/remote origin 分支）/`deleteSnippet`/`toggleSnippet`/`toggleSnippetPublish`（含 isPublish 判断）/`globalToggleSnippet`/`getSnippetById`/`getSnippetsList`/`saveSnippetsList`/`updateSnippetElement`/`removeSnippetElement`/`applySnippetUIChange`/`buildSyncHandlers`（跨窗口广播业务分发注册表构建，b206b50 外迁）；插件侧相应成员 public 化供直连；index 业务薄壳已全部删除，调用点直连。ID 生成/预览判断下沉 utils）
 - `src/ui/snippets-dialog.ts`（阶段 4/5：**新风格——直连插件实例，无 Host**。`SnippetsDialog(plugin)` 承接原「对话框相关」分节：公开 `genEditDialogHtml`/`openEditDialog`/`openDeleteDialog`/`openCancelDialog`/`openConfirm`/`closeByElement`/`getAllModalElements`；随后 `reloadUI`（扫描打开的编辑对话框未保存变更 + 二次确认后重载界面，2f399d5）与 `closeAllDialogs`（卸载时关闭全部插件对话框，1785676）同迁本类；index 对话框薄壳已删除、调用点直连 snippetsDialog）
 - `src/utils.ts`（含 `isPromiseFulfilled`/`hideTooltip`/`showElementTooltip`/`isInputElementActive`/`htmlToElement`/`moveElementToTop`）
 - `src/domain/snippet.ts`（`isValidJavaScriptCode`/`isSnippetsTypeEnabled`）
-- `src/domain/snippet-store.ts`（`SnippetStore`：`remove`/`upsert`/`insertBefore`/`move`/`replaceAll`，单一写路径 + 统一发 `SNIPPETS_CHANGED`）
+- `src/domain/snippet-store.ts`（`SnippetStore`：`remove`/`upsert`/`insertBefore`/`move`/`replaceAll`，单一写路径 + 统一发 `SNIPPETS_CHANGED`；存储适配为插件实例 snippetsList 缓存（原 jcsm 转发，阶段 6 收敛））
 - `types.d.ts` 新增导出 `SnippetType = "css" | "js"`
 
 ### 事件化模式（已建立）
 - 事件名常量 `SNIPPETS_CHANGED`（现位于 `domain/snippet-store.ts`）；订阅刷新菜单计数。
 - 已收敛：片段列表的增/删/改/复制/拖拽排序/整表替换（导入）均改走 `SnippetStore`（`upsert`/`remove`/`insertBefore`/`move`/`replaceAll`），写后统一 emit；`saveSnippet`/`saveSnippetSync` 内手写列表修改与 `setMenuSnippetCount()` 已随各批移除，计数刷新完全由事件驱动。
 - 已知未收敛（语义非本地结构写，留待 sync/后续阶段）：`openMenu`/`getSnippetById`/`executeDragSort` 前置、`saveSnippetSync` 复制分支等处“从服务端全量重拉列表”的赋值属读取权威态语义；toggle 类就地字段修改不改变列表结构。
+- （阶段 6 说明）`snippetsList` 现为插件实例缓存（原 jcsm 承载），语义不变：菜单打开/自拉等读取权威态场景仍整体替换。
 
-### jcsm 现状与已做收敛（2026-09-04 用户追问后核实）
-- `window.siyuan.jcsm` 唯一职责 = **跨插件 reload 存活**的全局变量仓库（reload：插件更新 / 手动重载；`onDataChanged` 已热应用不再触发 reload）。
-- 三类存储：① 配置镜像（configItems → `loadConfig` 写入 + `Object.defineProperty(this, key)` 代理到 `(jcsm as any)[key]`：realTimePreview/newSnippetEnabled/consoleDebug/snippetSearchType/fileWatch*/defaultSnippetsType…）；② 运行态句柄（手写 getter/setter 读写 jcsm：isMobile/snippetsType/snippetsList/listeners/listenerCheckIntervalId/isCheckingListeners/isReloadUIRequired/themeObserver/disableNotification）；③ 已死残留（类型声明无任何类型化读写）。
-- **已做（已提交，5a93fb7）**：`types.d.ts` 的 jcsm 块删除 11 个死声明（realTimePreview/newSnippetEnabled/consoleDebug/notificationSwitch/reloadUIAfterModifyJS/snippetSearchType/fileWatchEnabled/Path/Interval/IntervalId/FileStates——运行时仅经 `(jcsm as any)` 或实例字段访问），仅保留仍被类型化读写的 11 项并加说明注释。
-- **已做（已提交，7721307）**：配置类字段镜像收敛出 jcsm —— ConfigService 内部 Map 承载（defineProperty/readValue/writeValue/persistConfig 全改经 Map）；`snippetsType` getter 默认类型改读实例属性 `this.defaultSnippetsType`（补 declare）；types.d.ts 移除 defaultSnippetsType 声明。
-- **整体拆除留待阶段 6**：需先有 ConfigService（阶段 4）与视图自持运行态（阶段 5）作替代承载；届时 jcsm 仅保留真正必须跨 reload 存活的少数句柄。
+### jcsm 收敛（阶段 6 收官，2026-09-04）
+- **结论：`window.siyuan.jcsm` 已不再被本插件使用**（配置镜像 7721307 + 运行态 29b9e31 两刀收敛），`types.d.ts` 的 jcsm 类型块与 index 的初始化/清理已删除；卸载时也不再 `delete window.siyuan.jcsm`（避免误删思源全局共享命名空间）。
+- **收敛论证**（原 jcsm 的“跨插件 reload 存活”语义在实例承载下依然成立）：
+  - 插件 reload（更新/手动重载，不刷新页面）时，未关闭的 Dialog/菜单 DOM 及其事件处理函数引用旧实例对象，旧实例不被 GC，其**实例字段自持状态**照常服务旧 UI；
+  - 新实例运行态（snippetsList/snippetsType/isMobile/isReloadUIRequired）在首次自拉/交互时以内核为权威重建；
+  - 监听器簿记依赖元素自身（元素移除即自动释放），uninstall 时实例仍持有本页全部登记记录可供清点；themeObserver 由 onunload 必停 + reload 后按 DOM 现状自启。
+- **各字段去向**：
+  | 字段 | 去向 |
+  |---|---|
+  | 配置镜像（realTimePreview/newSnippetEnabled/consoleDebug/snippetSearchType/fileWatch*/defaultSnippetsType…） | `ConfigService` 内部 Map（7721307） |
+  | isMobile / isTouchDevice | 插件实例字段（onLayoutReady 重算） |
+  | isReloadUIRequired | 插件实例字段（呼吸提示标志，界面刷新自然复位） |
+  | snippetsList | 插件实例缓存（以内核为权威，自拉刷新） |
+  | snippetsType（会话切换记忆） | 插件实例缓存（重载回退 defaultSnippetsType） |
+  | disableNotification | 通知“不再提示”按钮改元素事件绑定（原内联 onclick 需全局可达，已随 FeedbackService 收敛） |
+  | themeObserver | `EditorManager` 实例字段 |
+  | listeners / listenerCheckIntervalId / isCheckingListeners | `ListenerRegistry` 实例字段 |
 
 ### 已报告 issue
 - siyuan-note/siyuan **#19130**：文件写入类 API（putFile/removeFile/renameFile/copyFile）对不参与同步的目录（如 `temp/`）也会 `IncSync()`；并补充 comment 说明 `data/.siyuan/syncignore` 忽略的路径同理。
@@ -200,7 +213,8 @@
 9. （ed0774f）菜单纯逻辑下沉：`sortSnippets`（深拷贝 + 按键排序，customSort/fixedSort 原引用）与 `filterSnippetsByKeyword`（搜索类型 1 标题/2 内容/3 标题或内容，0 或空关键字返回 false）迁至 `domain/snippet.ts`；`genMenuSnippetsItems` 排序块与 `filterSnippetsIds` 私有方法删除，调用点改纯函数（menu.ts → ~860 行）。
 10. （6d08340）重复选择器收敛：file-watch×2/menu.closeMenuCallback/snippets-dialog.saveHandler 的“无打开的编辑对话框才自动重载 UI”判断收敛为 `plugin.editorManager.hasEditorDialogsOpen()`（消除魔法选择器，语义等价）。
 11. （7721307）**阶段 6 第一刀——配置镜像收敛出 jcsm**：配置类字段（realTimePreview/newSnippetEnabled/consoleDebug/snippetSearchType/fileWatch*/defaultSnippetsType 等）镜像从 `window.siyuan.jcsm`（`(jcsm as any)[key]`）改为 `ConfigService` 内部 `Map`（配置每次 init 重新读盘、写配置即落盘，无需跨 reload 全局仓库）；defineProperty 代理/readValue/writeValue/persistConfig/applyConfig/saveFromDialog/createSettingItem 全部经该 Map；`snippetsType` getter 的默认类型读取由 `jcsm.defaultSnippetsType` 改为实例属性 `this.defaultSnippetsType`（index 补 declare，defineProperty init 时挂载）；types.d.ts jcsm 块移除 defaultSnippetsType 声明并更新注释。
-12. 之后：继续阶段 5（menu.ts 剩余区块/搜索交互细拆）与阶段 6（运行态句柄收敛：snippetsList/isMobile/snippetsType/listeners/themeObserver/isReloadUIRequired 等，需先评估 reload 接续语义；前置分析见「jcsm 现状」节）。
+12. （29b9e31）**阶段 6 收官——jcsm 运行态全量收敛**：isMobile/isTouchDevice/isReloadUIRequired/snippetsList/snippetsType → 插件实例字段（读点不变，onLayoutReady 重算/自拉重建/重载回退默认）；disableNotification → 通知按钮改元素事件绑定（FeedbackService 直连 configService），删除 onLayoutReady 的全局挂载；themeObserver → `EditorManager` 实例字段；listeners 簿记三字段 → `ListenerRegistry` 实例字段；`types.d.ts` jcsm 类型块整体删除、index 移除 jcsm 初始化与 uninstall 的 `delete window.siyuan.jcsm`，相关注释刷新。至此 `window.siyuan.jcsm` 全量退出本插件。
+13. 之后：继续阶段 5（menu.ts 剩余区块/搜索交互细拆或视图化）与收尾清理（`data: any` 类型化、残留死声明等）。
 
 ---
 
