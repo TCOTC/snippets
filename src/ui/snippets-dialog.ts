@@ -13,7 +13,7 @@ import type {Snippet} from "../types";
 
 /**
  * 代码片段对话框管理器（原 index.ts「对话框相关」分节外迁，行为等价）
- * 公开 genEditDialogHtml/openEditDialog/openDeleteDialog/openCancelDialog/openConfirm/reloadUI/closeByElement/getAllModalElements
+ * 公开 genEditDialogHtml/openEditDialog/openDeleteDialog/openCancelDialog/openConfirm/reloadUI/closeByElement/closeAllDialogs/getAllModalElements
  */
 export class SnippetsDialog {
     private readonly plugin: PluginSnippets;
@@ -719,6 +719,16 @@ export class SnippetsDialog {
                 destroyEventHandler();
             }
         }, 1000);
+    }
+
+    /**
+     * 关闭全部插件模态对话框（原 index.ts uninstall 内联遍历外迁，行为等价；卸载插件时使用）
+     * 含代码片段编辑/设置/确认等所有 data-key 以 jcsm- 开头的已打开对话框。
+     */
+    closeAllDialogs() {
+        document.querySelectorAll(".b3-dialog--open[data-key^='jcsm-']").forEach((dialogElement: HTMLElement) => {
+            this.closeByElement(dialogElement);
+        });
     }
 
     /**

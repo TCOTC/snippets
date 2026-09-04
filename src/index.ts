@@ -196,14 +196,8 @@ export default class PluginSnippets extends Plugin {
         // 插件设置加载之后暴露 ignoreNotice 方法到全局
         window.siyuan.jcsm.disableNotification = (messageI18nKey) => this.configService.disableNotification(messageI18nKey);
 
-        // 顶栏按钮图标
-        this.addIcons(`
-            <symbol id="iconJcsm" viewBox="0 0 32 32">
-                <path d="M23.498 9.332c-0.256 0.256-0.415 0.611-0.415 1.002s0.159 0.745 0.415 1.002l4.665 4.665-4.665 4.665c-0.256 0.256-0.415 0.61-0.415 1.002s0.159 0.745 0.415 1.002v0c0.256 0.256 0.61 0.415 1.002 0.415s0.745-0.159 1.002-0.415l5.667-5.667c0.256-0.256 0.415-0.611 0.415-1.002s-0.158-0.745-0.415-1.002l-5.667-5.667c-0.256-0.256-0.61-0.415-1.002-0.415s-0.745 0.159-1.002 0.415v0z"></path>
-                <path d="M7.5 8.917c-0.391 0-0.745 0.159-1.002 0.415l-5.667 5.667c-0.256 0.256-0.415 0.611-0.415 1.002s0.158 0.745 0.415 1.002l5.667 5.667c0.256 0.256 0.611 0.415 1.002 0.415s0.745-0.159 1.002-0.415v0c0.256-0.256 0.415-0.61 0.415-1.002s-0.159-0.745-0.415-1.002l-4.665-4.665 4.665-4.665c0.256-0.256 0.415-0.611 0.415-1.002s-0.159-0.745-0.415-1.002v0c-0.256-0.256-0.61-0.415-1.002-0.415v0z"></path>
-                <path d="M19.965 3.314c-0.127-0.041-0.273-0.065-0.424-0.065-0.632 0-1.167 0.413-1.35 0.985l-0.003 0.010-7.083 22.667c-0.041 0.127-0.065 0.273-0.065 0.424 0 0.632 0.413 1.167 0.985 1.35l0.010 0.003c0.127 0.041 0.273 0.065 0.424 0.065 0.632 0 1.167-0.413 1.35-0.985l0.003-0.010 7.083-22.667c0.041-0.127 0.065-0.273 0.065-0.424 0-0.632-0.413-1.167-0.985-1.35l-0.010-0.003z"></path>
-            </symbol>
-        `);
+        // 顶栏按钮图标（iconJcsm symbol 注册见 SnippetsMenu.initIcons，src/ui/menu.ts）
+        this.menuView.initIcons();
 
         this.menuView.initTopBar().then();
 
@@ -315,19 +309,11 @@ export default class PluginSnippets extends Plugin {
             return;
         }
 
-        // 移除所有 Dialog
-        document.querySelectorAll(".b3-dialog--open[data-key^='jcsm-']").forEach((dialogElement: HTMLElement) => {
-            this.snippetsDialog.closeByElement(dialogElement);
-        });
+        // 移除所有 Dialog（关闭全部插件模态对话框，实现见 SnippetsDialog.closeAllDialogs）
+        this.snippetsDialog.closeAllDialogs();
 
-        // 移除 CodeMirror 编辑器样式
-        const styleElements = Array.from(document.head.querySelectorAll("style")) as HTMLStyleElement[];
-        for (const styleElement of styleElements) {
-            if (styleElement.textContent?.includes(".cm-content")) {
-                styleElement.remove();
-                break;
-            }
-        }
+        // 移除 CodeMirror 编辑器样式（实现见 EditorManager.cleanupEditorStyles）
+        this.editorManager?.cleanupEditorStyles();
 
         // 移除菜单
         this.menuView.close();

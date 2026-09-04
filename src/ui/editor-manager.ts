@@ -182,4 +182,18 @@ export class EditorManager {
 
         this.plugin.console.log(`recreateEditor: editor recreated: ${dialogElement}`);
     }
+
+    /**
+     * 移除全局 CodeMirror 样式（原 index.ts uninstall 内联块外迁，行为等价；卸载插件时使用）
+     * 编辑器在运行中可能向 document.head 注入含 .cm-content 的 style，卸载时清理之。
+     */
+    cleanupEditorStyles() {
+        const styleElements = Array.from(document.head.querySelectorAll("style")) as HTMLStyleElement[];
+        for (const styleElement of styleElements) {
+            if (styleElement.textContent?.includes(".cm-content")) {
+                styleElement.remove();
+                break;
+            }
+        }
+    }
 }
