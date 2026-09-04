@@ -2082,69 +2082,9 @@ export default class PluginSnippets extends Plugin {
             return false;
         }
 
-        // 获取当前拖拽项的索引
-        const fromIndex = this.snippetsList.findIndex((s: any) => s.id === itemId);
-        // 获取目标项的索引
-        const toIndex = this.snippetsList.findIndex((s: any) => s.id === selectItemId);
-
-        if (fromIndex === -1 || toIndex === -1) {
-            return false;
-        }
-
-        // 先移除原有项
-        const [moved] = this.snippetsList.splice(fromIndex, 1);
-        let targetIndex = toIndex;
-
-        // 如果 itemType 是 CSS 而 selectItemType 是 JS，则将 item 排序到最后一个 CSS 后面
-        if (itemType === "css" && selectItemType === "js") {
-            const cssCount = this.snippetsList.filter((s: any) => s.type === "css").length;
-            if (cssCount > 1) {
-                // 找到最后一个 CSS 的位置
-                const lastCssIndex = this.snippetsList.map((s: any) => s.type).lastIndexOf("css");
-                targetIndex = lastCssIndex + 1;
-            } else {
-                // CSS 数量小于等于 1，不进行排序
-                this.snippetsList.splice(fromIndex, 0, moved);
-                return false;
-            }
-        }
-        // 如果 itemType 是 JS 而 selectItemType 是 CSS，则将 item 排序到第一个 JS 前面
-        else if (itemType === "js" && selectItemType === "css") {
-            const jsCount = this.snippetsList.filter((s: any) => s.type === "js").length;
-            if (jsCount > 1) {
-                // 找到第一个 JS 的位置
-                targetIndex = this.snippetsList.findIndex((s: any) => s.type === "js");
-            } else {
-                // JS 数量小于等于 1，不进行排序
-                this.snippetsList.splice(fromIndex, 0, moved);
-                return false;
-            }
-        }
-        // 如果 itemType 和 selectItemType 都是 CSS 或都是 JS，则根据拖拽方向排序
-        else {
-            if (isTop) {
-                // 拖拽到上方
-                if (fromIndex < toIndex) {
-                    targetIndex = toIndex - 1; // 从前面拖拽到后面
-                } else {
-                    targetIndex = toIndex;     // 从后面拖拽到前面
-                }
-            } else {
-                // 拖拽到下方
-                if (fromIndex < toIndex) {
-                    targetIndex = toIndex;     // 从前面拖拽到后面
-                } else {
-                    targetIndex = toIndex + 1; // 从后面拖拽到前面
-                }
-            }
-        }
-
-        // 插入到目标索引位置
-        this.snippetsList.splice(targetIndex, 0, moved);
-
-        // 位置没有变化的话就不继续执行
-        if (targetIndex === fromIndex) {
-            this.console.log("executeDragSort: The position has not changed.");
+        // 从 Store 移动（含 CSS/JS 分区跨界修正），位置没有变化则不做后续 DOM 更新与广播
+        const hasPositionChanged = this.snippetStore.move(itemId, selectItemId, isTop);
+        if (!hasPositionChanged) {
             return false;
         }
 

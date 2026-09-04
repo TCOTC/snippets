@@ -56,6 +56,86 @@ export class SnippetStore {
     }
 
     /**
+     * 拖拽排序：将代码片段移动到目标片段前/后
+     * 保持 CSS 在前、JS 在后的分区：拖拽跨分区时按分区边界落位；
+     * 目标片段不存在或位置实际未变化时返回 false。
+     * 位置变化后统一触发 SNIPPETS_CHANGED 事件。
+     * @param id 被移动的代码片段 ID
+     * @param targetId 目标代码片段 ID
+     * @param isTop 是否移动到目标上方
+     * @returns 是否真的发生了位置变化
+     */
+    move(id: string, targetId: string, isTop: boolean): boolean {
+        const snippetsList = this.storage.get();
+        const fromIndex = snippetsList.findIndex((s: Snippet) => s.id === id);
+        const toIndex = snippetsList.findIndex((s: Snippet) => s.id === targetId);
+        if (fromIndex === -1 || toIndex === -1) {
+            return false;
+        }
+        const snippetType = snippetsList[fromIndex].type;
+        const targetType = snippetsList[toIndex].type;
+
+        // 先移除原有项
+        const [moved] = snippetsList.splice(fromIndex, 1);
+        let targetIndex = toIndex;
+
+        // 如果 snippetType 是 CSS 而 targetType 是 JS，则将片段排序到最后一个 CSS 后面
+        if (snippetType === "css" && targetType === "js") {
+            const cssCount = snippetsList.filter((s: Snippet) => s.type === "css").length;
+            if (cssCount > 1) {
+                // 找到最后一个 CSS 的位置
+                targetIndex = snippetsList.map((s: Snippet) => s.type).lastIndexOf("css") + 1;
+            } else {
+                // CSS 数量小于等于 1，不进行排序
+                snippetsList.splice(fromIndex, 0, moved);
+                return false;
+            }
+        }
+        // 如果 snippetType 是 JS 而 targetType 是 CSS，则将片段排序到第一个 JS 前面
+        else if (snippetType === "js" && targetType === "css") {
+            const jsCount = snippetsList.filter((s: Snippet) => s.type === "js").length;
+            if (jsCount > 1) {
+                // 找到第一个 JS 的位置
+                targetIndex = snippetsList.findIndex((s: Snippet) => s.type === "js");
+            } else {
+                // JS 数量小于等于 1，不进行排序
+                snippetsList.splice(fromIndex, 0, moved);
+                return false;
+            }
+        }
+        // 如果 snippetType 和 targetType 都是 CSS 或都是 JS，则根据拖拽方向排序
+        else {
+            if (isTop) {
+                // 拖拽到上方
+                if (fromIndex < toIndex) {
+                    targetIndex = toIndex - 1; // 从前面拖拽到后面
+                } else {
+                    targetIndex = toIndex;     // 从后面拖拽到前面
+                }
+            } else {
+                // 拖拽到下方
+                if (fromIndex < toIndex) {
+                    targetIndex = toIndex;     // 从前面拖拽到后面
+                } else {
+                    targetIndex = toIndex + 1; // 从后面拖拽到前面
+                }
+            }
+        }
+
+        // 插入到目标索引位置
+        snippetsList.splice(targetIndex, 0, moved);
+
+        // 位置没有变化的话就不继续执行
+        if (targetIndex === fromIndex) {
+            return false;
+        }
+
+        this.storage.set(snippetsList);
+        this.eventBus.emit(SNIPPETS_CHANGED, id);
+        return true;
+    }
+
+    /**
      * 在指定代码片段之前插入新代码片段（复制场景：副本紧邻原片段上方）
      * 前置条件：锚点存在于列表中（复制源来自列表）；若缺失，回退按分区插入（upsert 新增语义），
      * 避免副本丢失，同时保证 CSS 在前、JS 在后的分区不被破坏。
