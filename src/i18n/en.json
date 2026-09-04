@@ -47,7 +47,6 @@
   "feedbackIssue": "Feedback issues",
   "feedbackIssueDescription": "Open plugin's repository page, welcome to click Star to support the author",
   "feedbackIssueButton": "Open GitHub",
-  "notificationSwitch": "Notification master switch",
   "ignoreNoticeButtonAriaLabel": "this notice can be re-enabled in plugin settings",
   "noLongerShow": "Don't show again",
   "reloadUIAfterModifyJS": "Modifying JS snippets requires reloading the interface to ensure that the changes take effect ${ignoreNoticeButton}",

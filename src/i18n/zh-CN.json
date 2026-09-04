@@ -47,7 +47,6 @@
   "feedbackIssue": "反馈问题",
   "feedbackIssueDescription": "打开插件的仓库页面，欢迎点击 Star 支持作者",
   "feedbackIssueButton": "打开 GitHub",
-  "notificationSwitch": "通知总开关",
   "ignoreNoticeButtonAriaLabel": "在插件设置中可以重新开启该通知",
   "noLongerShow": "不再提示",
   "reloadUIAfterModifyJS": "修改 JS 代码片段后需重新加载界面才能保证生效 ${ignoreNoticeButton}",

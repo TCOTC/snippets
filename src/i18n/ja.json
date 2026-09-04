@@ -47,7 +47,6 @@
   "feedbackIssue": "問題を報告",
   "feedbackIssueDescription": "プラグインのリポジトリページを開きます。Starをクリックして作者をサポートしてください",
   "feedbackIssueButton": "GitHubを開く",
-  "notificationSwitch": "通知マスタースイッチ",
   "ignoreNoticeButtonAriaLabel": "この通知はプラグイン設定で再び有効にすることができます",
   "noLongerShow": "再表示しない",
   "reloadUIAfterModifyJS": "JSスニペットを変更した後は、変更を確実に有効にするためにインターフェースを再読み込みする必要があります ${ignoreNoticeButton}",

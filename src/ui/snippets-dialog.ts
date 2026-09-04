@@ -25,7 +25,7 @@ export class SnippetsDialog {
      * @param confirmText 确认按钮的文案
      * @returns 代码片段编辑对话框 HTML 字符串
      */
-    genEditDialogHtml(snippet: Snippet, confirmText: string = this.plugin.i18n.save): string {
+    private genEditDialogHtml(snippet: Snippet, confirmText: string = this.plugin.i18n.save): string {
         const showPublishCheckbox = this.plugin.menuView.isShowPublishCheckbox();
         // TODO功能: 在删除按钮左边加一个创建副本按钮（始终显示），点击之后创建副本（不直接保存，是新建的代码片段，需要手动点击保存按钮）并且打开编辑对话框
         return `
@@ -161,10 +161,7 @@ export class SnippetsDialog {
                         // 发送广播消息，在其他窗口移除代码片段元素
                         this.plugin.syncService?.broadcast({type: "snippet_element_remove", snippetId: snippet.id, snippetType: snippet.type});
                     } else {
-                        let realSnippet: Snippet | undefined | false = this.plugin.snippetsList.find((s: Snippet) => s.id === snippet.id);
-                        if (!realSnippet) {
-                            realSnippet = await this.plugin.snippetManager.getSnippetById(snippet.id);
-                        }
+                        const realSnippet = await this.plugin.snippetManager.getSnippetById(snippet.id);
                         if (!realSnippet) return;
                         this.plugin.snippetManager.updateSnippetElement(realSnippet, undefined, false);
                         // 发送广播消息，在其他窗口更新代码片段元素
@@ -465,7 +462,12 @@ export class SnippetsDialog {
      * @param snippetName 代码片段名称
      * @param confirm 确认回调
      */
-    openDeleteDialog(snippetName: string, confirm?: () => void) {
+    /**
+     * 打开代码片段删除确认对话框
+     * @param snippetName 代码片段名称
+     * @param confirm 确认删除回调
+     */
+    private openDeleteDialog(snippetName: string, confirm?: () => void) {
         // TODO功能: 实现了代码片段回收站之后，增加一个“不再提示”按钮，点击之后修改配置项、弹出消息说明可以在插件设置中开关
         this.openConfirm(
             this.plugin.i18n.deleteConfirm,
@@ -473,10 +475,7 @@ export class SnippetsDialog {
             "jcsm-snippet-delete",
             undefined,
             this.plugin.i18n.delete,
-            () => {
-                // 删除代码片段
-                confirm?.();
-            }
+            confirm
         );
 
         // 不需要移除菜单上的 b3-menu__item--current，方便判断点击的是哪个代码片段
@@ -484,14 +483,14 @@ export class SnippetsDialog {
     }
 
     /**
-     * 打开代码片段取消对话框
+     * 打开代码片段取消确认对话框
      * @param snippet 代码片段
      * @param isNew 是否是新建代码片段
      * @param changes 变更内容
      * @param confirm 确认回调
      * @param cancel 取消回调
      */
-    openCancelDialog(snippet: Snippet, isNew?: boolean, changes?: string[], confirm?: () => void, cancel?: () => void) {
+    private openCancelDialog(snippet: Snippet, isNew?: boolean, changes?: string[], confirm?: () => void, cancel?: () => void) {
         const snippetName = snippet.name.trim();
         let text: string;
         if (isNew) {
@@ -511,8 +510,8 @@ export class SnippetsDialog {
             "jcsm-snippet-cancel",
             this.plugin.i18n.continueEdit,
             this.plugin.i18n.giveUpEdit,
-            () => { confirm?.(); }, // 取消编辑代码片段
-            () => { cancel?.(); }
+            confirm,
+            cancel
         );
     }
 
@@ -526,7 +525,7 @@ export class SnippetsDialog {
      * @param confirm 确认回调
      * @param cancel 取消回调
      */
-    openConfirm(title: string, text: string, dataKey?: string, cancelText?: string, confirmText?: string, confirm?: () => void, cancel?: () => void) {
+    private openConfirm(title: string, text: string, dataKey?: string, cancelText?: string, confirmText?: string, confirm?: () => void, cancel?: () => void) {
         if (!text && !title) {
             confirm?.();
             return;

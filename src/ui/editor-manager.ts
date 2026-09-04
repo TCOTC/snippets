@@ -1,16 +1,13 @@
 // 代码片段编辑对话框的 CodeMirror 编辑器
-
 // 编辑器工厂纯函数（getEditorIndentUnit/createEditorExtensions/createCodeMirrorEditor，参数由调用方传入）
-
-// 与 EditorManager（主题模式监听启停、已打开编辑器随主题/配置更新与重建）同本模块；主题监听 observer 为
-
-// 实例字段：插件重载时 onunload 必停监听、重载后由 checkAndManageThemeWatch 按 DOM 现状自启。
-
-import {closeBrackets, closeBracketsKeymap} from "@codemirror/autocomplete"; // autocompletion, completionKeymap
+// 与 EditorManager（主题模式监听启停、已打开编辑器随主题/配置更新与重建）同本模块；
+// 主题监听 observer 为实例字段：插件重载时 onunload 必停监听、重载后由 checkAndManageThemeWatch 按 DOM 现状自启。
+import {closeBrackets, closeBracketsKeymap} from "@codemirror/autocomplete";
 import {defaultKeymap, history, historyKeymap, indentWithTab} from "@codemirror/commands";
 import {javascript} from "@codemirror/lang-javascript";
 import {css} from "@codemirror/lang-css";
 import {highlightSelectionMatches, searchKeymap} from "@codemirror/search";
+import type {Extension} from "@codemirror/state";
 import {EditorState} from "@codemirror/state";
 import {vscodeDark, vscodeLight} from "@uiw/codemirror-theme-vscode";
 import {
@@ -78,7 +75,7 @@ export function getEditorIndentUnit(indentUnitConfig: string): string {
  * @param i18n 插件 i18n 文案
  * @returns 编辑器扩展数组
  */
-export function createEditorExtensions(theme: any, language: string, indentUnitText: string, i18n: SnippetsEditorI18n) {
+export function createEditorExtensions(theme: Extension, language: string, indentUnitText: string, i18n: SnippetsEditorI18n) {
     // 根据语言类型设置占位符
     const placeholderText = language === "js" ? i18n.codeSnippetJS : i18n.codeSnippetCSS;
     // 根据语言类型选择相应的语言支持

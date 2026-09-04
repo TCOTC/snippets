@@ -12,11 +12,6 @@ import type PluginSnippets from "../index";
 export class FeedbackService {
     private readonly plugin: PluginSnippets;
 
-    /**
-     * 是否开启通知
-     */
-    private notificationSwitch = true; // 暂时默认开启
-
     constructor(plugin: PluginSnippets) {
         this.plugin = plugin;
     }
@@ -27,8 +22,8 @@ export class FeedbackService {
      * @param timeout 消息显示时间（毫秒）；-1 永不关闭；0 永不关闭，添加一个关闭按钮；undefined 默认 6000 毫秒
      */
     showNotification(messageI18nKey: string, timeout: number | undefined = undefined) {
-        if (this.notificationSwitch && (this.plugin.config as any)[messageI18nKey + "Notice"] && this.plugin.i18n[messageI18nKey]) {
-            // 全局通知开关开启、该通知选项开启、i18n 键存在 → 弹出通知
+        if ((this.plugin.config as any)[messageI18nKey + "Notice"] && this.plugin.i18n[messageI18nKey]) {
+            // 该通知选项开启且 i18n 键存在 → 弹出通知
             const ignoreNoticeButton = `<button class='jscm-snackbar-ignore-notice-button b3-button ariaLabel' aria-label='${this.plugin.i18n.ignoreNoticeButtonAriaLabel}'>${this.plugin.i18n.noLongerShow}</button>`;
             const message = this.plugin.i18n[messageI18nKey].replace("${ignoreNoticeButton}", ignoreNoticeButton);
             const messageId = PLUGIN_NAME + "-" + messageI18nKey;
