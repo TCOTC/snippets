@@ -19,6 +19,9 @@
 ### 已完成提交（main，最新在上）
 | commit | 内容 |
 |---|---|
+| `633801c` | refactor: toggleSnippetPublish 本窗口/同内核前端 origin 合流并修复 isPublish 语义 |
+| `2624c32` | docs: 记录 globalToggle/delete origin 合流进度 |
+| `25ddd38` | refactor: globalToggle/delete 本地远程 origin 合流，删除两个 Sync 镜像 |
 | `21ae512` | docs: 记录 jcsm 现状与死声明清理，阶段 3 壳方法清空进度 |
 | `5a93fb7` | refactor: 清理 jcsm 死类型声明与 3 个薄壳 Sync 方法 |
 | `fbd8a02` | docs: 明确提交须用户放行；记录 sync 分发注册表与 toggle 合并 |
@@ -52,7 +55,7 @@
 | `dd296e9` | refactor: 抽取纯工具函数到 `utils.ts` |
 | `4f2773e` | refactor: 抽取 `isValidJavaScriptCode` 到 `domain/snippet.ts` |
 
-当前工作区：**有未提交改动待用户确认**（`globalToggleSnippet`/`deleteSnippet` 本地与远程 origin 合流、两个 Sync 镜像删除，2026-09-04 批次）。
+当前工作区：**干净**（633801c 已提交；阶段 3 仅剩 `saveSnippetSync` 收敛，见下方「下一步建议」）。
 
 ### 已建模块
 - `src/core/event-bus.ts`（类型化 pub/sub，`on/off/emit/clear`；注意：勿用字段名 `eventBus`，会与 siyuan `Plugin` 基类成员冲突，内部用 `internalEventBus`）
@@ -106,6 +109,11 @@
 1. ~~是否确认删除“可删”消息~~（已撤销：同内核多实例下插件写库不经内核广播，插件广播不能删）。
 2. **CSS 实时预览放行原文（2026-09-04 用户拍板，方案 a）**：编辑中的 CSS 实时预览（`previewState: true`）广播豁免“禁原文”，允许携带编辑中的 CSS 文本——预览内容未保存、接收窗口无法自拉，且预览由本窗口显式操作触发、受众是同内核可信实例。豁免范围严格限定：仅 CSS 编辑中预览；**退出预览**（`previewState: false`）恢复用的是已保存片段，已去原文化（接收窗口自拉）。
 
+### 发布服务 isPublish 语义澄清（2026-09-04 双窗口实测 + 思源源码核对）
+- 实测暴露一个**既有 bug**：拨 A 窗口的发布开关，B 窗口菜单开关不同步（重开菜单才对）。根因：`isPublish()` 原实现读 `window.siyuan.config.publish.enable`（“内核是否启用发布服务”），导致只要内核开了发布服务，所有普通窗口都会误入 issue #33 预留的“维护发布注入元素”分支（不碰菜单 checkbox，且 `enabled=false` 时误删注入元素 / `store.remove`）。已修复：`isPublish()` 改为 `window.siyuan.isPublish`（**当前会话是否为发布站点**，由内核按会话角色注入：`kernel/util/websocket.go` 发布会话 + `kernel/api/system.go`；普通编辑前端恒 false）。同时修复接收分支 `checkbox.checked = !enabled`（菜单 publishSwitch 显示语义为 `checked = !disabledInPublish`，而载荷 enabled 即 disabledInPublish）。
+- **两个不同概念**：`config.publish.enable` = 内核是否启用发布服务（编辑端 UI 是否显示发布开关行 / 该显示逻辑 `isShowPublishCheckbox` 用它正确）；`window.siyuan.isPublish` = 当前会话是否发布站点。
+- **插件在发布站点的差异（源码实证）**：发布站点会话被内核标为只读角色（`kernel/model/role.go` `IsReadOnlyRole`：读者/访客），写 API 全被拒；插件能否加载取决于 manifest `disabledInPublish`（`kernel/model/plugin.go` `isPetalAccessableInPublish`）——**本插件 manifest 即 `"disabledInPublish": true`，发布站点不加载**（issue #33 因此现状不可达）；`disabledInPublish` 的真正消费方是思源发布系统——原生片段设置里该行仅在 `config.publish.enable` 时显示（`app/src/config/util/snippets.ts`），内核 `/api/snippet/getSnippet` 在只读上下文自动跳过 `DisabledInPublish` 片段（`kernel/api/snippet.go`），即“编辑端拨开关只是记元数据，发布端生成内容时消费”。
+
 ### 广播协议约束：消息不得携带代码片段原文（敏感信息）
 - **硬性约束（用户要求）**：跨窗口广播消息体中不允许包含 snippet 的 `content` 原文（代码可能含密钥、内网地址等敏感信息），只允许携带非敏感元数据（`snippetId`、`snippetType`、`name`、开关状态等）。
 - 接收窗口需要片段内容时，一律自行调用 `/api/snippet/getSnippet` 获取权威数据，禁止依赖消息中的原文。
@@ -115,7 +123,7 @@
 
 ### 下一步建议（朝目标架构，拆可验证子批推进）
 1. 阶段 2（Store 收敛）已完成：`domain/snippet-store.ts` 的 `remove`/`upsert`/`insertBefore`/`move`/`replaceAll` 已承接全部本地结构写，计数统一由 `SNIPPETS_CHANGED` 事件驱动。
-2. 阶段 3（sync 收敛）已过**传输 + 分发注册表 + 本地/远程 origin 合流过半**：`services/sync.ts` 含协议类型与 `BroadcastService`（连接/重连/窗口保活/类型化 `broadcast`/按 type 查表分发 `BroadcastHandlers`）；`index.ts` 的 `handleBroadcastMessage` switch 与 5 个 Sync 镜像已删（壳方法 3 个：`snippetsSortSync`/`updateSnippetElementSync`/`removeSnippetElementSync`，逻辑原样内联进注册键；有实质差异的镜像 2 个：`toggleSnippetSync`→`toggleSnippet(snippet, enabled, origin)`、`globalToggleSnippetSync`→`globalToggleSnippet(snippetType, enabled, origin, remotePreviewingSnippetIds)`、`deleteSnippetSync`→`deleteSnippet(id, snippetType, origin, remotePreviewState)`）。统一模式：**本地 = 自拉/就地改 + 落库 + 广播；远程 = 广播窗口已落库，仅按自身窗口状态同步 UI/元素，不落库、不广播**；注册键内联“远程解析”后调同方法传 `origin: "remote"`。**下一步**：按同一手法收敛剩余 2 个镜像——`snippet_toggle_publish`（Sync 含发布窗口特殊分支：启用→自拉后更新注入元素、禁用→移除元素 + store.remove；普通窗口→就地改 + 菜单开关同步；本地发布开关场景与远程行为差异需逐分支对照）与 `snippet_save`（含复制分支，最复杂；`setting_apply` 归阶段 4）。
+2. 阶段 3（sync 收敛）已过**传输 + 分发注册表 + 本地/同内核前端 origin 合流（剩 save）**：`services/sync.ts` 含协议类型与 `BroadcastService`（连接/重连/窗口保活/类型化 `broadcast`/按 type 查表分发 `BroadcastHandlers`）；`index.ts` 的 `handleBroadcastMessage` switch 与 6 个 Sync 镜像已删（壳方法 3 个：`snippetsSortSync`/`updateSnippetElementSync`/`removeSnippetElementSync`；有实质差异的镜像 3 个：`toggleSnippetSync`/`globalToggleSnippetSync`/`deleteSnippetSync`/`toggleSnippetPublishSync`——分别合流为 `toggleSnippet(snippet, enabled, origin)`/`globalToggleSnippet(snippetType, enabled, origin, remotePreviewingSnippetIds)`/`deleteSnippet(id, snippetType, origin, remotePreviewState)`/`toggleSnippetPublish(snippetId, enabled, origin)`，其中 toggleSnippetPublish 的 isPublish 判断依据已修复为 `window.siyuan.isPublish`，见上方「发布服务 isPublish 语义澄清」节）。统一模式：**本窗口操作 = 自拉/就地改 + 落库 + 广播；同内核其他前端实例 = 广播实例已落库，仅按自身状态同步 UI/元素，不落库、不广播**；注册键内联“来源解析”后调同方法传 `origin: "remote"`。**下一步**：按同一手法收敛剩余最后一个镜像 `snippet_save`（最复杂：复制分支——自拉副本 → upsert + 更新元素 + applySnippetUIChange 镜像菜单/对话框；非复制——比较旧片段后按需更新注入元素；含“本窗口旧片段”与权威态自拉 diff；合流前需逐分支对照；`setting_apply` 归阶段 4）。
 3. 之后：config 声明式（阶段 4）、UI 视图化（阶段 5）、jcsm 收敛（阶段 6，前置已启动：见上方「jcsm 现状」节）。
 
 ---
