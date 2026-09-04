@@ -350,6 +350,9 @@ export class SnippetsMenu {
 
         // 使用 requestAnimationFrame 确保元素完全渲染后再获取位置信息
         requestAnimationFrame(() => {
+            // 菜单已关闭或滚动容器已脱离文档时终止重试，避免高度为 0 时无限自递归
+            if (!this.menu || !scrollContainer.isConnected) return;
+
             // 获取菜单项相对于滚动容器的位置信息
             const containerRect = scrollContainer.getBoundingClientRect();
             const itemRect = menuItem.getBoundingClientRect();
@@ -475,6 +478,8 @@ export class SnippetsMenu {
                 this.plugin.snippetsType = newType;
                 this.setMenuSnippetsType(newType);
             }
+            // 键盘派发的事件处理完毕，直接返回；避免继续落入鼠标分支空转（键盘派发时 event.target 是菜单根元素）
+            return;
         }
 
         // 点击顶部

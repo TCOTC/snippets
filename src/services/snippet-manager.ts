@@ -389,7 +389,7 @@ export class SnippetManager {
             element?.remove();
         }
 
-        if (previewState === undefined && isEnabled && this.plugin.menuView.menu && snippet.type === this.plugin.snippetsType && !isSnippetsTypeEnabled) {
+        if (previewState === undefined && isEnabled && this.plugin.menuView.menu && snippet.type === this.plugin.snippetsType && !isSnippetsTypeEnabledFlag) {
             // 如果当前的操作是在非预览状态下、开启代码片段、开启了菜单、菜单上显示的是这个类型的代码片段、这个类型的代码片段是关闭状态 → 全局开关闪烁一下
             this.plugin.menuView.setSnippetsTypeSwitchBreathing();
         }
@@ -715,8 +715,11 @@ export class SnippetManager {
             snippet_element_remove: ({snippetId, snippetType}) => this.removeSnippetElement(snippetId, snippetType),
             snippets_sort: async () => {
                 this.plugin.console.log("snippetsSortSync");
-                // 重新加载代码片段列表（读取权威态语义）并刷新菜单
-                this.plugin.snippetsList = await this.getSnippetsList() as Snippet[];
+                // 重新加载代码片段列表（读取权威态语义）并刷新菜单；失败时保持现状（getSnippetsList 已弹错误提示），
+                // 避免把 false 写进 snippetsList 导致后续对列表的数组操作崩溃
+                const snippetsList = await this.getSnippetsList();
+                if (!snippetsList) return;
+                this.plugin.snippetsList = snippetsList;
                 this.plugin.menuView.menuItems && this.plugin.menuView.initSnippetsContainer();
             },
         };

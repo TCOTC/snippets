@@ -576,16 +576,30 @@ export class SnippetsDialog {
             this.plugin.console.log("confirmDialog click", event);
             // 阻止冒泡，否则点击 Dialog 时会导致 menu 关闭
             event.stopPropagation();
-            let target = event.target as HTMLElement;
             const isDispatch = typeof event.detail === "string";
-            while (target && target !== dialog.element || isDispatch) {
-                if (target.dataset.type === "cancel" || (isDispatch && event.detail=== "Escape")) {
-                        cancel?.();
-                        this.closeByElement(dialog.element);
+            if (isDispatch) {
+                // 键盘派发（全局键盘协调器会把任意 keydown 以 detail 派发到最顶层模态对话框）：
+                // 只处理 Esc/Enter，其余按键忽略，避免 DOM 向上遍历到 null 时抛 TypeError
+                if (event.detail === "Escape") {
+                    cancel?.();
+                    this.closeByElement(dialog.element);
+                } else if (event.detail === "Enter") {
+                    confirm?.();
+                    this.closeByElement(dialog.element);
+                }
+                return;
+            }
+
+            // 鼠标路径：沿事件目标向上查找按钮
+            let target = event.target as HTMLElement;
+            while (target && target !== dialog.element) {
+                if (target.dataset.type === "cancel") {
+                    cancel?.();
+                    this.closeByElement(dialog.element);
                     break;
-                } else if (target.dataset.type === "confirm" || (isDispatch && event.detail=== "Enter")) {
-                        confirm?.();
-                        this.closeByElement(dialog.element);
+                } else if (target.dataset.type === "confirm") {
+                    confirm?.();
+                    this.closeByElement(dialog.element);
                     break;
                 } else if (target === closeElement || target === scrimElement) {
                     cancel?.();

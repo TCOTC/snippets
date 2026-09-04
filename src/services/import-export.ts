@@ -350,16 +350,20 @@ export class ImportExportService {
      * @returns 处理后的代码片段数组
      */
     private processImportedSnippets(importedSnippets: Snippet[]): Snippet[] {
+        // 冲突集合 = 当前工作空间已有 ID ∪ 本文件内已处理过的 ID（含新生成的），确保两两不重复
         const currentIds = new Set(this.plugin.snippetsList.map(s => s.id));
 
         return importedSnippets.map(snippet => {
-            // 如果 ID 重复，生成新的 ID
-            if (snippet.id && currentIds.has(snippet.id)) {
-                snippet.id = genNewSnippetId(this.plugin.snippetsList);
-            } else if (!snippet.id) {
-                // 如果没有 ID，生成新的 ID
-                snippet.id = genNewSnippetId(this.plugin.snippetsList);
+            // ID 缺失或与现有/文件内前序片段重复时，重新生成并回填冲突集合
+            // （否则同一文件内相同 ID 的第二条不会换 ID，落库后重复 ID 会互相覆盖注入元素/菜单操作错乱）
+            if (!snippet.id || currentIds.has(snippet.id)) {
+                let newId = genNewSnippetId(this.plugin.snippetsList);
+                while (currentIds.has(newId)) {
+                    newId = genNewSnippetId(this.plugin.snippetsList);
+                }
+                snippet.id = newId;
             }
+            currentIds.add(snippet.id);
 
             return snippet;
         });

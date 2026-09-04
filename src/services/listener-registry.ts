@@ -86,12 +86,8 @@ export class ListenerRegistry {
         const elementIndex = this.listeners.findIndex(item => item.element === element);
         if (elementIndex === -1) return;
 
+        // findIndex 返回 -1 时已提前 return，此处必存在该元素的监听器记录（重复调用 removeListener 会命中上面的 -1 早退）
         const elementListeners = this.listeners[elementIndex];
-        if (!elementListeners) {
-            // 未获取到 elementListeners，有可能是重复调用了 removeListener，直接返回
-            this.plugin.console.warn("removeListener: elementListeners is not found");
-            return;
-        }
 
         if (event) {
             if (fn) {

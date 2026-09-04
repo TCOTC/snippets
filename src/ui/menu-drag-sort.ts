@@ -162,8 +162,8 @@ export class MenuDragSort {
         if (!selectItem) return false;
         const selectItemId = selectItem.dataset.id;
         const selectItemType = selectItem.dataset.type;
+        // classList.contains 恒返回 boolean，无需再判 undefined
         const isTop = selectItem.classList.contains("dragover__top");
-        if (isTop === undefined) return false;
 
         if (!itemId || !itemType || !selectItemId || !selectItemType || itemId === selectItemId) {
             return false;
@@ -263,8 +263,6 @@ export class MenuDragSort {
             documentSelf.onmousemove = null;
             documentSelf.onmouseup = null;
             documentSelf.ondragstart = null;
-            documentSelf.onselectstart = null;
-            documentSelf.onselect = null;
 
             ghostElement?.remove();
             item.style.opacity = "";
