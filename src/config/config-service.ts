@@ -1,5 +1,5 @@
 // 插件配置：声明式配置项定义 + 装配、持久化与热应用
-// 本模块统一承载：配置项类型与条目构建（SnippetsConfigItem/createSnippetsConfigItems，条目直连插件实例
+// 本模块统一承载：配置项类型与条目构建（SnippetsConfigItem/createSnippetsConfigItems，条目持有插件实例
 // 引用，运行态属性在调用时才求值）、ConfigService（配置读取与版本校验 → 逐项写入插件实例
 // 字段 → 构建 Setting 项；对话框保存 saveFromDialog；配置热应用 applyConfig（onDataChanged 同源）；
 // 通知禁用持久化 disableNotification）。
@@ -118,7 +118,7 @@ export class ConfigService {
 
     /**
      * 构建配置项（条目定义见本模块 createSnippetsConfigItems；仅构建一次并复用，
-     * 条目直连插件实例引用，运行态属性在 onApply/createActionElement 调用时才求值）
+     * 条目持有插件实例引用，运行态属性在 onApply/createActionElement 调用时才求值）
      * 注意：构建时不使用 this.plugin.console 之类的方法——它们需配置加载完成后才可用
      */
     private initConfigItems() {
@@ -359,7 +359,7 @@ export class ConfigService {
 }
 
 /**
- * 构建全部配置项（直连插件实例引用）
+ * 构建全部配置项（条目持有插件实例引用）
  * 求值时机：ignore/description 等属性值在构建时刻求值；
  * createActionElement/onApply 箭头函数体内的 plugin 读取在函数被调用时才执行，
  * 因此菜单容器等运行态引用能拿到实时值，不会停留在构建时刻的快照。

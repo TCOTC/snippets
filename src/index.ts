@@ -160,7 +160,7 @@ export default class PluginSnippets extends Plugin {
 
 
     // ================================ 运行态 ================================
-    // 运行期会话状态（菜单/文件监听/编辑对话框等各模块直连读取；插件重载后以内核数据或配置默认值重建）。
+    // 运行期会话状态（供菜单/文件监听/编辑对话框等各模块读取；插件重载后以内核数据或配置默认值重建）。
 
     /**
      * 是否需要重新加载界面（JS 修改后提示用户重载的呼吸标志；属菜单 UI 运行态，界面刷新后自然复位）
@@ -213,34 +213,34 @@ export default class PluginSnippets extends Plugin {
         // 变更后统一经 Store 刷新菜单计数）
         this.snippetStore = new SnippetStore(this);
 
-        // 初始化代码片段管理器（直连本实例，运行态延迟到调用时读取）
+        // 初始化代码片段管理器（运行态延迟到调用时读取）
         this.snippetManager = new SnippetManager(this);
 
-        // 初始化顶栏菜单管理器（直连本实例，运行态延迟到调用时读取）
+        // 初始化顶栏菜单管理器（运行态延迟到调用时读取）
         this.menuView = new SnippetsMenu(this);
 
-        // 初始化编辑器对话框生命周期管理器（直连本实例，editorIndentUnit 等调用时读取）
+        // 初始化编辑器对话框生命周期管理器（editorIndentUnit 等调用时读取）
         this.editorManager = new EditorManager(this);
 
-        // 初始化配置服务（直连本实例；配置读写经本模块自持存储键名与插件生命周期数据方法）
+        // 初始化配置服务（配置读写经本模块自持存储键名与插件生命周期数据方法）
         this.configService = new ConfigService(this);
 
-        // 初始化设置对话框管理器（直连本实例）
+        // 初始化设置对话框管理器
         this.settingDialog = new SettingDialog(this);
 
-        // 初始化文件监听服务（直连本实例，配置字段经实例读取）
+        // 初始化文件监听服务（配置字段经插件实例读取）
         this.fileWatchService = new FileWatchService(this);
 
-        // 初始化导入导出服务（直连本实例，列表读写/菜单刷新经服务内转发）
+        // 初始化导入导出服务（列表读写/菜单刷新经服务内转发）
         this.importExportService = new ImportExportService(this);
 
-        // 初始化通知/错误提示服务（直连本实例，配置开关经实例字段读取）
+        // 初始化通知/错误提示服务（配置开关经实例字段读取）
         this.feedbackService = new FeedbackService(this);
 
         // 初始化事件监听器簿记（监听器登记与元素清理见 src/services/listener-registry.ts）
         this.listenerRegistry = new ListenerRegistry(this);
 
-        // 初始化对话框管理器（代码片段编辑对话框/确认对话框/按元素关闭等；直连本实例）
+        // 初始化对话框管理器（代码片段编辑对话框/确认对话框/按元素关闭等）
         this.snippetsDialog = new SnippetsDialog(this);
     }
 

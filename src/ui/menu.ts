@@ -13,7 +13,7 @@ import type {Snippet, SnippetType} from "../types";
  * 顶栏菜单管理器
  * 菜单状态（menu/menuItems/呼吸标志）为本类内部状态，拖拽交互与拖拽状态见 MenuDragSort（src/ui/menu-drag-sort.ts）；
  * 展示配置（snippetSearchType/snippetSortType/snippetOptionClickBehavior/show* 等）为插件实例字段，
- * 经 plugin 延迟读取；业务动作经 plugin.snippetManager/plugin.snippetsDialog 等直连。
+ * 经 plugin 延迟读取；业务动作调用 plugin.snippetManager/plugin.snippetsDialog 等模块方法。
  */
 export class SnippetsMenu {
     private readonly plugin: PluginSnippets;
@@ -79,7 +79,7 @@ export class SnippetsMenu {
 
     /**
      * 初始化顶栏按钮
-     * 顶栏按钮即菜单入口：schema onApply（topBarPosition 变更）/生命周期装配经插件直连本方法。
+     * 顶栏按钮即菜单入口：schema onApply（topBarPosition 变更）/生命周期装配均调用本方法。
      */
     async initTopBar() {
         const topBarKeymap = this.plugin.getCustomKeymapByCommand("openSnippetsManager");
