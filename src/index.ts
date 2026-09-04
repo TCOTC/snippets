@@ -1,6 +1,7 @@
 import "./index.scss";
 import {FileState, ListenersArray, Snippet, SnippetType} from "./types";
 import {isSnippetsTypeEnabled, isValidJavaScriptCode} from "./domain/snippet";
+import {SNIPPETS_CHANGED, SnippetStore} from "./domain/snippet-store";
 import {hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, showElementTooltip} from "./utils";
 import {getFile, putFile, renameFile} from "./services/storage";
 import {EventBus} from "./core/event-bus";
@@ -62,7 +63,6 @@ const LOG_NAME = "plugin-snippets.log";            // 日志文件名
 const TEMP_PLUGIN_PATH = "/temp/plugin-snippets/"; // 插件临时文件路径
 const TEMP_EXPORT_PATH = "/temp/export/";          // 导入导出临时文件路径
 const BROADCAST_CHANNEL_NAME = "snippets-plugin-sync"; // 广播通道名称
-const SNIPPETS_CHANGED = "snippets-changed"; // 代码片段列表变更事件
 // const TAB_TYPE = "custom-tab"; // 自定义标签页
 
 // 思源 3.7.0+ 的 openSetting 支持第二个参数 tab 用于指定初始选项卡
@@ -110,9 +110,22 @@ export default class PluginSnippets extends Plugin {
     private internalEventBus = new EventBus();
 
     /**
+     * 代码片段列表 Store：数据写路径的单一入口，统一在列表变更后触发 SNIPPETS_CHANGED 事件
+     */
+    private snippetStore!: SnippetStore;
+
+    /**
      * 启用插件
      */
     public async onload() {
+        // 初始化代码片段列表 Store，以 window.siyuan.jcsm.snippetsList 作为跨 reload 存活的存储后端
+        this.snippetStore = new SnippetStore(this.internalEventBus, {
+            get: () => this.snippetsList,
+            set: (snippetsList) => {
+                this.snippetsList = snippetsList;
+            },
+        });
+
         // 订阅代码片段列表变更事件：菜单打开时刷新各类型计数
         this.internalEventBus.on(SNIPPETS_CHANGED, (_snippetId: string) => {
             this.setMenuSnippetCount();
@@ -2884,12 +2897,11 @@ export default class PluginSnippets extends Plugin {
         } else if (snippet === false) {
             return;
         }
-        this.snippetsList = this.snippetsList.filter((snippet: Snippet) => snippet.id !== id);
+        // 从 Store 中删除：统一更新列表并广播变更事件，菜单在打开时会自行刷新计数
+        this.snippetStore.remove(id);
         // 需要等 getSnippetsList() 调用的 API 执行完毕之后才推送更新，其他窗口需要用到代码片段的最新数据
         void await this.saveSnippetsList(this.snippetsList);
 
-        // 广播列表变更，菜单在打开时会自行刷新计数
-        this.internalEventBus.emit(SNIPPETS_CHANGED, id);
         void this.removeSnippetElement(id, snippetType);
         this.applySnippetUIChange(snippet, false);
 
@@ -2921,10 +2933,8 @@ export default class PluginSnippets extends Plugin {
         const snippet = this.snippetsList.find((s: Snippet) => s.id === snippetId);
         if (snippet) {
             this.applySnippetUIChange(snippet, false);
-            // 更新 this.snippetsList，删除该代码片段
-            this.snippetsList = this.snippetsList.filter((s: Snippet) => s.id !== snippetId);
-            // 广播列表变更，菜单在打开时会自行刷新计数（须在列表更新之后，否则计数仍是删除前的值）
-            this.internalEventBus.emit(SNIPPETS_CHANGED, snippetId);
+            // 从 Store 中删除：统一在列表更新之后触发计数刷新事件（否则计数仍是删除前的值）
+            this.snippetStore.remove(snippetId);
         }
     }
 
