@@ -88,8 +88,9 @@ export default class PluginSnippets extends Plugin {
 
     /**
      * 编辑器对话框生命周期管理（主题监听 + 已打开编辑器更新/重建，实现见 src/ui/editor-manager.ts）
+     * （SnippetsDialog/SnippetsMenu 直连访问，故公开）
      */
-    private editorManager!: EditorManager;
+    editorManager!: EditorManager;
 
     /**
      * 设置对话框管理器（装配与交互见 src/ui/setting-dialog.ts，公开 openSetting 委托到它）
@@ -238,45 +239,8 @@ export default class PluginSnippets extends Plugin {
             isDialogOrMenuOpen: () => this.menuView.isDialogAndMenuOpen(),
         });
 
-        // 初始化对话框管理器（代码片段编辑对话框/确认对话框/按元素关闭等；运行态经读取器/动作实时转发）
-        this.snippetsDialog = new SnippetsDialog({
-            logger: this.console,
-            i18n: () => this.i18n,
-            isMobile: () => this.isMobile,
-            addListener: (element, event, fn, options) => this.addListener(element, event, fn, options),
-            removeListener: (element, event, fn, options) => this.removeListener(element, event, fn, options),
-            removeSnippetEditButtonActive: (snippetId) => this.menuView.removeSnippetEditButtonActive(snippetId),
-            destroyGlobalKeyDownHandler: () => this.menuView.destroyGlobalKeyDownHandler(),
-            checkThemeWatch: (isOpen) => this.editorManager.checkAndManageThemeWatch(isOpen),
-            isShowPublishCheckbox: () => this.menuView.isShowPublishCheckbox(),
-            realTimePreview: () => this.realTimePreview,
-            editorIndentUnit: () => this.editorIndentUnit,
-            multipleSnippetEditors: () => this.multipleSnippetEditors,
-            autoReloadUIAfterModifyJS: () => this.autoReloadUIAfterModifyJS,
-            isReloadUIRequired: () => this.isReloadUIRequired,
-            snippetsList: () => this.snippetsList,
-            setSnippetEditButtonActive: (snippetId) => this.menuView.setSnippetEditButtonActive(snippetId),
-            showErrorMessage: (message) => this.showErrorMessage(message),
-            getSnippetById: (id) => this.snippetManager.getSnippetById(id),
-            saveSnippet: (snippet) => this.snippetManager.saveSnippet(snippet),
-            deleteSnippet: (id, snippetType) => this.snippetManager.deleteSnippet(id, snippetType),
-            updateSnippetElement: (snippet, enabled, previewState) => this.snippetManager.updateSnippetElement(snippet, enabled, previewState),
-            removeSnippetElement: (snippetId, snippetType) => this.snippetManager.removeSnippetElement(snippetId, snippetType),
-            postReloadUI: () => this.postReloadUI(),
-            clearMenuSelection: () => this.menuView.clearMenuSelection(),
-            broadcastElementRemove: (snippetId, snippetType) => {
-                this.syncService?.broadcast({type: "snippet_element_remove", snippetId, snippetType});
-            },
-            broadcastElementUpdate: (snippetId, previewState, snippet) => {
-                if (snippet) {
-                    // CSS 编辑中实时预览（previewState: true）豁免禁原文：内容未保存、接收方无法自拉，允许携带编辑中的 CSS 文本
-                    this.syncService?.broadcast({type: "snippet_element_update", snippet, previewState});
-                } else {
-                    // 退出预览（previewState: false）：只发 ID，接收方自拉已保存片段恢复
-                    this.syncService?.broadcast({type: "snippet_element_update", snippetId, previewState});
-                }
-            },
-        });
+        // 初始化对话框管理器（代码片段编辑对话框/确认对话框/按元素关闭等；直连本实例）
+        this.snippetsDialog = new SnippetsDialog(this);
 
         // 订阅代码片段列表变更事件：菜单打开时刷新各类型计数
         this.internalEventBus.on(SNIPPETS_CHANGED, (_snippetId: string) => {
