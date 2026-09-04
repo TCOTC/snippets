@@ -557,8 +557,9 @@ export class SnippetsDialog {
         const container = dialog.element.querySelector(".b3-dialog__container") as HTMLElement;
         if (container) container.style.maxHeight = "90vh";
 
-        // 删除确认对话框默认聚焦红色删除按钮（确认即删除，Esc 仍可取消）
-        if (dataKey === "jcsm-snippet-delete") {
+        // 删除确认与取消（放弃修改）确认对话框默认聚焦红色主按钮：Enter 会先激活该按钮
+        // （见 setDialogKeyHandler Enter 分支 isDialogButtonFocused 交还浏览器默认行为），Esc 仍可取消
+        if (dataKey === "jcsm-snippet-delete" || dataKey === "jcsm-snippet-cancel") {
             const confirmButton = dialog.element.querySelector("button[data-type='confirm']") as HTMLButtonElement;
             confirmButton?.focus();
         }
