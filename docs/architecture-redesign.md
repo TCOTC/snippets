@@ -15,11 +15,15 @@
 - **提交必须由用户明确放行**：任何代码/文档改动完成后都**不得擅自提交**——先把改动与摘要展示给用户检查，用户说"继续/提交"后才 `git commit`（2026-09-04 用户追加强调："必须要我让你继续进行下一步，才提交代码，因为我要先检查"）。"让继续下一步"与"可以提交本批"视同放行。
 - **"继续"= 提交本批后再直接推进下一轮**（2026-09-04 用户再次明确）：用户说"继续"时，应先提交当前已展示批次的改动（代码与 docs 各自独立 commit），随后**不必再次停下询问，直接开始并完成下一轮小步改动**，改完再展示摘要等下一次"继续"；仅在方向分歧或需用户拍板的决策点才停下询问。
 - **方向由 AI 自主挑**，用户只判断"每批对不对"，不要反复让用户做方向决策。
-- **对齐思源原生实现 / 优先用官方 API**：凡思源已提供 API 的就用 API，不自造重复实现；需对照思源源码（`d:\CodeProjects\siyuan` 已加入工作区）核对。
-
+- **对齐思源原生实现 / 优先用官方 API**：凡思源已提供 API 的就用 API，不自造重复实现；需对照思源源码（`d:\CodeProjects\siyuan` 已加入工作区）核对。- **以最新思源代码为基准**（2026-09-04 用户明确）：插件重构始终以最新思源代码为基准，不保留面向旧内核/旧 API 的兼容路径；需据此判断与思源同步演进中的功能取舍。
 ### 已完成提交（main，最新在上）
 | commit | 内容 |
 |---|---|
+| `98a84d6` | refactor: 退役 setting_apply 广播，配置跨窗口同步收口内核 onDataChanged |
+| `df4ff9c` | refactor: CodeMirror 编辑器工厂外迁至 src/ui/codemirror.ts |
+| `acb64cb` | refactor: configItems 类型与条目定义外迁至 src/config/schema.ts |
+| `c276e04` | refactor: applySetting 改查 configItems.onApply 分发，三个按钮显隐项迁入声明 |
+| `cb25da5` | docs: 明确继续指令即提交本批并直接推进下一轮 |
 | `57313b1` | refactor: saveSnippet 本窗口/同内核前端 origin 合流，删除 saveSnippetSync 镜像 |
 | `a0e9f11` | docs: 记录 toggleSnippetPublish 合流与 isPublish 语义澄清 |
 | `633801c` | refactor: toggleSnippetPublish 本窗口/同内核前端 origin 合流并修复 isPublish 语义 |
@@ -58,7 +62,7 @@
 | `dd296e9` | refactor: 抽取纯工具函数到 `utils.ts` |
 | `4f2773e` | refactor: 抽取 `isValidJavaScriptCode` 到 `domain/snippet.ts` |
 
-当前工作区：**干净**（57313b1 已提交；阶段 3 sync 收敛收官——最后一个 `*Sync` 镜像 `saveSnippetSync` 已并入 `saveSnippet`，见下方「下一步建议」）。
+当前工作区：**干净**（98a84d6 已提交；阶段 3 收官，阶段 4 进行中：config 声明式已启——onApply 分发与三项按钮迁移、configItems 外迁 schema.ts、CodeMirror 工厂外迁 codemirror.ts、setting_apply 退役收口内核推送，见下方「下一步建议」）。
 
 ### 已建模块
 - `src/core/event-bus.ts`（类型化 pub/sub，`on/off/emit/clear`；注意：勿用字段名 `eventBus`，会与 siyuan `Plugin` 基类成员冲突，内部用 `internalEventBus`）
@@ -105,7 +109,7 @@
 | `snippet_save` / `snippet_delete` / `snippet_toggle` / `snippet_toggle_publish` / `snippets_sort` | 已保存内容/开关/排序 | **保留**：插件写库只调 snippet API、内核不广播，需自定义广播同步其他插件实例；已去原文化（只发元数据 + ID） |
 | `snippet_toggle_global` | 全局开关 | **保留（可精简）**：`/api/setting/setSnippet` 已即时广播使其他实例原生全量重渲染；Sync 仅保留“预览片段保护”与“菜单开关刷新” |
 | `snippet_element_update` / `snippet_element_remove`（预览态） | 实时预览/退出预览 | **保留**：临时内容未保存，内核无法同步，这是插件唯一必须自理的跨窗口状态；`previewState: true` 预览豁免原文，`previewState: false` 退出预览已去原文化（自拉已保存片段恢复） |
-| `setting_apply` | 插件配置 | **保留**：petal 配置本地写不跨窗口，内核不广播 |
+| ~~`setting_apply`~~ | ~~插件配置~~ | **已退役（98a84d6）**：原结论“petal 配置本地写不跨窗口、内核不广播”在思源 2a11f8ab（#19132）起不再成立——文件接口写入会按发起实例 app 排除自身后推送其他实例（reason=overwrite），配置跨窗口同步收口到 `onDataChanged`（详见下方「插件配置跨窗口同步收口（2026-09-04）」节） |
 | `window_online` / `window_offline` / `window_online_feedback` | 窗口保活发现 | 保留（消息广播前需确认有其他窗口在线） |
 
 **已决问题**：
@@ -117,17 +121,23 @@
 - **两个不同概念**：`config.publish.enable` = 内核是否启用发布服务（编辑端 UI 是否显示发布开关行 / 该显示逻辑 `isShowPublishCheckbox` 用它正确）；`window.siyuan.isPublish` = 当前会话是否发布站点。
 - **插件在发布站点的差异（源码实证）**：发布站点会话被内核标为只读角色（`kernel/model/role.go` `IsReadOnlyRole`：读者/访客），写 API 全被拒；插件能否加载取决于 manifest `disabledInPublish`（`kernel/model/plugin.go` `isPetalAccessableInPublish`）——**本插件 manifest 即 `"disabledInPublish": true`，发布站点不加载**（issue #33 因此现状不可达）；`disabledInPublish` 的真正消费方是思源发布系统——原生片段设置里该行仅在 `config.publish.enable` 时显示（`app/src/config/util/snippets.ts`），内核 `/api/snippet/getSnippet` 在只读上下文自动跳过 `DisabledInPublish` 片段（`kernel/api/snippet.go`），即“编辑端拨开关只是记元数据，发布端生成内容时消费”。
 
+### 插件配置跨窗口同步收口（2026-09-04，思源 2a11f8ab / siyuan#19132）
+- 思源 2a11f8ab 起：前端插件基类 `onDataChanged(reason?: TPluginDataChangeReason)`（`"sync" | "overwrite"`，petal 类型同步于 f3f8988）；任意实例经文件接口（putFile/removeFile，带发起实例随机 `Constants.SIYUAN_APPID`）写入 `data/storage/petal/<插件>/` 时，内核 `PushPluginStorageDataChanged` 按发起实例 app 排除其自身后，向其余实例推送 `reloadPlugin(dataChangePlugins + reason="overwrite")`；跨设备仓库合并推送 reason=`"sync"`（`repository.go`）。判定未变：未覆盖基类 `onDataChanged` 的插件仍整插件 reload（`loader.ts shouldReloadOnDataChange`）。
+- **snippets 处置（98a84d6）**：覆盖 `onDataChanged` 必须保留（本插件保存/同步配置即触发数据变更，不覆盖会丢运行态）；两类 reason 对本插件处置相同（重读配置热应用，`applyConfig` 按值 diff 幂等），故覆盖不带 reason 参数区分。**退役** `setting_apply` 广播协议与 `applySettingSync`：删除 `SettingApplyPayload`/联合成员/handler 键/saveSetting 广播块/`applySettingSync` 方法（`saveSetting` 落库后即关闭，同窗口由自身写入、其余实例由内核推送→onDataChanged 同步）。`onDataChanged` 现为配置热应用的唯一入口（本地保存 + sync/overwrite 推送共用）。
+- 各实例 `Constants.SIYUAN_APPID` 均为加载时独立随机（`app/src/constants.ts`），内核会话按 app 分组、排除粒度即发起实例本身，故推送覆盖“除发起者外的所有其他实例”，`setting_apply` 确为冗余。
+
 ### 广播协议约束：消息不得携带代码片段原文（敏感信息）
 - **硬性约束（用户要求）**：跨窗口广播消息体中不允许包含 snippet 的 `content` 原文（代码可能含密钥、内网地址等敏感信息），只允许携带非敏感元数据（`snippetId`、`snippetType`、`name`、开关状态等）。
 - 接收窗口需要片段内容时，一律自行调用 `/api/snippet/getSnippet` 获取权威数据，禁止依赖消息中的原文。
 - **豁免项（2026-09-04 用户拍板）**：编辑中的 CSS 实时预览同步（`snippet_element_update` 且 `previewState: true`）允许携带原文（content），因为内容未保存、接收窗口无法自拉；范围仅限此预览场景。
-- **现状违规点（待改造）**：无。`snippet_element_update` 的退出预览用法（`previewState: false`）已去原文化（只发 `snippetId` + `previewState: false`，接收窗口自拉后恢复）；`snippet_save` 已去原文化；其余消息（`snippet_toggle`、`snippet_toggle_publish`、`snippet_delete`、`snippet_element_remove`、`snippets_sort`、`setting_apply`）均只含元数据，合规。
+- **现状违规点（待改造）**：无。`snippet_element_update` 的退出预览用法（`previewState: false`）已去原文化（只发 `snippetId` + `previewState: false`，接收窗口自拉后恢复）；`snippet_save` 已去原文化；其余消息（`snippet_toggle`、`snippet_toggle_publish`、`snippet_delete`、`snippet_element_remove`、`snippets_sort`）均只含元数据，合规。
 - **snippet_save 已去原文化（2026-09-04，commit `985cd61`）**：本地 `saveSnippet` 广播只发 `{ snippetId, isCopy, copySnippetId }`（写入已 `await saveSnippetsList` 落库，接收窗口按 ID 自拉即可）；`saveSnippetSync` 改为先记录本窗口旧片段、再 `getSnippetById` 自拉权威数据后走 store（复制：自拉副本后镜像菜单/对话框更新；非复制：与旧片段比较后按需更新注入元素）；该镜像已于 `57313b1` 并入 `saveSnippet` 的 origin remote 分支（复制场景经 `remoteCopySnippet` 传入自拉的权威副本、非复制场景经 `remoteOldSnippet` 传入自拉前捕获的本窗口旧片段），语义不变。
 
 ### 下一步建议（朝目标架构，拆可验证子批推进）
 1. 阶段 2（Store 收敛）已完成：`domain/snippet-store.ts` 的 `remove`/`upsert`/`insertBefore`/`move`/`replaceAll` 已承接全部本地结构写，计数统一由 `SNIPPETS_CHANGED` 事件驱动。
-2. 阶段 3（sync 收敛）**已完成（57313b1 收官）**：`services/sync.ts` 的 `BroadcastService`（连接/重连/窗口保活/类型化 `broadcast`/按 type 查表分发 `BroadcastHandlers`）统一承担传输与分发；`index.ts` 的 `handleBroadcastMessage` switch 与全部 7 个 `*Sync` 镜像已消灭——壳方法 3 个（`snippetsSortSync`/`updateSnippetElementSync`/`removeSnippetElementSync`）逻辑就地内联进注册键，有实质差异的镜像 5 个（`toggleSnippetSync`/`globalToggleSnippetSync`/`deleteSnippetSync`/`toggleSnippetPublishSync`/`saveSnippetSync`）分别并入 `toggleSnippet(snippet, enabled, origin)`/`globalToggleSnippet(snippetType, enabled, origin, remotePreviewingSnippetIds)`/`deleteSnippet(id, snippetType, origin, remotePreviewState)`/`toggleSnippetPublish(snippetId, enabled, origin)`/`saveSnippet(snippet, isCopy, origin, remoteCopySnippet?, remoteOldSnippet?)` 的 `origin: "local" | "remote"` 分支（toggleSnippetPublish 的 isPublish 判断依据已修复为 `window.siyuan.isPublish`，见上方「发布服务 isPublish 语义澄清」节）。统一模式：**本窗口操作 = 自拉/就地改 + 落库 + 广播；同内核其他前端实例 = 广播实例已落库，仅按自身状态同步 UI/元素，不落库、不广播**；注册键内联“来源解析”后调同方法传 `origin: "remote"`。`setting_apply`/`applySettingSync` 留待阶段 4 config 声明式一并收敛。
-3. 之后：进入**阶段 4 config 声明式**（`applySetting` 大 switch → 每配置项 `onApply` 回调；同步收敛 `setting_apply` 广播与 `applySettingSync`），再 UI 视图化（阶段 5）、jcsm 收敛（阶段 6，前置已启动：见上方「jcsm 现状」节）。
+2. 阶段 3（sync 收敛）**已完成（57313b1 收官）**：`services/sync.ts` 的 `BroadcastService`（连接/重连/窗口保活/类型化 `broadcast`/按 type 查表分发 `BroadcastHandlers`）统一承担传输与分发；`index.ts` 的 `handleBroadcastMessage` switch 与全部 7 个 `*Sync` 镜像已消灭——壳方法 3 个（`snippetsSortSync`/`updateSnippetElementSync`/`removeSnippetElementSync`）逻辑就地内联进注册键，有实质差异的镜像 5 个（`toggleSnippetSync`/`globalToggleSnippetSync`/`deleteSnippetSync`/`toggleSnippetPublishSync`/`saveSnippetSync`）分别并入 `toggleSnippet(snippet, enabled, origin)`/`globalToggleSnippet(snippetType, enabled, origin, remotePreviewingSnippetIds)`/`deleteSnippet(id, snippetType, origin, remotePreviewState)`/`toggleSnippetPublish(snippetId, enabled, origin)`/`saveSnippet(snippet, isCopy, origin, remoteCopySnippet?, remoteOldSnippet?)` 的 `origin: "local" | "remote"` 分支（toggleSnippetPublish 的 isPublish 判断依据已修复为 `window.siyuan.isPublish`，见上方「发布服务 isPublish 语义澄清」节）。统一模式：**本窗口操作 = 自拉/就地改 + 落库 + 广播；同内核其他前端实例 = 广播实例已落库，仅按自身状态同步 UI/元素，不落库、不广播**；注册键内联“来源解析”后调同方法传 `origin: "remote"`。配置类 `setting_apply` 已随思源 2a11f8ab 收口内核推送而退役（98a84d6，见上方「插件配置跨窗口同步收口」节）。
+3. 阶段 4（config 声明式 + 拆分瘦身）**进行中**：`applySetting` 改查 `configItems.onApply` 分发（三项按钮显隐已迁入，c276e04）；配置项类型与条目定义外迁 `src/config/schema.ts`（acb64cb）；CodeMirror 编辑器工厂外迁 `src/ui/codemirror.ts`（df4ff9c）。剩余：继续迁移 `applySetting` 大 switch 剩余 case 至 `onApply` 直至删除 switch；把设置装配/UI（`createSettingItem`/`loadConfig`/defineProperty/`openSetting`/`saveSetting`）下沉独立模块（建议 `src/config/config-service.ts` + `src/ui/setting-dialog.ts`）；其余 `index.ts` 大段按需外迁（生命周期/watch 管理、文件监听、导入导出等）持续瘦身。
+4. 之后：UI 视图化（阶段 5）、jcsm 收敛（阶段 6，前置已启动：见上方「jcsm 现状」节）。
 
 ---
 
