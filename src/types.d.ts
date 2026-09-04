@@ -1,5 +1,8 @@
 import { ISiyuan } from "siyuan/types";
 
+// 允许副作用导入 SCSS 样式文件（由 webpack/css-loader 处理）
+declare module "*.scss";
+
 /**
  * 单个监听器类型
  */
@@ -26,6 +29,10 @@ declare global {
     interface Window {
         siyuan: ISiyuan & {
             isPublish?: boolean;
+            // 运行时 window.siyuan.config/languages/menus 恒存在，此处显式置为必选以消除大量空值断言
+            config: NonNullable<ISiyuan["config"]>;
+            menus: NonNullable<ISiyuan["menus"]>;
+            languages: NonNullable<ISiyuan["languages"]>;
             jcsm?: {
                 isMobile?: boolean;
                 isTouchDevice?: boolean;
@@ -94,7 +101,7 @@ interface FileState {
  * 参考 app/src/types/index.d.ts 的 ISnippet
  */
 interface Snippet {
-    id?: string;
+    id: string;
     name: string;
     content: string;
     type: "css" | "js";

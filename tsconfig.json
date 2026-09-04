@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
-    "noImplicitAny": true,
+    "strict": true,
+    "strictFunctionTypes": false,
+    "useUnknownInCatchVariables": false,
     "module": "commonjs",
     "target": "es2017",
     "lib": ["es2017", "dom"],
