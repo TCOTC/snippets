@@ -2,11 +2,11 @@
   "name": "snippets",
   "author": "Jeffrey Chen",
   "url": "https://github.com/TCOTC/snippets",
-  "version": "1.5.1",
-  "minAppVersion": "3.7.0-beta.1",
+  "version": "2.0.0",
+  "minAppVersion": "3.8.3-alpha.1",
   "backends": ["all"],
   "frontends": ["all"],
-  "disabledInPublish": true,
+  "disabledInPublish": false,
   "displayName": {
     "default": "Code Snippets Manager",
     "zh-CN": "代码片段管理器",
@@ -25,38 +25,6 @@
     "zh-TW": "README.zh-TW.md",
     "ja": "README.ja.md"
   },
-  "funding": {
-    "custom": ["https://mytemos.com/"]
-  },
-  "keywords": [
-    "css",
-    "js",
-    "javascript",
-    "Code Snippets",
-    "Open Snippets Dialog",
-    "Open Snippets Panel",
-    "View Snippets",
-    "Edit Snippets",
-    "Manage Snippets",
-    "Code Manager",
-    "打开代码片段对话框",
-    "打开代码片段面板",
-    "查看代码片段",
-    "编辑代码片段",
-    "管理代码片段",
-    "代码管理器",
-    "打開代碼片段對話框",
-    "打開代碼片段面板",
-    "查看代碼片段",
-    "編輯代碼片段",
-    "管理代碼片段",
-    "代码管理器",
-    "コードスニペット",
-    "スニペットダイアログを開く",
-    "スニペットパネルを開く",
-    "スニペットを表示",
-    "スニペットを編集",
-    "スニペットを管理",
-    "コードマネージャー"
-  ]
+  "funding": {"custom": ["https://mytemos.com/"]},
+  "keywords": ["css", "js", "javascript"]
 }
