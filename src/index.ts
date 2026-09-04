@@ -234,6 +234,18 @@ export default class PluginSnippets extends Plugin {
     }
 
     /**
+     * 插件存储数据变更（跨设备同步后由思源调用）
+     * 覆盖基类默认实现以避免整插件 reload 导致运行态（已打开的 Dialog / CodeMirror 编辑器）丢失，
+     * 改为温和地重新读取配置并应用，仅保留真正的插件更新/启停时的 reload。
+     */
+    public async onDataChanged() {
+        // 重新读取配置：this.loadData 会从内核拉取最新文件并更新 this.data
+        await this.loadData(STORAGE_NAME);
+        const config = this.data[STORAGE_NAME];
+        this.applyConfig(config);
+    }
+
+    /**
      * 禁用插件
      * 插件更新会先执行 onunload 再执行 onload，不会执行 uninstall
      */
@@ -942,6 +954,26 @@ export default class PluginSnippets extends Plugin {
     }
 
     /**
+     * 应用配置（本地读取或跨窗口/跨设备同步后的统一入口）
+     * @param config 配置对象
+     */
+    private applyConfig(config: any) {
+        if (!config || typeof config !== "object") {
+            return;
+        }
+        // 逐个配置项与当前值比较，有变化时写入并触发对应 UI 更新
+        this.configItems.forEach(item => {
+            if (config.hasOwnProperty(item.key)) {
+                const newValue = config[item.key];
+                if ((window.siyuan.jcsm as any)[item.key] !== newValue) {
+                    (window.siyuan.jcsm as any)[item.key] = newValue;
+                    this.applySetting(item.key, newValue);
+                }
+            }
+        });
+    }
+
+    /**
      * 处理设置应用同步
      * @param data 消息数据
      */
@@ -954,15 +986,7 @@ export default class PluginSnippets extends Plugin {
         this.console.log("applySettingSync:", config);
 
         // 更新本地配置
-        this.configItems.forEach(item => {
-            if (config.hasOwnProperty(item.key)) {
-                const newValue = config[item.key];
-                if ((window.siyuan.jcsm as any)[item.key] !== newValue) {
-                    (window.siyuan.jcsm as any)[item.key] = newValue;
-                    this.applySetting(item.key, newValue);
-                }
-            }
-        });
+        this.applyConfig(config);
     }
 
     /**
