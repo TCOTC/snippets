@@ -192,21 +192,8 @@ export default class PluginSnippets extends Plugin {
             globalKeyDownHandler: () => this.menuView.globalKeyDownHandler,
         });
 
-        // 初始化文件监听服务（运行态经读取器/动作实时转发：配置镜像属性在配置装配完成后才有，start/handle 调用时读取）
-        this.fileWatchService = new FileWatchService({
-            logger: this.console,
-            i18n: () => this.i18n,
-            fileWatchEnabled: () => this.fileWatchEnabled,
-            fileWatchPath: () => this.fileWatchPath,
-            fileWatchInterval: () => this.fileWatchInterval,
-            autoReloadUIAfterModifyJS: () => this.autoReloadUIAfterModifyJS,
-            isReloadUIRequired: () => this.isReloadUIRequired,
-            showErrorMessage: (message, timeout) => this.showErrorMessage(message, timeout),
-            showNotification: (messageI18nKey, timeout) => this.showNotification(messageI18nKey, timeout),
-            setReloadUIButtonBreathing: () => this.menuView.setReloadUIButtonBreathing(),
-            postReloadUI: () => this.postReloadUI(),
-            genNewSnippetId: () => genNewSnippetId(this.snippetsList),
-        });
+        // 初始化文件监听服务（直连本实例，配置镜像经实例读取）
+        this.fileWatchService = new FileWatchService(this);
 
         // 初始化导入导出服务（列表读写/菜单刷新等经动作转发，调用时读取运行态）
         this.importExportService = new ImportExportService({
