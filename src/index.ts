@@ -3,10 +3,7 @@ import {FileState, ListenersArray, Snippet, SnippetType} from "./types";
 import {isSnippetsTypeEnabled, isValidJavaScriptCode} from "./domain/snippet";
 import {SNIPPETS_CHANGED, SnippetStore} from "./domain/snippet-store";
 import {BroadcastService} from "./services/sync";
-import type {
-    SettingApplyPayload,
-    SnippetSavePayload
-} from "./services/sync";
+import type {SettingApplyPayload} from "./services/sync";
 import {hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, showElementTooltip} from "./utils";
 import {getFile, putFile, renameFile} from "./services/storage";
 import {EventBus} from "./core/event-bus";
@@ -252,7 +249,39 @@ export default class PluginSnippets extends Plugin {
                 snippet_toggle_publish: ({snippetId, enabled}) => this.toggleSnippetPublish(snippetId, enabled, "remote"),
                 snippet_toggle_global: ({snippetType, enabled, previewingSnippetIds}) =>
                     this.globalToggleSnippet(snippetType, enabled, "remote", previewingSnippetIds),
-                snippet_save: (payload) => this.saveSnippetSync(payload),
+                snippet_save: async (payload) => {
+                    // 协议不含片段原文：接收窗口一律按 ID 自拉权威数据后，再与本地保存走同一路径（origin 为 remote）
+                    const {snippetId, isCopy, copySnippetId} = payload;
+                    if (!snippetId || isCopy === undefined || (isCopy && !copySnippetId)) {
+                        this.console.error("snippet_save: Snippet or isCopy is missing:", payload);
+                        return;
+                    }
+                    this.console.log("snippet_save", {snippetId, isCopy, copySnippetId});
+                    if (isCopy) {
+                        // 复制：先按副本 ID 自拉服务端权威数据（getSnippetById 副作用刷新列表为权威顺序），
+                        // 被复制原片段作为菜单项插入锚点，从刷新后的列表取
+                        const copySnippet = await this.getSnippetById(copySnippetId!);
+                        if (!copySnippet) {
+                            this.console.error("snippet_save: copySnippet not found:", copySnippetId);
+                            return;
+                        }
+                        const originalSnippet = this.snippetsList.find((s: Snippet) => s.id === snippetId);
+                        if (!originalSnippet) {
+                            this.console.error("snippet_save: original snippet not found:", snippetId);
+                            return;
+                        }
+                        await this.saveSnippet(originalSnippet, true, "remote", copySnippet);
+                        return;
+                    }
+                    // 更新/新增：先在自拉前捕获本窗口旧片段（自拉会刷新列表为权威态，旧片段将不可再取），再自拉权威新态
+                    const oldSnippet = this.snippetsList.find((s: Snippet) => s.id === snippetId);
+                    const snippet = await this.getSnippetById(snippetId);
+                    if (snippet === false || snippet === undefined) {
+                        this.console.error("snippet_save: Snippet not found:", snippetId);
+                        return;
+                    }
+                    await this.saveSnippet(snippet, false, "remote", undefined, oldSnippet);
+                },
                 snippet_delete: ({snippetId, snippetType, previewState}) =>
                     this.deleteSnippet(snippetId, snippetType, "remote", previewState),
                 snippet_element_update: async ({snippet, snippetId, previewState}) => {
@@ -2730,12 +2759,60 @@ export default class PluginSnippets extends Plugin {
     }
 
     /**
-     * 保存代码片段（添加或更新）
-     * @param snippet 代码片段
+     * 保存代码片段（添加/更新/复制；本窗口操作与同内核其他前端实例广播共用同一路径，阶段 3：消灭 saveSnippetSync 镜像）
+     * - 本窗口操作（origin 缺省为 local）：snippet 为编辑结果对象（对话框保存）或复制源对象（复制按钮，
+     *   副本在方法内派生）；先自拉服务端旧态做 diff，有变更才经 Store 落库、更新元素/UI 并广播；
+     * - 同内核其他前端实例广播（origin 为 remote）：广播窗口已落库，本窗口不落库、不广播，仅同步自身状态。
+     *   广播消息不含片段原文（禁原文约束），片段对象由注册表 snippet_save 键自拉权威数据后传入：
+     *   复制场景 snippet 为被复制原片段（菜单项插入锚点）、remoteCopySnippet 为自拉的权威副本；
+     *   非复制场景 snippet 为自拉的权威新态、remoteOldSnippet 为自拉前捕获的本窗口旧片段
+     *   （仅改名时不必重刷注入元素，避免 JS 重复弹出重载提示）。
+     * @param snippet 代码片段（语义随 origin，见上）
      * @param isCopy 是否为复制操作
+     * @param origin 变更来源：local（本窗口操作）| remote（其他窗口广播）
+     * @param remoteCopySnippet 仅 origin 为 remote 且 isCopy 时使用：自拉的权威副本对象
+     * @param remoteOldSnippet 仅 origin 为 remote 且非复制时使用：自拉前捕获的本窗口旧片段
      */
-    private async saveSnippet(snippet: Snippet, isCopy = false) {
-        this.console.log("saveSnippet: snippet", snippet);
+    private async saveSnippet(snippet: Snippet, isCopy = false, origin: "local" | "remote" = "local", remoteCopySnippet?: Snippet, remoteOldSnippet?: Snippet) {
+        this.console.log("saveSnippet:", {snippetId: snippet.id, isCopy, origin});
+
+        if (origin === "remote") {
+            if (isCopy) {
+                if (!remoteCopySnippet) {
+                    this.console.error("saveSnippet: remote copySnippet is missing:", snippet.id);
+                    return;
+                }
+                // 从 Store 统一 upsert（幂等：副本已随自拉就位，此处仅统一触发计数刷新事件）
+                this.snippetStore.upsert(remoteCopySnippet);
+                // 代码片段有可能未启用，所以不传入 enabled === true 的参数
+                await this.updateSnippetElement(remoteCopySnippet);
+                // 镜像菜单项插入与原始片段对话框按钮更新
+                this.applySnippetUIChange(snippet, true, remoteCopySnippet);
+                this.console.log("saveSnippet: remote copySnippet", remoteCopySnippet);
+                return;
+            }
+            // 从 Store 统一 upsert（列表已随自拉刷新为权威态，计数由事件统一刷新）
+            this.snippetStore.upsert(snippet);
+            if (remoteOldSnippet) {
+                // 本窗口原本有该片段：更新。比较对象属性值而不是对象引用
+                const contentOrEnabledChanged = remoteOldSnippet.content !== snippet.content || remoteOldSnippet.enabled !== snippet.enabled;
+                if (contentOrEnabledChanged) {
+                    // 只有代码片段名称改变的时候不需要更新元素
+                    // 代码片段有可能未启用，所以不传入 enabled === true 的参数
+                    // 问题案例: 先禁用整体状态，再在对话框中启用，然后预览，然后保存。会在整体禁用的情况下启用代码片段，或者说没有移除预览时添加的元素
+                    //  应该始终执行 updateSnippetElement
+                    await this.updateSnippetElement(snippet);
+
+                    // TODO功能: 跨窗口同步时，如果有打开对应的代码片段编辑器，需要更新编辑器的内容
+                }
+            } else {
+                // 本窗口原本没有该片段：新增（列表已按权威顺序就位）
+                // 代码片段有可能未启用，所以不传入 enabled === true 的参数
+                await this.updateSnippetElement(snippet);
+            }
+            this.applySnippetUIChange(snippet, true);
+            return;
+        }
 
         let hasChanges = false;
         let copySnippet: Snippet | undefined = undefined;
@@ -2806,73 +2883,6 @@ export default class PluginSnippets extends Plugin {
                 isCopy: isCopy,
                 copySnippetId: copySnippet?.id,
             });
-        }
-    }
-
-    /**
-     * 处理代码片段保存同步
-     * @param data 消息数据
-     */
-    private async saveSnippetSync(data: SnippetSavePayload) {
-        const { snippetId, isCopy, copySnippetId } = data;
-        if (!snippetId || isCopy === undefined || (isCopy && !copySnippetId)) {
-            this.console.error("saveSnippetSync: Snippet or isCopy is missing:", data);
-            return;
-        }
-        this.console.log("saveSnippetSync", { snippetId, isCopy, copySnippetId });
-
-        if (isCopy) {
-            // 消息不含原文：按副本 ID 自拉服务端权威数据（列表随之刷新，副本已按广播窗口顺序就位）
-            const copySnippet = await this.getSnippetById(copySnippetId!);
-            if (!copySnippet) {
-                this.console.error("saveSnippetSync: copySnippet not found:", copySnippetId);
-                return;
-            }
-            const originalSnippet = this.snippetsList.find((s: Snippet) => s.id === snippetId);
-            if (!originalSnippet) {
-                this.console.error("saveSnippetSync: original snippet not found:", snippetId);
-                return;
-            }
-            // 从 Store 统一 upsert（幂等：副本已随自拉就位，此处仅统一触发计数刷新事件）
-            this.snippetStore.upsert(copySnippet);
-
-            // 代码片段有可能未启用，所以不传入 enabled === true 的参数
-            await this.updateSnippetElement(copySnippet);
-
-            // 镜像菜单项插入与原始片段对话框按钮更新
-            this.applySnippetUIChange(originalSnippet, true, copySnippet);
-
-            this.console.log("saveSnippetSync: copySnippet", copySnippet);
-        } else {
-            // 消息不含原文：先记录本窗口旧片段，再按 ID 自拉服务端权威数据
-            const oldSnippet = this.snippetsList.find((s: Snippet) => s.id === snippetId);
-            const snippet = await this.getSnippetById(snippetId);
-            if (snippet === false || snippet === undefined) {
-                this.console.error("saveSnippetSync: Snippet not found:", snippetId);
-                return;
-            }
-            // 从 Store 统一 upsert（列表已随自拉刷新为权威态，计数由事件统一刷新）
-            this.snippetStore.upsert(snippet);
-
-            if (oldSnippet) {
-                // 如果存在，则更新该代码片段
-                // 比较对象属性值而不是对象引用
-                const contentOrEnabledChanged = oldSnippet.content !== snippet.content || oldSnippet.enabled !== snippet.enabled;
-                if (contentOrEnabledChanged) {
-                    // 只有代码片段名称改变的时候不需要更新元素
-                    // 代码片段有可能未启用，所以不传入 enabled === true 的参数
-                    // 问题案例: 先禁用整体状态，再在对话框中启用，然后预览，然后保存。会在整体禁用的情况下启用代码片段，或者说没有移除预览时添加的元素
-                    //  应该始终执行 updateSnippetElement
-                    await this.updateSnippetElement(snippet);
-
-                    // TODO功能: 跨窗口同步时，如果有打开对应的代码片段编辑器，需要更新编辑器的内容
-                }
-            } else {
-                // 本窗口原本没有该片段：新增（列表已按权威顺序就位）
-                // 代码片段有可能未启用，所以不传入 enabled === true 的参数
-                await this.updateSnippetElement(snippet);
-            }
-            this.applySnippetUIChange(snippet, true);
         }
     }
 
