@@ -5,7 +5,6 @@ import {SNIPPETS_CHANGED, SnippetStore} from "./domain/snippet-store";
 import {createSnippetsConfigItems} from "./config/schema";
 import type {SnippetsConfigItem} from "./config/schema";
 import {BroadcastService} from "./services/sync";
-import type {SettingApplyPayload} from "./services/sync";
 import {hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, showElementTooltip} from "./utils";
 import {getFile, putFile, renameFile} from "./services/storage";
 import {EventBus} from "./core/event-bus";
@@ -284,16 +283,25 @@ export default class PluginSnippets extends Plugin {
                     this.snippetsList = await this.getSnippetsList() as Snippet[];
                     this.menuItems && this.initSnippetsContainer();
                 },
-                setting_apply: (payload) => this.applySettingSync(payload),
             },
         });
         await this.syncService.start();
     }
 
     /**
-     * 插件存储数据变更（跨设备同步后由思源调用）
-     * 覆盖基类默认实现以避免整插件 reload 导致运行态（已打开的 Dialog / CodeMirror 编辑器）丢失，
-     * 改为温和地重新读取配置并应用，仅保留真正的插件更新/启停时的 reload。
+     * 插件存储数据变更（思源内核推送 reloadPlugin(dataChangePlugins) 后由前端调用本方法）
+     * 思源前端 loader 按「插件是否覆盖了基类 onDataChanged」决定数据变更时的处置：
+     * 未覆盖则重载整个插件，覆盖则调用本方法。因此本覆盖必须保留——插件保存/同步配置触发数据变更时，
+     * 若走整插件 reload 会丢失运行态（已打开的 Dialog / CodeMirror 编辑器）。
+     * 触发来源（思源 ≥ 2a11f8ab，siyuan#19132，前端调用时携带 reason）：
+     *  - sync（跨设备）：其他设备写入插件配置后经数据仓库合并拉回本机，内核推 dataChange；
+     *  - overwrite（同内核其他前端实例）：其他实例经文件接口写入 data/storage/petal/snippets/，
+     *    内核按发起实例附带的 app 排除其自身后推送本实例（发起方自己不会收到）。
+     * 两类来源对本插件的处置相同——都要重新读取配置并热应用（applyConfig 内部按值 diff，
+     * 无变化不触发 applySetting 副作用），故本方法不接收 reason 参数做区分。
+     * 说明：跨窗口配置同步不再依赖自建广播——思源自 2a11f8ab（siyuan#19132）起，任何实例经文件接口
+     * 写入插件配置都会触发内核推送（reason=overwrite，含发起实例自身以外的所有实例），本方法即同步入口；
+     * 此前的 setting_apply 广播与 applySettingSync 已随该内核能力退役（插件重构以最新思源代码为基准）。
      */
     public async onDataChanged() {
         // 重新读取配置：this.loadData 会从内核拉取最新文件并更新 this.data
@@ -622,12 +630,6 @@ export default class PluginSnippets extends Plugin {
             return;
         }
 
-        // 广播设置更新到其他窗口
-        this.syncService?.broadcast({
-            type: "setting_apply",
-            config: config
-        });
-
         // 移除设置对话框
         this.closeDialogByElement(dialogElement);
     }
@@ -773,22 +775,6 @@ export default class PluginSnippets extends Plugin {
                 }
             }
         });
-    }
-
-    /**
-     * 处理设置应用同步
-     * @param data 消息数据
-     */
-    private async applySettingSync(data: SettingApplyPayload) {
-        const { config } = data;
-        if (!config) {
-            this.console.error("applySettingSync: Config is missing:", data);
-            return;
-        }
-        this.console.log("applySettingSync:", config);
-
-        // 更新本地配置
-        this.applyConfig(config);
     }
 
     /**

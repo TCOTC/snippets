@@ -73,11 +73,6 @@ export interface SnippetElementRemovePayload {
     snippetType: SnippetType;
 }
 
-/** 应用插件配置载荷（跨窗口同步插件配置用） */
-export interface SettingApplyPayload {
-    config: Record<string, unknown>;
-}
-
 /**
  * 消息体（不含信封字段）
  * 发送侧（BroadcastService.broadcast）传入该类型：type 为协议字面量，payload 随 type 自动获得类型校验；
@@ -94,8 +89,7 @@ export type SnippetBroadcastBody =
     | ({type: "snippet_delete"} & SnippetDeletePayload)
     | ({type: "snippet_element_update"} & SnippetElementUpdatePayload)
     | ({type: "snippet_element_remove"} & SnippetElementRemovePayload)
-    | {type: "snippets_sort"} // 排序消息无载荷，接收方全量重拉列表
-    | ({type: "setting_apply"} & SettingApplyPayload);
+    | {type: "snippets_sort"}; // 排序消息无载荷，接收方全量重拉列表
 
 /**
  * 给联合类型每个成员附加信封字段（分布式条件类型，按成员逐一展开）
@@ -145,7 +139,6 @@ export interface BroadcastHandlers {
     snippet_element_update: (payload: SnippetElementUpdatePayload) => void | Promise<void>;
     snippet_element_remove: (payload: SnippetElementRemovePayload) => void | Promise<void>;
     snippets_sort: () => void | Promise<void>;
-    setting_apply: (payload: SettingApplyPayload) => void | Promise<void>;
 }
 
 /**
