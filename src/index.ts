@@ -2,8 +2,18 @@ import "./index.scss";
 import {FileState, ListenersArray, Snippet, SnippetType} from "./types";
 import {isSnippetsTypeEnabled, isValidJavaScriptCode} from "./domain/snippet";
 import {SNIPPETS_CHANGED, SnippetStore} from "./domain/snippet-store";
-import {BROADCAST_CHANNEL_NAME, SnippetSavePayload, SnippetDeletePayload, SnippetElementRemovePayload, SnippetElementUpdatePayload, SettingApplyPayload} from "./services/sync";
-import type {SnippetTogglePayload, SnippetTogglePublishPayload, SnippetToggleGlobalPayload} from "./services/sync";
+import {BroadcastService} from "./services/sync";
+import type {
+    SettingApplyPayload,
+    SnippetBusinessMessage,
+    SnippetDeletePayload,
+    SnippetElementRemovePayload,
+    SnippetElementUpdatePayload,
+    SnippetSavePayload,
+    SnippetToggleGlobalPayload,
+    SnippetTogglePayload,
+    SnippetTogglePublishPayload
+} from "./services/sync";
 import {hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, showElementTooltip} from "./utils";
 import {getFile, putFile, renameFile} from "./services/storage";
 import {EventBus} from "./core/event-bus";
@@ -230,8 +240,14 @@ export default class PluginSnippets extends Plugin {
         // 获取已打开的所有自定义页签
         // this.getOpenedTab();
 
-        // 初始化 Broadcast Channel 用于跨窗口通信（需要等插件设置加载完成）
-        await this.initBroadcastChannel();
+        // 初始化跨窗口同步服务用于跨窗口通信（需要等插件设置加载完成；传输 + 窗口保活收敛于 services/sync.ts）
+        this.syncService = new BroadcastService({
+            logger: this.console,
+            onBusinessMessage: (message) => {
+                void this.handleBroadcastMessage(message);
+            },
+        });
+        await this.syncService.start();
     }
 
     /**
@@ -254,8 +270,8 @@ export default class PluginSnippets extends Plugin {
         // 取消该实例注册的全部事件订阅
         this.internalEventBus.clear();
 
-        // 清理 Broadcast Channel
-        this.cleanupBroadcastChannel();
+        // 关闭跨窗口同步服务（发送下线通知并断开连接）
+        this.syncService?.stop();
 
         // 清理主题监听器
         if (window.siyuan.jcsm?.themeObserver) {
@@ -276,8 +292,8 @@ export default class PluginSnippets extends Plugin {
      * 卸载插件
      */
     public uninstall() {
-        // 清理 Broadcast Channel
-        this.cleanupBroadcastChannel();
+        // 关闭跨窗口同步服务（发送下线通知并断开连接）
+        this.syncService?.stop();
 
         // 移除配置文件
         const response = this.removeData(STORAGE_NAME) as any;
@@ -795,7 +811,8 @@ export default class PluginSnippets extends Plugin {
         }
 
         // 广播设置更新到其他窗口
-        this.broadcastMessage("setting_apply", {
+        this.syncService?.broadcast({
+            type: "setting_apply",
             config: config
         });
 
@@ -1746,7 +1763,8 @@ export default class PluginSnippets extends Plugin {
         }
 
         // 广播开关状态变更到其他窗口
-        this.broadcastMessage("snippet_toggle", {
+        this.syncService?.broadcast({
+            type: "snippet_toggle",
             snippetId: snippet.id,
             enabled: snippet.enabled,
         });
@@ -1787,7 +1805,8 @@ export default class PluginSnippets extends Plugin {
         void this.saveSnippetsList(this.snippetsList);
         // void this.updateSnippetElement(snippet); // 发布服务开关状态变更不需要更新元素
 
-        this.broadcastMessage("snippet_toggle_publish", {
+        this.syncService?.broadcast({
+            type: "snippet_toggle_publish",
             snippetId: snippet.id,
             enabled: snippet.disabledInPublish,
         });
@@ -1869,7 +1888,8 @@ export default class PluginSnippets extends Plugin {
         }
 
         // 广播全局开关状态变更到其他窗口
-        this.broadcastMessage("snippet_toggle_global", {
+        this.syncService?.broadcast({
+            type: "snippet_toggle_global",
             snippetType: this.snippetsType,
             enabled: enabled,
             previewingSnippetIds: previewingSnippetIds,
@@ -2102,8 +2122,7 @@ export default class PluginSnippets extends Plugin {
         void await this.saveSnippetsList(this.snippetsList);
 
         // 广播排序到其他窗口
-        this.broadcastMessage("snippets_sort", {
-        });
+        this.syncService?.broadcast({type: "snippets_sort"});
 
         return true;
     }
@@ -2749,7 +2768,8 @@ export default class PluginSnippets extends Plugin {
 
             // 广播代码片段数据更新到其他窗口
             // 注意：不得携带代码片段原文（content 可能含敏感信息），接收窗口按 ID 自拉权威数据
-            this.broadcastMessage("snippet_save", {
+            this.syncService?.broadcast({
+                type: "snippet_save",
                 snippetId: snippet.id,
                 isCopy: isCopy,
                 copySnippetId: copySnippet?.id,
@@ -2829,7 +2849,7 @@ export default class PluginSnippets extends Plugin {
      * @param id 代码片段 ID
      * @param snippetType 代码片段类型
      */
-    private async deleteSnippet(id: string, snippetType: string) {
+    private async deleteSnippet(id: string, snippetType: SnippetType) {
         // TODO: 有个 "/api/snippet/removeSnippet" 看看能不能用上
         this.console.log("deleteSnippet", id, snippetType);
 
@@ -2854,7 +2874,8 @@ export default class PluginSnippets extends Plugin {
         this.applySnippetUIChange(snippet, false);
 
         // 广播代码片段数据更新到其他窗口
-        this.broadcastMessage("snippet_delete", {
+        this.syncService?.broadcast({
+            type: "snippet_delete",
             snippetId: id,
             snippetType: snippetType,
             previewState: this.isPreviewingSnippet(id, snippetType),
@@ -3073,7 +3094,7 @@ export default class PluginSnippets extends Plugin {
      * previewState 为 false 时消息不携带 snippet，需按 snippetId 自拉已保存片段恢复。
      * @param data 同步数据，包含 snippet（可选）与 previewState
      */
-    private async updateSnippetElementSync(data: { snippet?: Snippet; snippetId?: string; previewState?: boolean }) {
+    private async updateSnippetElementSync(data: SnippetElementUpdatePayload) {
         const { snippet, snippetId, previewState } = data;
         let realSnippet = snippet;
         if (!realSnippet) {
@@ -3115,7 +3136,7 @@ export default class PluginSnippets extends Plugin {
      * 处理移除代码片段元素同步
      * @param data 同步数据，包含 snippetId 和 snippetType
      */
-    private removeSnippetElementSync(data: { snippetId: string; snippetType: string }) {
+    private removeSnippetElementSync(data: SnippetElementRemovePayload) {
         const { snippetId, snippetType } = data;
         void this.removeSnippetElement(snippetId, snippetType);
     }
@@ -3568,7 +3589,8 @@ export default class PluginSnippets extends Plugin {
                     if (isNew) {
                         void this.removeSnippetElement(snippet.id, snippet.type);
                         // 发送广播消息，在其他窗口调用 this.removeSnippetElementSync() 移除代码片段元素
-                        this.broadcastMessage("snippet_element_remove", {
+                        this.syncService?.broadcast({
+                            type: "snippet_element_remove",
                             snippetId: snippet.id,
                             snippetType: snippet.type
                         });
@@ -3581,7 +3603,8 @@ export default class PluginSnippets extends Plugin {
                         this.updateSnippetElement(realSnippet, undefined, false);
                         // 发送广播消息，在其他窗口调用 this.updateSnippetElementSync() 更新代码片段元素
                         // 退出预览用的是已保存片段（可自拉），不携带原文，只发 snippetId + previewState: false
-                        this.broadcastMessage("snippet_element_update", {
+                        this.syncService?.broadcast({
+                            type: "snippet_element_update",
                             snippetId: snippet.id,
                             previewState: false
                         });
@@ -3671,7 +3694,8 @@ export default class PluginSnippets extends Plugin {
 
             // 发送广播消息，在其他窗口调用 this.updateSnippetElementSync() 更新 CSS 代码片段元素
             // 豁免“广播禁原文”：预览内容未保存、接收窗口无法自拉，且为同内核可信实例上的显式预览操作，允许携带编辑中的 CSS 文本
-            this.broadcastMessage("snippet_element_update", {
+            this.syncService?.broadcast({
+                type: "snippet_element_update",
                 snippet: previewSnippet,
                 previewState: true
             });
@@ -5779,282 +5803,50 @@ export default class PluginSnippets extends Plugin {
         return null;
     }
 
-    // ================================ 基于思源内核 broadcast API 的跨窗口通信 ================================
+    // ================================ 跨窗口同步 ================================
 
     /**
-     * 当前窗口的唯一标识符
+     * 跨窗口广播服务（阶段 3：传输 + 窗口保活收敛于 services/sync.ts）
+     * onLayoutReady 中创建并启动；业务消息经 handleBroadcastMessage 分发。
      */
-    private windowId!: string;
+    private syncService: BroadcastService | null = null;
 
     /**
-     * WebSocket 连接用于接收广播消息
+     * 处理来自其他窗口的业务广播消息
+     * 窗口保活（window_online / window_online_feedback / window_offline）与自身消息过滤已由
+     * BroadcastService 内部处理，此处只按 type 分发到对应的本地同步 handler；
+     * 协议类型保证各 case 载荷字段齐全（原先的 data as Xxx 断言随类型化一并移除）。
+     * @param data 业务消息
      */
-    private websocket: WebSocket | null = null;
-
-    /**
-     * 重连间隔（毫秒）
-     */
-    private reconnectInterval = 3000;
-
-    /**
-     * 重连定时器
-     */
-    private reconnectTimer: number | null = null;
-
-    /**
-     * 其他窗口 ID 集合，用于跟踪其他窗口的存在状态
-     */
-    private otherWindowIds: Set<string> = new Set();
-
-
-    /**
-     * 初始化基于内核 API 的跨窗口通信
-     */
-    private async initBroadcastChannel() {
-        // 生成当前窗口的唯一标识符
-        this.windowId = BROADCAST_CHANNEL_NAME + "-" + window.Lute.NewNodeID();
-
-        // 订阅广播频道
-        await this.subscribeToBroadcastChannel();
-
-        // console.log('Broadcast Channel has been initialized, Window ID:', this.windowId);
-        this.console.log("Broadcast Channel has been initialized, Window ID:", this.windowId);
-        
-        // 发送初始化消息到其他窗口（用于发现其他窗口，强制发送）
-        this.broadcastMessage("window_online", {
-            windowId: this.windowId,
-            timestamp: Date.now(),
-        }, true);
-
-        // 监听页面卸载事件，确保窗口关闭时发送下线通知
-        window.addEventListener("beforeunload", () => {
-            this.sendOfflineNotification();
-        });
-    }
-
-    /**
-     * 订阅广播频道
-     */
-    private async subscribeToBroadcastChannel(): Promise<void> {
-        return new Promise((resolve, reject) => {
-            try {
-                // 构建 WebSocket URL
-                const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-                const wsUrl = `${protocol}//${window.location.host}/ws/broadcast?channel=${encodeURIComponent(BROADCAST_CHANNEL_NAME)}`;
-
-                // 创建 WebSocket 连接
-                this.websocket = new WebSocket(wsUrl);
-
-                // 监听连接打开
-                this.websocket.onopen = () => {
-                    this.console.log("Broadcast channel connected");
-                    this.clearReconnectTimer();
-                    resolve(); // 连接建立后 resolve Promise
-                };
-
-                // 监听消息
-                this.websocket.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        this.handleBroadcastMessage(data);
-                    } catch (error) {
-                        this.console.error("Failed to parse broadcast message:", error);
-                    }
-                };
-
-                // 监听连接错误
-                this.websocket.onerror = (error) => {
-                    this.console.error("Broadcast channel connection error:", error);
-                    this.scheduleReconnect();
-                    reject(error); // 连接错误时 reject Promise
-                };
-
-                // 监听连接关闭
-                this.websocket.onclose = (event) => {
-                    this.console.log("Broadcast channel connection closed:", event.code, event.reason);
-                    this.scheduleReconnect();
-                };
-
-            } catch (error) {
-                this.console.error("Failed to subscribe to broadcast channel:", error);
-                this.scheduleReconnect();
-                reject(error);
-            }
-        });
-    }
-
-    /**
-     * 安排重连
-     */
-    private scheduleReconnect() {
-        this.clearReconnectTimer();
-        this.reconnectTimer = window.setTimeout(() => {
-            this.console.log("Attempting to reconnect to broadcast channel...");
-            this.subscribeToBroadcastChannel().catch(error => {
-                this.console.error("Failed to reconnect to broadcast channel:", error);
-            });
-        }, this.reconnectInterval);
-    }
-
-    /**
-     * 清除重连定时器
-     */
-    private clearReconnectTimer() {
-        if (this.reconnectTimer) {
-            clearTimeout(this.reconnectTimer);
-            this.reconnectTimer = null;
-        }
-    }
-
-
-
-    /**
-     * 处理窗口下线通知
-     * @param windowId 下线的窗口 ID
-     */
-    private handleWindowOffline(windowId: string) {
-        // 立即从跟踪列表中移除该窗口
-        this.otherWindowIds.delete(windowId);
-        this.console.log("Window offline notification received, removed from tracking:", windowId);
-    }
-
-    /**
-     * 发送窗口下线通知
-     */
-    private sendOfflineNotification() {
-        // 在页面卸载前发送下线通知
-        try {
-            this.broadcastMessage("window_offline", {
-                windowId: this.windowId,
-                timestamp: Date.now(),
-            }, true);
-        } catch (error) {
-            // 忽略错误，因为页面即将卸载
-            this.console.error("Failed to send offline notification:", error);
-        }
-    }
-
-    /**
-     * 清理广播频道连接
-     */
-    private cleanupBroadcastChannel() {
-        // 发送窗口下线通知
-        this.broadcastMessage("window_offline", {
-            windowId: this.windowId,
-            timestamp: Date.now(),
-        }, true);
-
-        this.clearReconnectTimer();
-
-
-        // 清理窗口跟踪数据
-        this.otherWindowIds.clear();
-
-        if (this.websocket) {
-            this.websocket.close();
-            this.websocket = null;
-        }
-    }
-
-    /**
-     * 处理来自其他窗口的广播消息
-     * @param data 消息数据
-     */
-    private async handleBroadcastMessage(data: any) {
-        this.console.log("Received broadcast message:", data);
-        
-        // 忽略来自当前窗口的消息
-        if (data.windowId === this.windowId) {
-            this.console.log("Ignoring message from current window:", data.windowId);
-            return;
-        }
-
-        // 记录其他窗口 ID
-        this.otherWindowIds.add(data.windowId);
-
+    private async handleBroadcastMessage(data: SnippetBusinessMessage) {
         switch (data.type) {
-            case "window_online":
-                this.console.log("New window detected:", data.windowId);
-                // 向新上线的窗口发送反馈，告知自己的存在
-                this.broadcastMessage("window_online_feedback", {
-                    windowId: this.windowId,
-                    timestamp: Date.now(),
-                });
-                break;
-            case "window_online_feedback":
-                this.console.log("Received online feedback from:", data.windowId);
-                // 将反馈的窗口 ID 添加到跟踪列表中
-                this.otherWindowIds.add(data.windowId);
-                break;
-            case "window_offline":
-                this.handleWindowOffline(data.windowId);
-                break;
             case "snippet_toggle":
-                await this.toggleSnippetSync(data as SnippetTogglePayload);
+                await this.toggleSnippetSync(data);
                 break;
             case "snippet_toggle_publish":
-                await this.toggleSnippetPublishSync(data as SnippetTogglePublishPayload);
+                await this.toggleSnippetPublishSync(data);
                 break;
             case "snippet_toggle_global":
-                await this.globalToggleSnippetSync(data as SnippetToggleGlobalPayload);
+                await this.globalToggleSnippetSync(data);
                 break;
             case "snippet_save":
-                await this.saveSnippetSync(data as SnippetSavePayload);
+                await this.saveSnippetSync(data);
                 break;
             case "snippet_delete":
-                await this.deleteSnippetSync(data as SnippetDeletePayload);
+                await this.deleteSnippetSync(data);
                 break;
             case "snippet_element_update":
-                await this.updateSnippetElementSync(data as SnippetElementUpdatePayload);
+                await this.updateSnippetElementSync(data);
                 break;
             case "snippet_element_remove":
-                this.removeSnippetElementSync(data as SnippetElementRemovePayload);
+                this.removeSnippetElementSync(data);
                 break;
             case "snippets_sort":
                 await this.snippetsSortSync();
                 break;
             case "setting_apply":
-                await this.applySettingSync(data as SettingApplyPayload);
+                await this.applySettingSync(data);
                 break;
-            default:
-                this.console.log("Unknown broadcast message type:", data.type);
-        }
-    }
-
-    /**
-     * 发送广播消息到其他窗口
-     * @param type 消息类型
-     * @param data 消息数据
-     * @param force 是否强制发送（忽略其他窗口检查）
-     */
-    private broadcastMessage(type: string, data: any = {}, force = false) {
-        // TODO功能: 试试能不能支持发布服务，实时应用变更到发布服务窗口 https://github.com/TCOTC/snippets/issues/33
-        // 需要注意 disabledInPublish 的代码片段不能被广播到发布服务窗口。看看哪些消息需要禁止发送
-
-        // 如果不是强制发送且不存在其他窗口，则跳过广播
-        if (!force && this.otherWindowIds.size === 0) return;
-
-        const message = {
-            type,
-            windowId: this.windowId,
-            timestamp: Date.now(),
-            ...data
-        };
-
-        // 通过 WebSocket 连接发送消息
-        this.postBroadcastMessage(JSON.stringify(message));
-        this.console.log("Send cross-window message:", message);
-    }
-
-    /**
-     * 通过 WebSocket 连接发送广播消息
-     * @param message 消息内容
-     */
-    private postBroadcastMessage(message: string) {
-        if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-            this.websocket.send(message);
-        } else {
-            this.console.error("WebSocket connection is not ready, cannot send message");
         }
     }
 }
