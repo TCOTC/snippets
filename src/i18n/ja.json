@@ -14,6 +14,8 @@
   "delete": "削除",
   "cancel": "キャンセル",
   "preview": "プレビュー",
+  "formatCode": "フォーマット",
+  "formatCodeFailed": "フォーマットに失敗しました。コードに構文エラーがないか確認してください",
   "save": "保存",
   "new": "新規",
   "confirm": "確認",

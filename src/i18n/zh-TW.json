@@ -14,6 +14,8 @@
   "delete": "刪除",
   "cancel": "取消",
   "preview": "預覽",
+  "formatCode": "格式化程式碼",
+  "formatCodeFailed": "格式化失敗：程式碼可能存在語法錯誤",
   "save": "儲存",
   "new": "新建",
   "confirm": "確定",

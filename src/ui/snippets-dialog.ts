@@ -5,7 +5,8 @@
 import {Constants, Dialog} from "siyuan";
 import {attachDialogObject, escapeHtml, genSnippetSwitchHtml, getDialogObject, isDialogButtonFocused, moveElementToTop, setDialogKeyHandler, SNIPPET_DIALOG_DATA_KEY, SNIPPET_DIALOG_SELECTOR} from "../utils";
 import {isValidCssSnippetContent} from "../domain/snippet";
-import {createCodeMirrorEditor, getEditorView} from "./editor-manager";
+import {createCodeMirrorEditor, getEditorIndentUnit, getEditorView} from "./editor-manager";
+import {formatCodeWithCursor} from "../services/formatter";
 import type PluginSnippets from "../index";
 import type {Snippet} from "../types";
 
@@ -50,6 +51,8 @@ export class SnippetsDialog {
     </div>
     <div class="b3-dialog__action">
         <button data-action="cancel" class="b3-button b3-button--cancel">${this.plugin.i18n.cancel}</button>
+        <div class="fn__space"></div>
+        <button data-action="format" class="b3-button b3-button--text" aria-label="${this.plugin.i18n.formatCode}" title="${this.plugin.i18n.formatCode}">${this.plugin.i18n.formatCode}</button>
         <div class="fn__space"></div>
         <button data-action="preview" class="b3-button b3-button--text${snippet.type === "js" || this.plugin.config.realTimePreview ? " fn__none" : ""}">${this.plugin.i18n.preview}</button>
         <div class="fn__space"></div>
@@ -283,6 +286,36 @@ export class SnippetsDialog {
             // 自动重新加载界面（无打开的编辑对话框时才重载，判断见 EditorManager.maybeAutoReloadUI）
             this.plugin.editorManager.maybeAutoReloadUI();
         };
+        // 格式化代码片段内容（点击页脚“格式化代码”按钮触发）
+        const formatHandler = async () => {
+            const code = codeMirrorView.state.doc.toString();
+            const cursorOffset = codeMirrorView.state.selection.main.head;
+            try {
+                const result = await formatCodeWithCursor(code, snippet.type, getEditorIndentUnit(this.plugin.config.editorIndentUnit), cursorOffset);
+                if (result.code === code) {
+                    // 内容未变化（已是格式化结果）时不触发事务，避免污染撤销历史
+                    return;
+                }
+                // 先让编辑器获得焦点再 dispatch：若在失焦状态下 dispatch 整文档替换，CodeMirror 不会同步
+                // DOM 选区；随后 focus() 触发的 selectionchange 会异步读回浏览器已就近重置的旧 DOM 选区，
+                // 覆盖刚设置的光标偏移（实测从 21 被改回 20，表现为光标跳到 `{` 前）。聚焦后 dispatch
+                // 会同步 DOM 选区，消除该竞争
+                codeMirrorView.contentDOM.focus();
+                codeMirrorView.dispatch({
+                    changes: {from: 0, to: code.length, insert: result.code},
+                    selection: {anchor: result.cursorOffset},
+                });
+                // 单次事务替换，Ctrl+Z 一步即可撤销整个格式化
+                // 实时预览开启时同步刷新 CSS 预览（dispatch 不触发 keydown，需手动调用）
+                if (snippet.type === "css" && this.plugin.config.realTimePreview) {
+                    previewHandler();
+                }
+            } catch (error) {
+                // 语法错误等导致格式化失败：保留原内容，仅提示（prettier 的原始错误输出到控制台便于排查）
+                this.plugin.console.log("格式化失败:", error);
+                this.plugin.showErrorMessage(this.plugin.i18n.formatCodeFailed, 7000);
+            }
+        };
 
         // 原生的 dialog.destroy() 方法会导致菜单直接被关闭，这里覆盖掉，改成调用 cancelHandler()
         dialog.destroyNative = dialog.destroy;
@@ -446,6 +479,10 @@ export class SnippetsDialog {
                         if (snippet.type === "css") {
                             previewHandler();
                         }
+                        break;
+                    case "format":
+                        // 格式化代码片段
+                        void formatHandler();
                         break;
                     case "confirm":
                         // 新建/更新代码片段

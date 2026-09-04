@@ -14,6 +14,8 @@
   "delete": "Delete",
   "cancel": "Cancel",
   "preview": "Preview",
+  "formatCode": "Format code",
+  "formatCodeFailed": "Format failed: the code may contain syntax errors",
   "save": "Save",
   "new": "New",
   "confirm": "Confirm",
