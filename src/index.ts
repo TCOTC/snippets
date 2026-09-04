@@ -1,7 +1,7 @@
 import "./index.scss";
 import {FileState, ListenersArray, Snippet} from "./types";
 import {isValidJavaScriptCode} from "./domain/snippet";
-import {hideTooltip, isInputElementActive, showElementTooltip} from "./utils";
+import {hideTooltip, htmlToElement, isInputElementActive, showElementTooltip} from "./utils";
 
 // 思源插件 API
 import {
@@ -336,7 +336,7 @@ export default class PluginSnippets extends Plugin {
                 description: "openNativeSnippetsDescription",
                 type: "createActionElement",
                 createActionElement: () => {
-                    return this.htmlToElement(
+                    return htmlToElement(
                         `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="settingsSnippets"><svg><use xlink:href="#iconJcsm"></use></svg>${this.i18n.openNativeSnippetsWindow}</span>`
                     );
                 },
@@ -504,7 +504,7 @@ export default class PluginSnippets extends Plugin {
                 description: "exportSnippetsDescription",
                 type: "createActionElement",
                 createActionElement: () => {
-                    return this.htmlToElement(
+                    return htmlToElement(
                         `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="exportSnippets"><svg><use xlink:href="#iconUpload"></use></svg>${this.i18n.export}</span>`
                     );
                 },
@@ -514,7 +514,7 @@ export default class PluginSnippets extends Plugin {
                 description: "importSnippetsWithAppendDescription",
                 type: "createActionElement",
                 createActionElement: () => {
-                    return this.htmlToElement(
+                    return htmlToElement(
                         `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="importSnippetsWithAppend"><svg><use xlink:href="#iconDownload"></use></svg>${this.i18n.importWithAppend}</span>`
                     );
                 },
@@ -524,7 +524,7 @@ export default class PluginSnippets extends Plugin {
                 description: "importSnippetsWithOverwriteDescription",
                 type: "createActionElement",
                 createActionElement: () => {
-                    return this.htmlToElement(
+                    return htmlToElement(
                         `<span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="importSnippetsWithOverwrite"><svg><use xlink:href="#iconDownload"></use></svg>${this.i18n.importWithOverwrite}</span>`
                     );
                 },
@@ -535,7 +535,7 @@ export default class PluginSnippets extends Plugin {
                 type: "createActionElement",
                 createActionElement: () => {
                     const repoLink = "https://github.com/TCOTC/snippets";
-                    return this.htmlToElement(
+                    return htmlToElement(
                         `<a href="${repoLink}" target="_blank" rel="noopener noreferrer" class="b3-button b3-button--outline fn__flex-center fn__size200 ariaLabel" aria-label="${repoLink}" data-position="north"><svg><use xlink:href="#iconGithub"></use></svg>${this.i18n.feedbackIssueButton}</a>`
                     );
                 },
@@ -609,7 +609,7 @@ export default class PluginSnippets extends Plugin {
             direction: item.direction,
             createActionElement: (): HTMLElement => {
                 if (item.type === "boolean") {
-                    return this.htmlToElement(
+                    return htmlToElement(
                         `<input class="b3-switch fn__flex-center" type="checkbox" data-type="${item.key}"${(window.siyuan.jcsm as any)[item.key] ? " checked" : ""}>`
                     );
                 } else if ((item.type === "selectString" || item.type === "selectNumber") && item.options) {
@@ -621,19 +621,19 @@ export default class PluginSnippets extends Plugin {
                         return `<option value="${option.value}"${isSelected ? " selected" : ""}>${(this.i18n as any)[option.text]}</option>`;
                     }).join("");
 
-                    return this.htmlToElement(
+                    return htmlToElement(
                         `<select class="b3-select fn__flex-center" data-type="${item.key}">${optionsHtml}</select>`
                     );
                 } else if (item.type === "string") {
                     // 创建文本输入框
                     const currentValue = (window.siyuan.jcsm as any)[item.key] ?? item.defaultValue ?? "";
-                    return this.htmlToElement(
+                    return htmlToElement(
                         `<input class="b3-text-field fn__flex-center" type="text" data-type="${item.key}" value="${currentValue}"${item.defaultValue ? ` placeholder="${item.defaultValue}"` : ""}>`
                     );
                 } else if (item.type === "number") {
                     // 创建数字输入框
                     const currentValue = (window.siyuan.jcsm as any)[item.key] ?? item.defaultValue ?? 0;
-                    return this.htmlToElement(
+                    return htmlToElement(
                         `<input class="b3-text-field fn__flex-center" type="number" data-type="${item.key}" value="${currentValue}" min="1" max="300" step="1"${item.defaultValue ? ` placeholder="${item.defaultValue}"` : ""}>`
                     );
                 } else if (item.type === "createActionElement" || item.createActionElement) {
@@ -1307,10 +1307,10 @@ export default class PluginSnippets extends Plugin {
         this.menuItems.append(snippetsContainer);
 
         // “添加第一个 CSS 代码片段”的菜单项
-        const newCssSnippetButton = this.htmlToElement(`<div class="jcsm-snippet-item b3-menu__item" data-type="new" data-snippet-type="css">${this.i18n.addFirstCSSSnippet}</div>`);
+        const newCssSnippetButton = htmlToElement(`<div class="jcsm-snippet-item b3-menu__item" data-type="new" data-snippet-type="css">${this.i18n.addFirstCSSSnippet}</div>`);
         snippetsContainer.appendChild(newCssSnippetButton);
         // “添加第一个 JS 代码片段”的菜单项
-        const newJsSnippetButton = this.htmlToElement(`<div class="jcsm-snippet-item b3-menu__item" data-type="new" data-snippet-type="js">${this.i18n.addFirstJSSnippet}</div>`);
+        const newJsSnippetButton = htmlToElement(`<div class="jcsm-snippet-item b3-menu__item" data-type="new" data-snippet-type="js">${this.i18n.addFirstJSSnippet}</div>`);
         snippetsContainer.appendChild(newJsSnippetButton);
     }
 
@@ -4579,17 +4579,6 @@ export default class PluginSnippets extends Plugin {
      */
     private isDialogAndMenuOpen(): boolean {
         return document.querySelectorAll(".b3-dialog--open[data-key^='jcsm-']").length > 0 || !!this.menu;
-    }
-
-    /**
-     * 将 HTML 字符串转换为元素
-     * @param html HTML 字符串
-     * @returns 元素
-     */
-    private htmlToElement(html: string): HTMLElement {
-        const div = document.createElement("div");
-        div.innerHTML = html;
-        return div.firstChild as HTMLElement;
     }
 
 

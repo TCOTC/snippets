@@ -46,3 +46,14 @@ export const isInputElementActive = (): boolean => {
     // 忽略按钮元素
     return (tagName === "input" && type !== "checkbox") || tagName === "textarea";
 };
+
+/**
+ * 将 HTML 字符串转换为元素
+ * @param html HTML 字符串
+ * @returns 元素
+ */
+export const htmlToElement = (html: string): HTMLElement => {
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    return div.firstChild as HTMLElement;
+};
