@@ -19,6 +19,7 @@
 ### 已完成提交（main，最新在上）
 | commit | 内容 |
 |---|---|
+| `aa585f6` | refactor: 广播通道收敛为 BroadcastService，发送接收两侧类型化 |
 | `f0ef773` | feat: 新增 services/sync 广播协议类型并收紧 handler 参数类型（阶段 3） |
 | `442c9e6` | docs: 同步退出预览去原文化完成状态 |
 | `2a2b0f9` | feat: snippet_element_update 退出预览去原文化，接收窗口自拉恢复 |
@@ -52,7 +53,7 @@
 ### 已建模块
 - `src/core/event-bus.ts`（类型化 pub/sub，`on/off/emit/clear`；注意：勿用字段名 `eventBus`，会与 siyuan `Plugin` 基类成员冲突，内部用 `internalEventBus`）
 - `src/services/storage.ts`（`getFile`/`putFile`/`renameFile`）
-- `src/services/sync.ts`（阶段 3：广播通道常量 + 各消息 payload 接口 + `SnippetBroadcastMessage` 联合类型，含禁原文约束与 CSS 预览豁免注释；payload 类型已被 6 个广播 handler 与 dispatch 使用）
+- `src/services/sync.ts`（阶段 3：协议类型 + 传输服务。协议：payload 接口 + `SnippetBroadcastBody`（消息体）→ `WithEnvelope` 分配式生成 `SnippetBroadcastMessage`（信封 + 消息体），`SnippetBusinessMessage` 为去掉窗口保活后的业务子集；含禁原文约束与 CSS 预览豁免注释。传输：`BroadcastService` 统一管理 windowId/其他窗口在线集合/WebSocket 连接与自动重连/页面卸载通知，内部消化窗口保活三消息，`broadcast<T extends SnippetBroadcastBody>` 类型化发送（信封由服务保证附加），业务消息经 `onBusinessMessage` 回调上抛，日志经 `BroadcastLogger` 注入）
 - `src/utils.ts`（含 `isPromiseFulfilled`/`hideTooltip`/`showElementTooltip`/`isInputElementActive`/`htmlToElement`/`moveElementToTop`）
 - `src/domain/snippet.ts`（`isValidJavaScriptCode`/`isSnippetsTypeEnabled`）
 - `src/domain/snippet-store.ts`（`SnippetStore`：`remove`/`upsert`/`insertBefore`/`move`/`replaceAll`，单一写路径 + 统一发 `SNIPPETS_CHANGED`）
@@ -104,7 +105,7 @@
 
 ### 下一步建议（朝目标架构，拆可验证子批推进）
 1. 阶段 2（Store 收敛）已完成：`domain/snippet-store.ts` 的 `remove`/`upsert`/`insertBefore`/`move`/`replaceAll` 已承接全部本地结构写，计数统一由 `SNIPPETS_CHANGED` 事件驱动。
-2. 阶段 3（sync 收敛）已推进至一半：`services/sync.ts` 协议类型已建、`BROADCAST_CHANNEL_NAME` 迁出、6 个广播 handler 与 dispatch 参数已收紧为 payload 类型。**下一步**：发送侧类型化——把 `broadcastMessage(type: string, data: any)` 改为受 `SnippetBroadcastMessage["type"]` 约束的泛型发送（各调用点传字面量 type 自动获得 payload 校验），消除发送侧裸字符串与 `any`；之后再把 `handleBroadcastMessage` 的 switch 与 handler 迁入 `services/sync.ts`，让远程消息统一映射到 store，消灭 `*Sync` 镜像。
+2. 阶段 3（sync 收敛）已过**传输层 + 类型化**：`services/sync.ts` 已含协议类型（`SnippetBroadcastBody`/`SnippetBroadcastMessage`/`SnippetBusinessMessage`）与 `BroadcastService`（连接/重连/窗口保活/类型化 `broadcast`）；`index.ts` 的 `handleBroadcastMessage(data: SnippetBusinessMessage)` 已退化为纯业务分发（switch 穷尽收窄、无 `as` 断言），发送侧 10 个调用点均已类型化。**下一步**：把 8 个 `*Sync` handler 本体收敛——让远程消息直接映射到 `SnippetStore`/config 的同一写路径并复用本地 UI 更新逻辑（从根上消灭 `toggleSnippetSync`/`saveSnippetSync` 等镜像，再把 switch 与 handler 一并迁入 `services/sync.ts`）。
 3. 之后：config 声明式（阶段 4）、UI 视图化（阶段 5）、jcsm 收敛（阶段 6）。
 
 ---
