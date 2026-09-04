@@ -1,8 +1,10 @@
 import type {Snippet, SnippetType} from "../types";
 
 /**
-// 跨窗口广播协议与传输服务
- * 广播信封统一为 { type, windowId, timestamp, ...payload }，由 BroadcastService.broadcast 自动附加。
+ * 跨窗口广播协议与传输服务
+ * 广播信封统一为 { type, windowId, ...payload }（windowId 供接收方识别并忽略自身消息），
+ * 由 BroadcastService.broadcast 自动附加；服务不跟踪其他窗口在线状态——广播始终发送，
+ * 内核通道无其他接收窗口时自然丢弃，因此无需窗口保活握手协议。
  * 硬性约束：payload 不得携带代码片段 content 原文（可能含敏感信息）；唯一豁免为 CSS 编辑中实时预览
  * （snippet_element_update 且 previewState: true，内容未保存、接收窗口无法自拉）。
  */
@@ -13,14 +15,12 @@ import type {Snippet, SnippetType} from "../types";
 export const BROADCAST_CHANNEL_NAME = "snippets-plugin-sync";
 
 /**
- * 广播消息信封：所有消息共有的发送窗口标识与时间戳
- * 由 BroadcastService.broadcast 自动附加并保证覆盖，上层读取时用于识别消息来源。
+ * 广播消息信封：消息共有的发送窗口标识（接收方据此识别并忽略自身窗口的消息）
+ * 由 BroadcastService.broadcast 自动附加并保证覆盖。
  */
 export interface BroadcastEnvelope {
     /** 发送窗口的唯一标识 */
     windowId: string;
-    /** 发送时间戳 */
-    timestamp: number;
 }
 
 /** 切换代码片段开关状态载荷 */
@@ -79,9 +79,6 @@ export interface SnippetElementRemovePayload {
  * 因消息体成员均无信封字段，fresh 字面量无法携带 windowId / timestamp，信封只能由服务附加。
  */
 export type SnippetBroadcastBody =
-    | {type: "window_online"}
-    | {type: "window_online_feedback"}
-    | {type: "window_offline"}
     | ({type: "snippet_toggle"} & SnippetTogglePayload)
     | ({type: "snippet_toggle_publish"} & SnippetTogglePublishPayload)
     | ({type: "snippet_toggle_global"} & SnippetToggleGlobalPayload)
@@ -101,19 +98,6 @@ type WithEnvelope<T> = T extends unknown ? T & BroadcastEnvelope : never;
  * 接收侧按此类型解析：type 收窄后可直接读取对应载荷与信封来源；业务分发按 type 分发到对应 handler。
  */
 export type SnippetBroadcastMessage = WithEnvelope<SnippetBroadcastBody>;
-
-/** 窗口保活消息（由 BroadcastService 内部处理，上层无需感知）：载荷即信封，用于标识发送窗口自身 */
-export type WindowKeepaliveMessage = BroadcastEnvelope & (
-    | {type: "window_online"}
-    | {type: "window_online_feedback"}
-    | {type: "window_offline"}
-);
-
-/**
- * 业务消息（去掉窗口保活三类后的协议子集）
- * 上层（插件）的业务分发只处理该子集；保活消息在 BroadcastService 内部消化。
- */
-export type SnippetBusinessMessage = Exclude<SnippetBroadcastMessage, WindowKeepaliveMessage>;
 
 /**
  * 广播日志器最小接口
@@ -152,11 +136,10 @@ export interface BroadcastServiceOptions {
 
 /**
  * 基于思源内核 broadcast API 的跨窗口广播服务
- * - 统一维护当前窗口唯一标识、其他窗口在线集合与 WebSocket 连接（含自动重连与页面卸载通知）；
- * - 内部消化窗口保活（window_online / window_online_feedback / window_offline），上层无需感知；
- * - 业务消息按 type 查表分发到 BroadcastHandlers 对应处理器（处理器直接拿到收窄后的载荷）；
- * - 发送侧受 SnippetBroadcastBody 协议约束：调用方传字面量 type 即自动获得对应 payload 的类型校验，
- *   信封字段（windowId / timestamp）由本服务自动附加。
+ * - 维护当前窗口唯一标识与 WebSocket 连接（含自动重连），业务消息按 type 查表分发到 handlers；
+ * - 广播始终发送、不跟踪其他窗口（内核通道无接收窗口时自然丢弃），因此无窗口保活握手；
+ * - 发送侧受 SnippetBroadcastBody 协议约束：调用方传 type 字面量即获得对应 payload 的类型校验，
+ *   信封字段 windowId 由本服务自动附加。
  */
 export class BroadcastService {
     private readonly logger: BroadcastLogger;
@@ -174,77 +157,55 @@ export class BroadcastService {
     /** 重连定时器 */
     private reconnectTimer: number | null = null;
 
-    /** 其他窗口 ID 集合，用于跟踪其他窗口的在线状态 */
-    private readonly otherWindowIds: Set<string> = new Set();
-
-    /** 页面卸载监听：窗口关闭前发送下线通知 */
-    private readonly beforeunloadHandler: () => void;
+    /** 是否已停止（stop 后不再重连） */
+    private stopped = false;
 
     constructor(options: BroadcastServiceOptions) {
         this.logger = options.logger;
         this.handlers = options.handlers;
-        this.beforeunloadHandler = () => {
-            this.sendOfflineNotification();
-        };
     }
 
     /**
-     * 启动广播服务：订阅广播通道、宣告本窗口上线、注册页面卸载监听
+     * 启动广播服务：订阅广播通道
      * 应在插件配置加载完成后调用，与插件 onLayoutReady 对齐。
      */
     async start(): Promise<void> {
+        this.stopped = false;
         // 生成当前窗口的唯一标识
         this.windowId = BROADCAST_CHANNEL_NAME + "-" + window.Lute.NewNodeID();
 
         await this.subscribe();
 
         this.logger.log("Broadcast Channel has been initialized, Window ID:", this.windowId);
-
-        // 发送上线通知到其他窗口（用于发现其他窗口，强制发送）
-        this.broadcast({type: "window_online"}, true);
-
-        // 监听页面卸载事件，确保窗口关闭时发送下线通知
-        window.addEventListener("beforeunload", this.beforeunloadHandler);
     }
 
     /**
-     * 停止广播服务：发送下线通知、断开连接并清理页面卸载监听
+     * 停止广播服务：断开连接并禁止后续重连
      */
     stop(): void {
-        this.sendOfflineNotification();
-
+        this.stopped = true;
         this.clearReconnectTimer();
-
-        // 清理窗口跟踪数据
-        this.otherWindowIds.clear();
 
         if (this.websocket) {
             this.websocket.close();
             this.websocket = null;
         }
-
-        window.removeEventListener("beforeunload", this.beforeunloadHandler);
     }
 
     /**
      * 发送广播消息到其他窗口
-     * 信封字段（windowId / timestamp）由本服务自动附加并保证覆盖，调用方无需传入；
-     * 消息体受 SnippetBroadcastBody 协议约束：传 type 字面量与不匹配的载荷会直接编译报错。
+     * 信封字段 windowId 由本服务自动附加并保证覆盖；广播始终发送（内核通道无其他接收窗口时自然丢弃），
+     * 调用方无需关心其他窗口是否在线。
      * @param message 消息体：type 为协议字面量，payload 随 type 自动获得类型校验
-     * @param force 是否强制发送（忽略其他窗口在线检查；窗口保活消息必须强制发送）
      */
-    broadcast<T extends SnippetBroadcastBody>(message: T, force = false): void {
+    broadcast<T extends SnippetBroadcastBody>(message: T): void {
         // TODO功能: 试试能不能支持发布服务，实时应用变更到发布服务窗口 https://github.com/TCOTC/snippets/issues/33
         // 需要注意 disabledInPublish 的代码片段不能被广播到发布服务窗口。看看哪些消息需要禁止发送
 
-        // 如果不是强制发送且不存在其他窗口，则跳过广播
-        if (!force && this.otherWindowIds.size === 0) return;
-
-        // 组装信封：windowId/timestamp 由本服务保证覆盖（消息体类型上已无这两个字段）
+        // 组装信封：windowId 由本服务保证覆盖（消息体类型上已无该字段）
         const envelope = {
             ...message,
             windowId: this.windowId,
-            timestamp: Date.now(),
         } as SnippetBroadcastMessage;
 
         this.postMessage(JSON.stringify(envelope));
@@ -302,74 +263,31 @@ export class BroadcastService {
     }
 
     /**
-     * 处理收到的广播消息：忽略自身消息、维护其他窗口在线集合；
-     * 窗口保活消息在此消化，业务消息查表分发到 handlers
+     * 处理收到的广播消息：忽略自身窗口消息，其余按 type 查表分发到 handlers
      * @param message 消息数据
      */
     private handleIncomingMessage(message: SnippetBroadcastMessage) {
         this.logger.log("Received broadcast message:", message);
 
-        // 忽略来自当前窗口的消息
+        // 忽略来自当前窗口的消息（本窗口的变更已由本地操作路径处理）
         if (message.windowId === this.windowId) {
             this.logger.log("Ignoring message from current window:", message.windowId);
             return;
         }
 
-        // 记录其他窗口 ID
-        this.otherWindowIds.add(message.windowId);
-
-        switch (message.type) {
-            case "window_online":
-                // 向新上线的窗口发送反馈，告知自己的存在
-                this.logger.log("New window detected:", message.windowId);
-                this.broadcast({type: "window_online_feedback"});
-                break;
-            case "window_online_feedback":
-                this.logger.log("Received online feedback from:", message.windowId);
-                break;
-            case "window_offline":
-                this.handleWindowOffline(message.windowId);
-                break;
-            default: {
-                // 业务消息：按 type 查表分发（TS 穷尽后此处 message 即为 SnippetBusinessMessage，
-                // 载荷字段已由协议保证完整；处理器内部按自己的收窄载荷消费对应字段）
-                const handler = this.handlers[message.type] as ((payload: SnippetBusinessMessage) => void | Promise<void>) | undefined;
-                if (handler) {
-                    void handler(message);
-                } else {
-                    this.logger.warn("No handler registered for broadcast message type:", message.type);
-                }
-            }
+        const handler = this.handlers[message.type] as ((payload: SnippetBroadcastMessage) => void | Promise<void>) | undefined;
+        if (handler) {
+            void handler(message);
+        } else {
+            this.logger.warn("No handler registered for broadcast message type:", message.type);
         }
     }
 
     /**
-     * 处理窗口下线通知
-     * @param windowId 下线的窗口 ID
-     */
-    private handleWindowOffline(windowId: string) {
-        // 立即从跟踪列表中移除该窗口
-        this.otherWindowIds.delete(windowId);
-        this.logger.log("Window offline notification received, removed from tracking:", windowId);
-    }
-
-    /**
-     * 发送窗口下线通知
-     */
-    private sendOfflineNotification() {
-        // 在页面卸载前发送下线通知
-        try {
-            this.broadcast({type: "window_offline"}, true);
-        } catch (error) {
-            // 忽略错误，因为页面即将卸载
-            this.logger.error("Failed to send offline notification:", error);
-        }
-    }
-
-    /**
-     * 安排重连
+     * 安排重连（stop 后不再重连）
      */
     private scheduleReconnect() {
+        if (this.stopped) return;
         this.clearReconnectTimer();
         this.reconnectTimer = window.setTimeout(() => {
             this.logger.log("Attempting to reconnect to broadcast channel...");
