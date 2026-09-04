@@ -73,6 +73,10 @@ export class SnippetManager {
             this.plugin.snippetStore.upsert(snippet);
             if (remoteOldSnippet) {
                 // 本窗口原本有该片段：更新。比较对象属性值而不是对象引用
+                // 判等口径与本地分支保持一致：content/enabled 变化才需要刷新注入元素
+                // （普通编辑前端 updateSnippetElement 不读取 disabledInPublish；发布会话中
+                // disabledInPublish 决定发布页注入与否，走独立的 snippet_toggle_publish 发布分支），
+                // 发布开关变更由广播方走独立的 snippet_toggle_publish 路径处理，不参与本处比较
                 const contentOrEnabledChanged = remoteOldSnippet.content !== snippet.content || remoteOldSnippet.enabled !== snippet.enabled;
                 if (contentOrEnabledChanged) {
                     // 只有代码片段名称改变的时候不需要更新元素
@@ -121,8 +125,13 @@ export class SnippetManager {
                 // 如果存在，则更新该代码片段
                 // 比较对象属性值而不是对象引用
                 const nameChanged = oldSnippet.name !== snippet.name;
-                const contentOrEnabledChanged = oldSnippet.content !== snippet.content || oldSnippet.enabled !== snippet.enabled || oldSnippet.disabledInPublish !== snippet.disabledInPublish;
-                hasChanges = nameChanged || contentOrEnabledChanged;
+                // 判等口径与远程分支保持一致：content/enabled 变化才刷新注入元素（普通编辑前端
+                // 的注入不看 disabledInPublish；发布会话中由 toggleSnippetPublish 的发布分支按
+                // disabledInPublish 维护发布页元素）；disabledInPublish 仅参与落库/广播判定（hasChanges），
+                // 菜单发布开关 UI 由 applySnippetUIChange 同步
+                const contentOrEnabledChanged = oldSnippet.content !== snippet.content || oldSnippet.enabled !== snippet.enabled;
+                const publishChanged = oldSnippet.disabledInPublish !== snippet.disabledInPublish;
+                hasChanges = nameChanged || contentOrEnabledChanged || publishChanged;
                 if (hasChanges) {
                     // 从 Store 统一替换并触发计数刷新事件
                     this.plugin.snippetStore.upsert(snippet);
@@ -428,14 +437,6 @@ export class SnippetManager {
     }
 
     /**
-     * 当前实例是否为发布站点（而非“内核是否启用了发布服务”）：
-     * window.siyuan.isPublish 由内核按会话角色注入，发布站点（发布静态页的 WebSocket/API 会话）
-     * 为 true，普通编辑前端为 false。发布站点不加载插件（petal 仅加载于普通会话），
-     * 因此本方法在现实可达路径上恒为 false，仅作 issue #33 预留判断。
-     */
-    private isPublish(): boolean { return window.siyuan.isPublish ?? false; }
-
-    /**
      * 切换代码片段的开关状态（本窗口操作与同内核其他前端实例广播共用同一路径）
      * - 本地（origin 缺省为 local）：改内存 → 落库 → 更新元素 → 广播；若已打开该片段的 CSS 实时预览
      *   对话框，则跳过广播（开关状态由预览中的对话框接管，广播方窗口不推送）；
@@ -484,13 +485,15 @@ export class SnippetManager {
      * 移动端均连同一内核 WebSocket）；广播消息即“来自其他前端实例”，非跨设备同步。
      * 载荷 enabled 字段语义即 disabledInPublish（与 services/sync.ts 载荷注释保持一致）：
      * 为 true 表示“不在发布服务中显示”，为 false 表示“允许发布”。
-     * - 本窗口操作（origin 缺省为 local）：本窗口菜单发布开关（普通编辑前端；发布站点不加载插件，
-     *   issue #33）。就地改 disabledInPublish → 落库 → 广播；
+     * - 本窗口操作（origin 缺省为 local）：本窗口菜单发布开关（仅普通编辑前端提供；发布页为
+     *   只读会话、不装配菜单，issue #33）。就地改 disabledInPublish → 落库 → 广播；
      * - 同内核其他前端实例广播（origin 为 remote）：广播实例已落库，本实例不落库、不广播，仅同步自身状态：
-     *   - 当前实例为发布站点（window.siyuan.isPublish 为 true）：维护发布界面中的注入元素——
-     *     标记为“不在发布中显示”时按需添加元素，标记为“允许发布”时强制移除元素并从 Store 删除
-     *     （原实现保留，含 issue #33 TODO；现状发布站点不加载插件，此分支实际不可达）；
-     *   - 当前实例为普通编辑前端（window.siyuan.isPublish 为 false）：发布开关仅是无副作用的元数据
+     *   - 当前实例为发布站点（plugin.isPublish 为 true）：维护发布页注入元素——本插件在发布页
+     *     会加载（plugin.json disabledInPublish 为 false），发布会话的内核 getSnippet 仅返回
+     *     "允许发布"（disabledInPublish 非 true）的片段；发布会话收不到跨窗口广播，编辑端开关
+     *     变更不会实时到达本分支（发布页片段由发布渲染静态注入、刷新页面生效），
+     *     本分支仅作防御与未来兼容；
+     *   - 当前实例为普通编辑前端（plugin.isPublish 为 false）：发布开关仅是无副作用的元数据
      *     （记录将来发布时该片段是否显示），不更新注入元素，仅就地改 disabledInPublish 并同步菜单 publishSwitch。
      * @param snippetId 代码片段 ID
      * @param enabled 是否禁用发布（即 disabledInPublish）
@@ -519,22 +522,26 @@ export class SnippetManager {
         }
 
         // 同内核其他前端实例广播（origin 为 remote）
-        if (this.isPublish()) {
-            // 当前实例为发布站点
-            // TODO功能: 支持在发布服务启用插件 https://github.com/TCOTC/snippets/issues/33
+        // 当前实例是否为发布站点（plugin.isPublish 由内核按会话角色注入）：发布页为只读会话，
+        // 不装配顶栏按钮/菜单等管理 UI，但插件仍会加载（plugin.json disabledInPublish 为 false）；
+        // 发布会话收不到跨窗口广播，本分支按 disabledInPublish 增删注入元素仅作防御与未来兼容。
+        // https://github.com/TCOTC/snippets/issues/33
+        if (this.plugin.isPublish) {
             if (enabled) {
-                // enabled（disabledInPublish=true，不在发布中显示）：添加 snippet（由 updateSnippetElement 判断是否需要添加元素）
-                const snippet = await this.getSnippetById(snippetId);
-                if (snippet) {
-                    await this.updateSnippetElement(snippet);
-                }
-            } else {
-                // enabled=false（允许发布）：移除 snippet 的注入元素并从 Store 删除
+                // enabled（disabledInPublish=true，不在发布中显示）：该片段已从发布会话可读列表消失，
+                // 移除注入元素；本地缓存可能仍有旧态，故直接查列表并强制移除
                 const snippet = this.plugin.snippetsList.find((s: Snippet) => s.id === snippetId);
                 if (snippet) {
                     await this.updateSnippetElement(snippet, false); // 必须移除元素
                     // 从 Store 中删除：统一更新列表并触发计数刷新事件
                     this.plugin.snippetStore.remove(snippetId);
+                }
+            } else {
+                // enabled=false（允许发布）：该片段重新进入发布会话可读列表，自拉权威数据后按需注入
+                // （updateSnippetElement 内部按 snippet.enabled 与类型全局开关判断是否添加元素）
+                const snippet = await this.getSnippetById(snippetId);
+                if (snippet) {
+                    await this.updateSnippetElement(snippet);
                 }
             }
             return;

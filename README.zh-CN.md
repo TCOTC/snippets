@@ -45,6 +45,11 @@
 
 #### 插件更新日志
 
+##### v2.0
+
+- 重构插件代码
+- 适配发布服务 [#33](https://github.com/TCOTC/snippets/issues/33)
+
 ##### v1.4
 
 - 支持跨窗口应用样式 [#23](https://github.com/TCOTC/snippets/issues/23)

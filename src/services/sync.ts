@@ -199,8 +199,11 @@ export class BroadcastService {
      * @param message 消息体：type 为协议字面量，payload 随 type 自动获得类型校验
      */
     broadcast<T extends SnippetBroadcastBody>(message: T): void {
-        // TODO功能: 试试能不能支持发布服务，实时应用变更到发布服务窗口 https://github.com/TCOTC/snippets/issues/33
-        // 需要注意 disabledInPublish 的代码片段不能被广播到发布服务窗口。看看哪些消息需要禁止发送
+        // 已知限制：发布服务会话（window.siyuan.isPublish 为 true，内核按只读角色注入）无法实时接收本广播——
+        // 内核 /ws/broadcast 与 /es/broadcast/subscribe 等通道要求管理员角色（CheckAdminRole），发布会话握手即 403，
+        // 且内核自身推送同样跳过发布会话。因此编辑端到"已打开发布页"的实时同步不可行：发布页片段由发布渲染
+        // 按 DisabledInPublish 过滤后静态注入，刷新页面即取最新内容（发布服务会话支持见
+        // https://github.com/TCOTC/snippets/issues/33 ）
 
         // 组装信封：windowId 由本服务保证覆盖（消息体类型上已无该字段）
         const envelope = {
