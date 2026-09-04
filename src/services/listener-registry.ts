@@ -89,40 +89,32 @@ export class ListenerRegistry {
         // findIndex 返回 -1 时已提前 return，此处必存在该元素的监听器记录（重复调用 removeListener 会命中上面的 -1 早退）
         const elementListeners = this.listeners[elementIndex];
 
-        if (event) {
-            if (fn) {
-                // 移除特定的监听器
-                element.removeEventListener(event, fn, options);
-                const index = elementListeners.listeners.findIndex(item =>
-                    item.event === event && item.fn === fn && item.options === options
-                );
-                if (index > -1) {
-                    elementListeners.listeners.splice(index, 1);
-                    // 如果移除后该元素没有任何监听器了，从数组中移除该元素的记录
-                    if (elementListeners.listeners.length === 0) {
-                        this.listeners.splice(elementIndex, 1);
-                    }
-                }
-            } else {
-                // 只移除该事件类型的所有监听器
-                // 先筛选出所有该事件类型的监听器
-                const toRemove = elementListeners.listeners.filter(item => item.event === event);
-                toRemove.forEach(({ event, fn, options }) => {
-                    element.removeEventListener(event, fn, options);
-                });
-                // 从监听器列表中移除所有该事件类型的监听器
-                elementListeners.listeners = elementListeners.listeners.filter(item => item.event !== event);
-                // 如果移除后该元素没有任何监听器了，从数组中移除该元素的记录
-                if (elementListeners.listeners.length === 0) {
-                    this.listeners.splice(elementIndex, 1);
-                }
+        if (event && fn) {
+            // 移除特定的监听器
+            element.removeEventListener(event, fn, options);
+            const index = elementListeners.listeners.findIndex(item =>
+                item.event === event && item.fn === fn && item.options === options
+            );
+            if (index > -1) {
+                elementListeners.listeners.splice(index, 1);
             }
-        } else {
-            // 移除该元素的所有监听器
-            elementListeners.listeners.forEach(({ event, fn, options }) => {
+        } else if (event) {
+            // 只移除该事件类型的所有监听器
+            const toRemove = elementListeners.listeners.filter(item => item.event === event);
+            toRemove.forEach(({event, fn, options}) => {
                 element.removeEventListener(event, fn, options);
             });
-            // 从数组中移除该元素的记录
+            elementListeners.listeners = elementListeners.listeners.filter(item => item.event !== event);
+        } else {
+            // 移除该元素的所有监听器
+            elementListeners.listeners.forEach(({event, fn, options}) => {
+                element.removeEventListener(event, fn, options);
+            });
+            elementListeners.listeners = [];
+        }
+
+        // 该元素已无登记监听器时，从数组中移除该元素的记录
+        if (elementListeners.listeners.length === 0) {
             this.listeners.splice(elementIndex, 1);
         }
     }

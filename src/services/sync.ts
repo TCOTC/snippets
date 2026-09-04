@@ -245,10 +245,9 @@ export class BroadcastService {
                     }
                 };
 
-                // 监听连接错误
+                // 监听连接错误（WS 错误后必然触发 onclose，重连统一由 onclose 调度）
                 this.websocket.onerror = (error) => {
                     this.logger.error("Broadcast channel connection error:", error);
-                    this.scheduleReconnect();
                     reject(error); // 连接错误时 reject Promise
                 };
 
