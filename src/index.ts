@@ -4,6 +4,7 @@ import {isSnippetsTypeEnabled, isValidJavaScriptCode} from "./domain/snippet";
 import {SNIPPETS_CHANGED, SnippetStore} from "./domain/snippet-store";
 import {createSnippetsConfigItems} from "./config/schema";
 import type {SnippetsConfigItem} from "./config/schema";
+import {ConfigService} from "./config/config-service";
 import {BroadcastService} from "./services/sync";
 import {hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, showElementTooltip} from "./utils";
 import {getFile, putFile, renameFile} from "./services/storage";
@@ -97,6 +98,11 @@ export default class PluginSnippets extends Plugin {
     private settingDialog!: SettingDialog;
 
     /**
+     * 配置服务（装配/持久化/热应用见 src/config/config-service.ts）
+     */
+    private configService!: ConfigService;
+
+    /**
      * 启用插件
      */
     public async onload() {
@@ -108,14 +114,37 @@ export default class PluginSnippets extends Plugin {
             },
         });
 
-        // 初始化编辑器对话框生命周期管理器（运行态经读取器实时转发：editorIndentUnit 需在 initSetting 完成 defineProperty 后才能读取，故只能在调用时取值）
+        // 初始化编辑器对话框生命周期管理器（运行态经读取器实时转发：editorIndentUnit 需在配置装配完成 defineProperty 后才能读取，故只能在调用时取值）
         this.editorManager = new EditorManager({
             logger: this.console,
             editorIndentUnit: () => this.editorIndentUnit,
             i18n: () => this.i18n,
         });
 
-        // 初始化设置对话框管理器（运行态经读取器/动作实时转发：设置项列表等需在 initSetting 完成后才有，openSetting 打开时才会读取）
+        // 初始化配置服务（配置装配/持久化/热应用；存储键名与生命周期数据方法在此转发，运行态均延迟到调用时取值）
+        this.configService = new ConfigService({
+            logger: this.console,
+            version: () => this.version,
+            i18n: () => this.i18n,
+            configItems: () => this.configItems,
+            ensureConfigItems: () => this.initConfigItems(),
+            definePropertiesTarget: () => this,
+            loadConfig: async () => {
+                await this.loadData(STORAGE_NAME);
+                return this.data[STORAGE_NAME];
+            },
+            removeConfig: async () => {
+                await this.removeData(STORAGE_NAME);
+            },
+            saveConfig: async (content) => {
+                await this.saveData(STORAGE_NAME, content);
+            },
+            showErrorMessage: (message, timeout, id) => this.showErrorMessage(message, timeout, id),
+            closeDialog: (dialogElement) => this.closeDialogByElement(dialogElement),
+            hideNotice: (messageI18nKey) => hideMessage(PLUGIN_NAME + "-" + messageI18nKey),
+        });
+
+        // 初始化设置对话框管理器（运行态经读取器/动作实时转发：设置项列表等需在配置装配完成后才有，openSetting 打开时才会读取）
         this.settingDialog = new SettingDialog({
             logger: this.console,
             displayName: () => this.displayName,
@@ -125,7 +154,7 @@ export default class PluginSnippets extends Plugin {
             settingItems: () => this.setting.items,
             addListener: (element, event, fn, options) => this.addListener(element, event, fn, options),
             closeDialog: (dialogElement) => this.closeDialogByElement(dialogElement),
-            saveSetting: (dialogElement) => this.saveSetting(dialogElement),
+            saveSetting: (dialogElement) => this.configService.saveFromDialog(dialogElement),
             closeMenu: () => this.menu?.close(),
             exportSnippets: () => void this.exportSnippetsToFile(),
             importSnippets: (overwrite) => void this.importSnippets(overwrite),
@@ -177,13 +206,14 @@ export default class PluginSnippets extends Plugin {
         this.isTouchDevice = ("ontouchstart" in window) && navigator.maxTouchPoints > 1;
 
         // 优先初始化插件设置，因为顶栏按钮位置需要根据插件设置来决定
-        await this.initSetting();
+        await this.configService.init();
+        this.setting = this.configService.setting!;
         // 插件设置加载之后启动文件监听
         if (this.fileWatchEnabled && this.fileWatchEnabled !== "disabled") {
             this.startFileWatch();
         }
         // 插件设置加载之后暴露 ignoreNotice 方法到全局
-        window.siyuan.jcsm.disableNotification = this.disableNotification.bind(this);
+        window.siyuan.jcsm.disableNotification = (messageI18nKey) => this.configService.disableNotification(messageI18nKey);
 
         // 顶栏按钮图标
         this.addIcons(`
@@ -322,17 +352,15 @@ export default class PluginSnippets extends Plugin {
      *  - sync（跨设备）：其他设备写入插件配置后经数据仓库合并拉回本机，内核推 dataChange；
      *  - overwrite（同内核其他前端实例）：其他实例经文件接口写入 data/storage/petal/snippets/，
      *    内核按发起实例附带的 app 排除其自身后推送本实例（发起方自己不会收到）。
-     * 两类来源对本插件的处置相同——都要重新读取配置并热应用（applyConfig 内部按值 diff，
-     * 无变化不触发 applySetting 副作用），故本方法不接收 reason 参数做区分。
+     * 两类来源对本插件的处置相同——都要重新读取配置并热应用（ConfigService.reloadFromStorage 内部
+     * 按值 diff，无变化不触发 onApply 副作用），故本方法不接收 reason 参数做区分。
      * 说明：跨窗口配置同步不再依赖自建广播——思源自 2a11f8ab（siyuan#19132）起，任何实例经文件接口
      * 写入插件配置都会触发内核推送（reason=overwrite，含发起实例自身以外的所有实例），本方法即同步入口；
      * 此前的 setting_apply 广播与 applySettingSync 已随该内核能力退役（插件重构以最新思源代码为基准）。
      */
     public async onDataChanged() {
-        // 重新读取配置：this.loadData 会从内核拉取最新文件并更新 this.data
-        await this.loadData(STORAGE_NAME);
-        const config = this.data[STORAGE_NAME];
-        this.applyConfig(config);
+        // 重新读取配置并热应用（applyConfig 内部按值 diff，无变化不触发 onApply 副作用）
+        await this.configService.reloadFromStorage();
     }
 
     /**
@@ -463,234 +491,6 @@ export default class PluginSnippets extends Plugin {
             stopFileWatch: () => this.stopFileWatch(),
             handleFileWatchPathChange: () => void this.handleFileWatchPathChange(),
             handleFileWatchIntervalChange: () => this.handleFileWatchIntervalChange(),
-        });
-    }
-
-    /**
-     * 创建配置 getter
-     * @param key 配置项 key
-     * @returns 配置 getter
-     */
-    private createConfigGetter(key: string) {
-        const configItem = this.configItems.find(item => item.key === key);
-        const defaultValue = configItem?.defaultValue;
-        return () => (window.siyuan.jcsm as any)?.[key] ?? defaultValue;
-    }
-
-    /**
-     * 创建配置 setter
-     * @param key 配置项 key
-     * @returns 配置 setter
-     */
-    private createConfigSetter(key: string) {
-        return (value: any) => { (window.siyuan.jcsm as any)[key] = value; };
-    }
-
-    /**
-     * 加载配置或者设置默认值
-     * @param config 配置
-     */
-    private async loadConfig(config: any) {
-        await this.initConfigItems();
-        this.configItems.forEach(item => {
-            // 使用全局变量存储配置
-            (window.siyuan.jcsm as any)[item.key] = config[item.key] ?? item.defaultValue;
-        });
-    }
-
-    /**
-     * 创建设置项
-     * @param item 配置项
-     * @returns 设置项
-     */
-    private createSettingItem(item: typeof this.configItems[0]) {
-        if (!item.direction) {
-            item.direction = "column";
-            // 或者也可以根据类型设置默认方向，但是目前不需要
-        }
-
-        return {
-            title: (this.i18n as any)[item.key],
-            description: item.description ? (this.i18n as any)[item.description] : undefined,
-            direction: item.direction,
-            createActionElement: (): HTMLElement => {
-                if (item.type === "boolean") {
-                    return htmlToElement(
-                        `<input class="b3-switch fn__flex-center" type="checkbox" data-type="${item.key}"${(window.siyuan.jcsm as any)[item.key] ? " checked" : ""}>`
-                    );
-                } else if ((item.type === "selectString" || item.type === "selectNumber") && item.options) {
-                    // 创建下拉框
-                    const currentValue = (window.siyuan.jcsm as any)[item.key] ?? item.defaultValue;
-                    const optionsHtml = item.options.map(option => {
-                        // 由于 HTML 的 value 属性最终都会被转为字符串，这里直接用字符串比较即可
-                        const isSelected = String(currentValue) === String(option.value);
-                        return `<option value="${option.value}"${isSelected ? " selected" : ""}>${(this.i18n as any)[option.text]}</option>`;
-                    }).join("");
-
-                    return htmlToElement(
-                        `<select class="b3-select fn__flex-center" data-type="${item.key}">${optionsHtml}</select>`
-                    );
-                } else if (item.type === "string") {
-                    // 创建文本输入框
-                    const currentValue = (window.siyuan.jcsm as any)[item.key] ?? item.defaultValue ?? "";
-                    return htmlToElement(
-                        `<input class="b3-text-field fn__flex-center" type="text" data-type="${item.key}" value="${currentValue}"${item.defaultValue ? ` placeholder="${item.defaultValue}"` : ""}>`
-                    );
-                } else if (item.type === "number") {
-                    // 创建数字输入框
-                    const currentValue = (window.siyuan.jcsm as any)[item.key] ?? item.defaultValue ?? 0;
-                    return htmlToElement(
-                        `<input class="b3-text-field fn__flex-center" type="number" data-type="${item.key}" value="${currentValue}" min="1" max="300" step="1"${item.defaultValue ? ` placeholder="${item.defaultValue}"` : ""}>`
-                    );
-                } else if (item.type === "createActionElement" || item.createActionElement) {
-                    return item.createActionElement?.() as HTMLElement;
-                }
-                // 理论不可达：configItems 的类型均已在上方处理，返回 undefined 以保持原运行时行为
-                return undefined as unknown as HTMLElement;
-            },
-        };
-    }
-
-    /**
-     * 初始化插件设置
-     */
-    private async initSetting() {
-        // 加载配置文件数据
-        // TODO测试: 需要测试会不会在同步完成之前加载数据，然后同步修改数据之后插件没有重载。如果有这种情况的话提 issue、试试把 loadData() 和 this.setting 相关的逻辑放在 onLayoutReady 中有没有问题
-        await this.loadData(STORAGE_NAME);
-        const config = this.data[STORAGE_NAME];
-        // 配置不存在时 config === ""
-        if (config !== "") {
-            // 版本处理
-            if (!config.version || typeof config.version !== "number" || isNaN(config.version)) {
-                // 判断 config.version 是否不存在或不是数字
-                // 配置文件异常，移除配置文件、弹出错误消息
-                await this.removeData(STORAGE_NAME);
-                this.showErrorMessage(this.i18n.loadConfigError);
-            } else if (config.version > this.version) {
-                // 当前配置文件是更高版本的，与当前版本不兼容，弹出消息提示用户升级插件（可以不升级）
-                // 如果用户不升级插件，还保存了设置，则直接覆盖掉高版本配置，这样也没有问题，因为高版本加载的时候又会自动调整配置结构
-                this.showErrorMessage(this.i18n.loadConfigIncompatible, 15000);
-                return;
-            }
-            // else if (config.version < this.version) {
-            //     // 预留逻辑
-            //     // 当前配置文件是更低版本的，需要调整结构
-            //     this.updateConfig(config);
-            //     return
-            // }
-        }
-
-        // 读取配置或者设置默认值
-        await this.loadConfig(config);
-
-        // 为每个配置项动态生成 getter/setter
-        this.configItems.forEach(item => {
-            Object.defineProperty(this, item.key, {
-                get: () => this.createConfigGetter(item.key)(),
-                set: (value: any) => this.createConfigSetter(item.key)(value),
-                enumerable: true,
-                configurable: true
-            });
-        });
-
-        this.setting = new Setting({});
-
-        // 插件设置窗口中的各个配置项
-        this.configItems.forEach(item => {
-            if (item.ignore) return;
-            this.setting.addItem(this.createSettingItem(item));
-        });
-    }
-
-    /**
-     * 保存设置
-     * @param dialogElement 对话框元素
-     */
-    private saveSetting(dialogElement: HTMLElement) {
-        this.configItems.forEach(async item => {
-            let newValue;
-            let element: HTMLInputElement | HTMLSelectElement | null = null;
-
-            switch (item.type) {
-                case "boolean":
-                    element = dialogElement.querySelector(`input[data-type='${item.key}']`);
-                    if (!element) return;
-                    newValue = (element as HTMLInputElement).checked;
-                    break;
-                case "selectString":
-                case "selectNumber":
-                    element = dialogElement.querySelector(`select[data-type='${item.key}']`);
-                    if (!element) return;
-                    newValue = item.type === "selectNumber" ? parseInt((element as HTMLSelectElement).value) : (element as HTMLSelectElement).value;
-                    break;
-                case "string":
-                    element = dialogElement.querySelector(`input[data-type='${item.key}']`);
-                    if (!element) return;
-                    newValue = (element as HTMLInputElement).value;
-                    // fileWatchPath 特殊校验，不允许为空或只有空字符
-                    if (item.key === "fileWatchPath" && (!newValue || newValue.trim() === "")) {
-                        newValue = "data/snippets";
-                        // 重置输入框的值（目前没什么用，因为保存设置之后对话框就关闭了。不过以后有可能有用）
-                        // element.value = newValue;
-                    }
-                    break;
-                case "number":
-                    element = dialogElement.querySelector(`input[data-type='${item.key}']`);
-                    if (!element) return;
-                    newValue = parseInt((element as HTMLInputElement).value) || item.defaultValue || 0;
-                    break;
-            }
-
-            if ((window.siyuan.jcsm as any)[item.key] !== newValue) {
-                (window.siyuan.jcsm as any)[item.key] = newValue;
-                this.applySetting(item.key, newValue).then();
-            }
-        });
-
-        const config: any = { version: this.version };
-        this.configItems.forEach(item => {
-            config[item.key] = (window.siyuan.jcsm as any)[item.key];
-        });
-        const response = this.saveData(STORAGE_NAME, config) as any;
-        if (!isPromiseFulfilled(response)) {
-            // 写入失败
-            this.showErrorMessage(this.i18n.saveConfigFailed + " [" + response?.code + ": " + response?.msg + "]", 20000, "error");
-            return;
-        }
-
-        // 移除设置对话框
-        this.closeDialogByElement(dialogElement);
-    }
-
-    /**
-     * 应用设置
-     * 配置项的 UI 副作用声明在 configItems 对应条目的 onApply 上（定义见 src/config/schema.ts），此处仅查表分发
-     */
-    private async applySetting(key: string, newValue: any) {
-        const configItem = this.configItems.find(item => item.key === key);
-        if (configItem?.onApply) {
-            await configItem.onApply(newValue);
-        }
-    }
-
-    /**
-     * 应用配置（本地读取或跨窗口/跨设备同步后的统一入口）
-     * @param config 配置对象
-     */
-    private applyConfig(config: any) {
-        if (!config || typeof config !== "object") {
-            return;
-        }
-        // 逐个配置项与当前值比较，有变化时写入并触发对应 UI 更新
-        this.configItems.forEach(item => {
-            if (config.hasOwnProperty(item.key)) {
-                const newValue = config[item.key];
-                if ((window.siyuan.jcsm as any)[item.key] !== newValue) {
-                    (window.siyuan.jcsm as any)[item.key] = newValue;
-                    this.applySetting(item.key, newValue);
-                }
-            }
         });
     }
 
@@ -3282,43 +3082,6 @@ export default class PluginSnippets extends Plugin {
             // 传入 messageId 参数之后，反复弹出相同的消息时，不会关闭上一个消息再弹出新消息
             showMessage(message, timeout, "info", PLUGIN_NAME + "-" + messageI18nKey);
         }
-    }
-
-    /**
-     * 禁用指定通知
-     * @param messageI18nKey 通知的 i18n 键
-     */
-    public disableNotification(messageI18nKey: string) {
-        // 移除消息提示
-        hideMessage(PLUGIN_NAME + "-" + messageI18nKey);
-
-        // 通知的配置键名
-        const noticeConfigKey = messageI18nKey + "Notice";
-
-        // 检查通知键是否存在于配置项中
-        const configItem = this.configItems.find(item => item.key === noticeConfigKey);
-        if (!configItem) {
-            this.console.warn(`ignoreNotice: Notification config item "${noticeConfigKey}" not found`);
-            return;
-        }
-
-        // 检查是否为布尔类型的通知配置
-        if (configItem.type !== "boolean") {
-            this.console.warn(`ignoreNotice: Notification config item "${noticeConfigKey}" is not boolean type`);
-            return;
-        }
-
-        // 禁用通知
-        (window.siyuan.jcsm as any)[noticeConfigKey] = false;
-
-        // 保存设置到配置文件
-        const config: any = { version: this.version };
-        this.configItems.forEach(item => {
-            config[item.key] = (window.siyuan.jcsm as any)[item.key];
-        });
-        void this.saveData(STORAGE_NAME, config);
-
-        this.console.log(`ignoreNotice: Notification "${noticeConfigKey}" has been disabled and settings saved`);
     }
 
     /**
