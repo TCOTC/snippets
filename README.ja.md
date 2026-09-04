@@ -1,5 +1,3 @@
-[简体中文](https://github.com/TCOTC/snippets/blob/main/README.zh-CN.md) | [繁體中文](https://github.com/TCOTC/snippets/blob/main/README.zh-TW.md) | [English](https://github.com/TCOTC/snippets/blob/main/README.md)
-
 #### コードスニペット管理メニュー
 
 開き方：
