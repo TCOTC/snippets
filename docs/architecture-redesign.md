@@ -19,6 +19,7 @@
 ### 已完成提交（main，最新在上）
 | commit | 内容 |
 |---|---|
+| `3dc9eb4` | refactor: 单模块使用的插件类成员迁入模块内部（topBarElement/isTouchDevice 迁 SnippetsMenu、version 迁 ConfigService、setting 直连 configService） |
 | `783dec0` | refactor: 清理多余类型声明（零引用 Window 扩展/上游已含 saveExportFile 补充声明/监听器类型下沉 listener-registry） |
 | `29b9e31` | refactor: window.siyuan.jcsm 全量收敛移除（阶段 6 收官）——运行态标志/片段缓存/监听簿记/主题 observer 改由实例承载，通知按钮去全局函数 |
 | `7721307` | refactor: 配置镜像收敛出 jcsm（ConfigService 内部缓存承载，阶段 6 第一刀） |
@@ -105,7 +106,7 @@
 - 用户反馈：①**现有 Host 接口注入过多、不简洁**；②**index 内一层层纯转发的中转（薄壳）方法要去掉**。
 - **已全部落实（1d68177 收官）**：**所有 Host/interface 注入形态已从代码库根除**——新外迁模块一律 `class Xxx(private readonly plugin: PluginSnippets)` + `import type PluginSnippets from "../index"`（类型导入，无运行时循环），插件实例 `new Xxx(this)` 直接注入；插件侧被直连成员 public 化。已转换：SnippetsMenu（3981e9b，含顶栏菜单整体与全局键盘协调 9c8f008）、SnippetManager、SnippetsDialog、FileWatchService、FeedbackService、ListenerRegistry、EditorManager、ImportExportService、ConfigService（存储键 STORAGE_NAME 转由 config-service 导出、index 改导入）、SettingDialog（app/configService/importExportService public 化）。index 的薄壳中转方法均已删除、调用点直连。schema.ts 的 ctx 读取器形态为构建时上下文，保留；snippetStore 的 get/set 小对象为 snippetsList 缓存转发，保留。
 - **保留的高频门面**（非业务中转，调用点 30+，保留更简洁）：`showNotification`/`showErrorMessage`/`addListener`/`removeListener` 与实例属性访问器（isMobile/snippetsList/snippetsType/isReloadUIRequired 等）留在插件类上，供内部与各 UI/服务类直连；`genNewSnippetId`/`isPreviewingSnippet` 纯逻辑下沉 `utils.ts`。
-- **index.ts 当前规模 ~650 行**（原 ~6200）：主体为生命周期/装配（onload 各服务一行 `new Xxx(this)`；onLayoutReady 的 sync 分发注册表已外迁 `SnippetManager.buildSyncHandlers()`（b206b50），仅剩 BroadcastService 装配与 start；顶栏按钮图标注册 `SnippetsMenu.initIcons()` 与顶栏按钮创建/打开回调（initTopBar/openSnippetsManager，694bd0f）同迁 menu.ts）、initConfigItems ctx 装配、配置镜像 declare、syncService/console 等少量门面。卸载清理已收口（1785676）：Dialog 清理 → `SnippetsDialog.closeAllDialogs()`、CM 样式清理 → `EditorManager.cleanupEditorStyles()`。reloadUI 已外迁 `SnippetsDialog.reloadUI()`（2f399d5），`postReloadUI` 保留插件类门面（menu/file-watch/snippets-dialog 5 处直连）。各 Host 模块也已全部转为同一直连形态。
+- **index.ts 当前规模 ~625 行**（原 ~6200）：主体为生命周期/装配（onload 各服务一行 `new Xxx(this)`；onLayoutReady 的 sync 分发注册表已外迁 `SnippetManager.buildSyncHandlers()`（b206b50），仅剩 BroadcastService 装配与 start；顶栏按钮图标注册 `SnippetsMenu.initIcons()` 与创建/打开回调（initTopBar/openSnippetsManager，694bd0f）同迁 menu.ts）、initConfigItems ctx 装配、配置镜像 declare、syncService/console 等少量门面。卸载清理已收口（1785676）：Dialog 清理 → `SnippetsDialog.closeAllDialogs()`、CM 样式清理 → `EditorManager.cleanupEditorStyles()`。reloadUI 已外迁 `SnippetsDialog.reloadUI()`（2f399d5），`postReloadUI` 保留插件类门面（menu/file-watch/snippets-dialog 5 处直连）。**插件类成员归位（3dc9eb4）**：仅剩真跨模块共享/装配所需的成员——服务与视图引用、isMobile（跨 4 UI 模块）、snippetsList/snippetsType（数据共享）、isReloadUIRequired（menu/file-watch/snippets-dialog 三模块读）、配置镜像 declare 投影层（defineProperty 由 ConfigService 挂载）；topBarElement/isTouchDevice 迁 SnippetsMenu、version 迁 ConfigService 常量、setting 删除插件转发（SettingDialog 直连 configService.setting）。各 Host 模块也已全部转为同一直连形态。
 
 ### 已建模块
 - `src/core/event-bus.ts`（类型化 pub/sub，`on/off/emit/clear`；注意：勿用字段名 `eventBus`，会与 siyuan `Plugin` 基类成员冲突，内部用 `internalEventBus`）
@@ -216,7 +217,8 @@
 11. （7721307）**阶段 6 第一刀——配置镜像收敛出 jcsm**：配置类字段（realTimePreview/newSnippetEnabled/consoleDebug/snippetSearchType/fileWatch*/defaultSnippetsType 等）镜像从 `window.siyuan.jcsm`（`(jcsm as any)[key]`）改为 `ConfigService` 内部 `Map`（配置每次 init 重新读盘、写配置即落盘，无需跨 reload 全局仓库）；defineProperty 代理/readValue/writeValue/persistConfig/applyConfig/saveFromDialog/createSettingItem 全部经该 Map；`snippetsType` getter 的默认类型读取由 `jcsm.defaultSnippetsType` 改为实例属性 `this.defaultSnippetsType`（index 补 declare，defineProperty init 时挂载）；types.d.ts jcsm 块移除 defaultSnippetsType 声明并更新注释。
 12. （29b9e31）**阶段 6 收官——jcsm 运行态全量收敛**：isMobile/isTouchDevice/isReloadUIRequired/snippetsList/snippetsType → 插件实例字段（读点不变，onLayoutReady 重算/自拉重建/重载回退默认）；disableNotification → 通知按钮改元素事件绑定（FeedbackService 直连 configService），删除 onLayoutReady 的全局挂载；themeObserver → `EditorManager` 实例字段；listeners 簿记三字段 → `ListenerRegistry` 实例字段；`types.d.ts` jcsm 类型块整体删除、index 移除 jcsm 初始化与 uninstall 的 `delete window.siyuan.jcsm`，相关注释刷新。至此 `window.siyuan.jcsm` 全量退出本插件。
 13. （783dec0）**类型声明清理**（对照已安装 siyuan 类型包逐一核实）：删除零引用的 Window 扩展 JSAndroid/JSHarmony/webkit（历史遗留外链桥）；删除上游 siyuan.d.ts 已含的 saveExportFile 补充声明（注释“待 petal 发布新版后可移除”已到期）；监听器簿记类型（ListenerItem/ElementListeners/ListenersArray）从 types.d.ts 下沉至唯一使用方 listener-registry.ts（文件内私有类型）；Setting 扩展的 addItem 覆盖保留（上游 title 必选、本插件 i18n 键可缺失，属有意放宽）；types.d.ts 仅保留 Snippet/SnippetType/SettingItem/FileState 与必要的 siyuan 模块扩展。
-14. 之后：继续阶段 5（menu.ts 剩余区块/搜索交互细拆或视图化）与收尾清理（`data: any` 类型化等）。
+14. （3dc9eb4）**单模块使用的插件类成员归位**（逐成员核查引用分布后迁移）：`topBarElement`（仅 SnippetsMenu 创建/定位/高亮/移除）与 `isTouchDevice`（仅 genMenuSnippetsItems 读）迁入 SnippetsMenu 内部字段（ctx.removeTopBarElement 改指 menuView 公开方法，index 删除字段与 onLayoutReady 触摸检测赋值）；`version`（仅 config-service 读）迁为 config-service 模块常量 CONFIG_VERSION；`setting`（仅 setting-dialog 读，index 仅作 configService.setting 转发）删除插件字段与转发赋值，SettingDialog 直连 `plugin.configService.setting`。插件类剩余成员均为真跨模块共享（服务/视图引用、isMobile、snippetsList/snippetsType、isReloadUIRequired、配置镜像 declare 投影层）。
+15. 之后：继续阶段 5（menu.ts 剩余区块/搜索交互细拆或视图化）与收尾清理（`data: any` 类型化等）。
 
 ---
 
