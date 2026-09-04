@@ -19,6 +19,8 @@
 ### 已完成提交（main，最新在上）
 | commit | 内容 |
 |---|---|
+| `fbd8a02` | docs: 明确提交须用户放行；记录 sync 分发注册表与 toggle 合并 |
+| `58429a7` | refactor: sync 业务分发改注册表，toggle 开关本地/远程合流 |
 | `aa585f6` | refactor: 广播通道收敛为 BroadcastService，发送接收两侧类型化 |
 | `f0ef773` | feat: 新增 services/sync 广播协议类型并收紧 handler 参数类型（阶段 3） |
 | `442c9e6` | docs: 同步退出预览去原文化完成状态 |
@@ -48,7 +50,7 @@
 | `dd296e9` | refactor: 抽取纯工具函数到 `utils.ts` |
 | `4f2773e` | refactor: 抽取 `isValidJavaScriptCode` 到 `domain/snippet.ts` |
 
-当前工作区：干净（本会话收尾时 `docs/` 已入库；新会话从本节的提交清单与下方“下一步建议”续接）。
+当前工作区：**有未提交改动待用户确认**（jcsm 死声明清理 + 3 个薄壳 Sync 方法删除，2026-09-04 批次）。
 
 ### 已建模块
 - `src/core/event-bus.ts`（类型化 pub/sub，`on/off/emit/clear`；注意：勿用字段名 `eventBus`，会与 siyuan `Plugin` 基类成员冲突，内部用 `internalEventBus`）
@@ -62,7 +64,13 @@
 ### 事件化模式（已建立）
 - 事件名常量 `SNIPPETS_CHANGED`（现位于 `domain/snippet-store.ts`）；订阅刷新菜单计数。
 - 已收敛：片段列表的增/删/改/复制/拖拽排序/整表替换（导入）均改走 `SnippetStore`（`upsert`/`remove`/`insertBefore`/`move`/`replaceAll`），写后统一 emit；`saveSnippet`/`saveSnippetSync` 内手写列表修改与 `setMenuSnippetCount()` 已随各批移除，计数刷新完全由事件驱动。
-- 已知未收敛（语义非本地结构写，留待 sync/后续阶段）：`openMenu`/`getSnippetById`/`executeDragSort` 前置、`snippetsSortSync`、`saveSnippetSync` 复制分支等处“从服务端全量重拉列表”的赋值属读取权威态语义；toggle 类就地字段修改不改变列表结构。
+- 已知未收敛（语义非本地结构写，留待 sync/后续阶段）：`openMenu`/`getSnippetById`/`executeDragSort` 前置、`saveSnippetSync` 复制分支等处“从服务端全量重拉列表”的赋值属读取权威态语义；toggle 类就地字段修改不改变列表结构。
+
+### jcsm 现状与已做收敛（2026-09-04 用户追问后核实）
+- `window.siyuan.jcsm` 唯一职责 = **跨插件 reload 存活**的全局变量仓库（reload：插件更新 / 手动重载；`onDataChanged` 已热应用不再触发 reload）。
+- 三类存储：① 配置镜像（configItems → `loadConfig` 写入 + `Object.defineProperty(this, key)` 代理到 `(jcsm as any)[key]`：realTimePreview/newSnippetEnabled/consoleDebug/snippetSearchType/fileWatch*/defaultSnippetsType…）；② 运行态句柄（手写 getter/setter 读写 jcsm：isMobile/snippetsType/snippetsList/listeners/listenerCheckIntervalId/isCheckingListeners/isReloadUIRequired/themeObserver/disableNotification）；③ 已死残留（类型声明无任何类型化读写）。
+- **已做（本会话批次，工作区待确认）**：`types.d.ts` 的 jcsm 块删除 11 个死声明（realTimePreview/newSnippetEnabled/consoleDebug/notificationSwitch/reloadUIAfterModifyJS/snippetSearchType/fileWatchEnabled/Path/Interval/IntervalId/FileStates——运行时仅经 `(jcsm as any)` 或实例字段访问），仅保留仍被类型化读写的 11 项并加说明注释。
+- **整体拆除留待阶段 6**：需先有 ConfigService（阶段 4）与视图自持运行态（阶段 5）作替代承载；届时 jcsm 仅保留真正必须跨 reload 存活的少数句柄。
 
 ### 已报告 issue
 - siyuan-note/siyuan **#19130**：文件写入类 API（putFile/removeFile/renameFile/copyFile）对不参与同步的目录（如 `temp/`）也会 `IncSync()`；并补充 comment 说明 `data/.siyuan/syncignore` 忽略的路径同理。
@@ -105,8 +113,8 @@
 
 ### 下一步建议（朝目标架构，拆可验证子批推进）
 1. 阶段 2（Store 收敛）已完成：`domain/snippet-store.ts` 的 `remove`/`upsert`/`insertBefore`/`move`/`replaceAll` 已承接全部本地结构写，计数统一由 `SNIPPETS_CHANGED` 事件驱动。
-2. 阶段 3（sync 收敛）已过**传输 + 分发注册表 + toggle 合并**：`services/sync.ts` 含协议类型与 `BroadcastService`（连接/重连/窗口保活/类型化 `broadcast`/按 type 查表分发 `BroadcastHandlers`）；`index.ts` 的 `handleBroadcastMessage` switch 已删除，业务分发改为 onLayoutReady 一次性声明 handlers 注册表（各 type 处理器直接拿收窄 payload）；开关消息已合并：`toggleSnippet(snippet, enabled, origin: "local" | "remote")` 同路径承载本地/远程，`toggleSnippetSync` 镜像已删（远程分支自拉后在注册表内直接调 toggleSnippet）。**下一步**：按同一手法逐个收敛剩余消息——`snippet_toggle_publish`/`snippet_toggle_global`/`snippet_save`/`snippet_delete`/`snippet_element_update`/`snippet_element_remove`/`snippets_sort`/`setting_apply` 的 `*Sync` 镜像，让远程消息与本地操作共用同一方法（origin 参数区分：远程不落库、不广播，仅同步本窗口 UI；本地保留落库 + 广播）。
-3. 之后：config 声明式（阶段 4）、UI 视图化（阶段 5）、jcsm 收敛（阶段 6）。
+2. 阶段 3（sync 收敛）已过**传输 + 分发注册表 + 壳方法清空**：`services/sync.ts` 含协议类型与 `BroadcastService`（连接/重连/窗口保活/类型化 `broadcast`/按 type 查表分发 `BroadcastHandlers`）；`index.ts` 的 `handleBroadcastMessage` switch 与 3 个纯薄壳/近转发 Sync 方法已删（`snippetsSortSync`/`updateSnippetElementSync`/`removeSnippetElementSync`——逻辑原样内联进 onLayoutReady 的 handlers 注册表，行为等价）；开关消息已合并：`toggleSnippet(snippet, enabled, origin)` 同路径承载本地/远程，`toggleSnippetSync` 已删。**下一步**：按同一手法逐个收敛剩余 4 个有实质差异的镜像——`snippet_toggle_publish`/`snippet_toggle_global`/`snippet_save`/`snippet_delete`（+`setting_apply` 归阶段 4），让远程消息与本地操作共用同一方法（origin 区分：远程不落库、不广播，仅同步本窗口 UI；本地保留落库 + 广播）。其中 `toggleSnippetPublishSync` 含发布窗口特殊分支（新增/移除注入元素 + store.remove），合流前需逐分支对照。
+3. 之后：config 声明式（阶段 4）、UI 视图化（阶段 5）、jcsm 收敛（阶段 6，前置已启动：见上方「jcsm 现状」节）。
 
 ---
 
