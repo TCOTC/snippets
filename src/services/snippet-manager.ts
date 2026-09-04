@@ -32,7 +32,7 @@ export class SnippetManager {
         };
         // 不直接添加代码片段
         // this.saveSnippet(snippet);
-        void this.plugin.openSnippetEditDialog(snippet, true);
+        void this.plugin.snippetsDialog.openEditDialog(snippet, true);
     }
 
     /**

@@ -93,9 +93,9 @@ export default class PluginSnippets extends Plugin {
     private settingDialog!: SettingDialog;
 
     /**
-     * 对话框管理器（确认对话框/按元素关闭等见 src/ui/snippets-dialog.ts，openSnippetDeleteDialog 等委托到它）
+     * 对话框管理器（代码片段编辑/确认对话框与按元素关闭见 src/ui/snippets-dialog.ts SnippetsDialog）
      */
-    private snippetsDialog!: SnippetsDialog;
+    snippetsDialog!: SnippetsDialog;
 
     /**
      * 配置服务（装配/持久化/热应用见 src/config/config-service.ts）
@@ -163,7 +163,7 @@ export default class PluginSnippets extends Plugin {
                 await this.saveData(STORAGE_NAME, content);
             },
             showErrorMessage: (message, timeout, id) => this.showErrorMessage(message, timeout, id),
-            closeDialog: (dialogElement) => this.closeDialogByElement(dialogElement),
+            closeDialog: (dialogElement) => this.snippetsDialog.closeByElement(dialogElement),
             hideNotice: (messageI18nKey) => hideMessage(PLUGIN_NAME + "-" + messageI18nKey),
         });
 
@@ -176,7 +176,7 @@ export default class PluginSnippets extends Plugin {
             app: () => this.app,
             settingItems: () => this.setting.items,
             addListener: (element, event, fn, options) => this.addListener(element, event, fn, options),
-            closeDialog: (dialogElement) => this.closeDialogByElement(dialogElement),
+            closeDialog: (dialogElement) => this.snippetsDialog.closeByElement(dialogElement),
             saveSetting: (dialogElement) => this.configService.saveFromDialog(dialogElement),
             closeMenu: () => this.menu?.close(),
             exportSnippets: () => void this.importExportService.exportSnippetsToFile(),
@@ -300,7 +300,7 @@ export default class PluginSnippets extends Plugin {
 
     // 顶栏按钮点击回调：打开代码片段管理器
     private openSnippetsManager = async () => {
-        if (this.getAllModalDialogElements().length > 0) return;
+        if (this.snippetsDialog.getAllModalElements().length > 0) return;
         await this.openMenu();
     };
 
@@ -513,7 +513,7 @@ export default class PluginSnippets extends Plugin {
 
         // 移除所有 Dialog
         document.querySelectorAll(".b3-dialog--open[data-key^='jcsm-']").forEach((dialogElement: HTMLElement) => {
-            this.closeDialogByElement(dialogElement);
+            this.snippetsDialog.closeByElement(dialogElement);
         });
 
         // 移除 CodeMirror 编辑器样式
@@ -1082,11 +1082,11 @@ export default class PluginSnippets extends Plugin {
                     void this.snippetManager.saveSnippet(snippet, true);
                 } else if (buttonType === "edit") {
                     // 编辑代码片段，打开编辑对话框
-                    void this.openSnippetEditDialog(snippet);
+                    void this.snippetsDialog.openEditDialog(snippet);
                     // TODO自定义页签: 编辑页签，等其他功能稳定之后再做
                 } else if (buttonType === "delete") {
                     // 删除代码片段
-                    this.openSnippetDeleteDialog(snippet.name, () => {
+                    this.snippetsDialog.openDeleteDialog(snippet.name, () => {
                         // 弹窗确定后删除代码片段
                         void this.snippetManager.deleteSnippet(snippet.id!, snippet.type);
                     }); // 取消后无操作
@@ -1132,7 +1132,7 @@ export default class PluginSnippets extends Plugin {
                         // false 是调用 API 返回错误
                         return;
                     }
-                    void this.openSnippetEditDialog(snippet);
+                    void this.snippetsDialog.openEditDialog(snippet);
                 }
             }
 
@@ -1883,66 +1883,6 @@ export default class PluginSnippets extends Plugin {
      */
     declare multipleSnippetEditors: boolean;
 
-    /**
-     * 打开代码片段编辑对话框（SnippetManager 直连访问，故公开；实现见 src/ui/snippets-dialog.ts SnippetsDialog）
-     * @param snippet 代码片段
-     * @param isNew 是否为新建代码片段
-     * @returns 是否成功打开对话框
-     */
-    openSnippetEditDialog(snippet: Snippet, isNew?: boolean): Promise<boolean> {
-        return this.snippetsDialog.openEditDialog(snippet, isNew);
-    }
-
-    /**
-     * 打开代码片段删除对话框（实现见 src/ui/snippets-dialog.ts SnippetsDialog）
-     * @param snippetName 代码片段名称
-     * @param confirm 确认回调
-     */
-    private openSnippetDeleteDialog(snippetName: string, confirm?: () => void) {
-        this.snippetsDialog.openDeleteDialog(snippetName, confirm);
-    }
-
-    /**
-     * 打开代码片段取消对话框（实现见 src/ui/snippets-dialog.ts SnippetsDialog）
-     * @param snippet 代码片段
-     * @param isNew 是否是新建代码片段
-     * @param changes 变更内容
-     * @param confirm 确认回调
-     * @param cancel 取消回调
-     */
-    private openSnippetCancelDialog(snippet: Snippet, isNew?: boolean, changes?: string[], confirm?: () => void, cancel?: () => void) {
-        this.snippetsDialog.openCancelDialog(snippet, isNew, changes, confirm, cancel);
-    }
-
-    /**
-     * 打开确认对话框（实现见 src/ui/snippets-dialog.ts SnippetsDialog）
-     * @param title 对话框标题
-     * @param text 对话框内容
-     * @param dataKey 对话框元素的 data-key 属性值
-     * @param cancelText 取消按钮文本
-     * @param confirmText 确认按钮文本
-     * @param confirm 确认回调
-     * @param cancel 取消回调
-     */
-    private openConfirmDialog(title: string, text: string, dataKey?: string, cancelText?: string, confirmText?: string, confirm?: () => void, cancel?: () => void) {
-        this.snippetsDialog.openConfirm(title, text, dataKey, cancelText, confirmText, confirm, cancel);
-    }
-
-    /**
-     * 通过元素关闭对话框（实现见 src/ui/snippets-dialog.ts SnippetsDialog）
-     * @param dialogElement 对话框元素
-     */
-    private closeDialogByElement(dialogElement: HTMLElement) {
-        this.snippetsDialog.closeByElement(dialogElement);
-    }
-
-    /**
-     * 获取所有模态对话框元素（实现见 src/ui/snippets-dialog.ts SnippetsDialog）
-     * @returns 对话框元素数组
-     */
-    private getAllModalDialogElements(): HTMLElement[] {
-        return this.snippetsDialog.getAllModalElements();
-    }
 
     // ================================ 消息处理 ================================
 
@@ -2001,7 +1941,7 @@ export default class PluginSnippets extends Plugin {
         }
 
         if (needConfirm) {
-            this.openConfirmDialog(this.i18n.reloadUIConfirm, this.i18n.reloadUIConfirmDescription, "jcsm-reload-ui-confirm", undefined, undefined,  () => {
+            this.snippetsDialog.openConfirm(this.i18n.reloadUIConfirm, this.i18n.reloadUIConfirmDescription, "jcsm-reload-ui-confirm", undefined, undefined, () => {
                 this.postReloadUI();
             });
         } else {
@@ -2090,7 +2030,7 @@ export default class PluginSnippets extends Plugin {
     private globalKeyDownHandler = (event: KeyboardEvent) => {
         // 获取所有打开的插件模态对话框，把按键操作发送给 DOM 最下方，也就是最顶层的对话框
         // 无法判断是在操作哪个代码片段编辑对话框（非模态），所以此处忽略代码片段编辑对话框 jcsm-snippet-dialog 的操作
-        const dialogElements = this.getAllModalDialogElements();
+        const dialogElements = this.snippetsDialog.getAllModalElements();
         const dialogElement = dialogElements[dialogElements.length - 1];
         if (dialogElement) {
             // // 如果按 Esc 时焦点在输入框里，移除焦点
