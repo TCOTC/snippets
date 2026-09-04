@@ -2,7 +2,7 @@ import "./index.scss";
 import {FileState, ListenersArray, Snippet, SnippetType} from "./types";
 import {isSnippetsTypeEnabled, isValidJavaScriptCode} from "./domain/snippet";
 import {hideTooltip, htmlToElement, isInputElementActive, showElementTooltip} from "./utils";
-import {getFile, putFile} from "./services/storage";
+import {getFile, putFile, renameFile} from "./services/storage";
 
 // 思源插件 API
 import {
@@ -5458,13 +5458,22 @@ export default class PluginSnippets extends Plugin {
                 });
             });
 
+            // exportResources 会在物理文件名前加随机 exportID（形如 temp/export/<hex>-代码片段 xx.json.zip）用于隔离临时导出目录。
+            // 这里重命名为不含前缀的干净文件名，方便用户分享；zip 内部结构不变，不影响新旧版本导入兼容。
+            const exportPath: string = exportResponse.data.path; // temp/export/<hex>-代码片段 xx.json.zip
+            const exportDir = exportPath.substring(0, exportPath.lastIndexOf("/") + 1); // temp/export/
+            const cleanExportFileName = fileName + ".zip"; // 代码片段 xx.json.zip
+            const cleanExportPath = exportDir + cleanExportFileName;
+            const renameResp = await renameFile(exportPath, cleanExportPath);
+            if (!renameResp || renameResp.code !== 0) {
+                throw new Error("Rename export file failed: " + (renameResp?.msg ?? renameResp?.code));
+            }
+
             // 下载文件，由 saveExportFile 统一处理各端导出与提示（桌面端弹出另存为对话框，移动端调用原生保存，浏览器端触发下载）
             // exportResources 返回相对于工作空间的路径 temp/export/<name>，需转换为 /export/<name> 形式的 URL 路径
             // 以与思源内置导出 API 返回格式一致（见 kernel/model/export.go 中 exportSYZip 等的 "/export/" + url.PathEscape）
             // 否则移动端原生 saveExportFile 会因缺少前导 "/" 无法定位文件，报“文件不存在或为空”
-            const exportPath: string = exportResponse.data.path;
-            const exportFileName = exportPath.substring(exportPath.lastIndexOf("/") + 1);
-            await saveExportFile("/export/" + encodeURIComponent(exportFileName));
+            await saveExportFile("/export/" + encodeURIComponent(cleanExportFileName));
         } catch (error) {
             this.console.error("exportSnippets: Failed to export snippets: ", error);
             this.showErrorMessage(this.i18n.exportSnippetsFailed + ": " + error.message);

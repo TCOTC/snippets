@@ -36,3 +36,17 @@ export const putFile = (path: string, content: string): Promise<any> => {
         });
     });
 };
+
+/**
+ * 重命名文件（内核 /api/file/renameFile）
+ * @param path 原文件路径（相对工作空间）
+ * @param newPath 新文件路径（相对工作空间）
+ * @returns Promise<any> 返回原始响应，由调用方处理 code/msg
+ */
+export const renameFile = (path: string, newPath: string): Promise<any> => {
+    return new Promise((resolve) => {
+        fetchPost("/api/file/renameFile", { path, newPath }, (response: any) => {
+            resolve(response);
+        });
+    });
+};
