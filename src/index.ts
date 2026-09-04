@@ -1,6 +1,7 @@
 import "./index.scss";
 import {FileState, ListenersArray, Snippet} from "./types";
 import {isValidJavaScriptCode} from "./domain/snippet";
+import {getHotkeyDisplayText, hideTooltip, isInputElementActive, showElementTooltip} from "./utils";
 
 // 思源插件 API
 import {
@@ -115,7 +116,7 @@ export default class PluginSnippets extends Plugin {
      */
     private async topBarInit() {
         const topBarKeymap = this.getCustomKeymapByCommand("openSnippetsManager");
-        const title = !this.isMobile && topBarKeymap ? this.displayName + " " + this.getHotkeyDisplayText(topBarKeymap) : this.displayName;
+        const title = !this.isMobile && topBarKeymap ? this.displayName + " " + getHotkeyDisplayText(topBarKeymap) : this.displayName;
         this.topBarElement = this.addTopBar({
             icon: "iconJcsm",
             title: title,
@@ -1172,7 +1173,7 @@ export default class PluginSnippets extends Plugin {
             this.menu = undefined as unknown as Menu;
             if (!this.isMobile && this.topBarElement && this.topBarElement.matches(":hover")) {
                 // 只有当鼠标悬停在顶栏按钮上时才显示 tooltip
-                this.showElementTooltip(this.topBarElement);
+                showElementTooltip(this.topBarElement);
             }
             return;
         }
@@ -1226,7 +1227,7 @@ export default class PluginSnippets extends Plugin {
         newSnippetButton.setAttribute("aria-label", this.i18n.add + " " + this.snippetsType.toUpperCase());
         const reloadUIButton = menuTop.querySelector("button[data-type='reload']") as HTMLButtonElement;
         const reloadUIKeymap = this.getCustomKeymapByCommand("reloadUI");
-        reloadUIButton.setAttribute("aria-label", (!this.isMobile && reloadUIKeymap) ? this.i18n.reloadUI + " " + this.getHotkeyDisplayText(reloadUIKeymap) : this.i18n.reloadUI);
+        reloadUIButton.setAttribute("aria-label", (!this.isMobile && reloadUIKeymap) ? this.i18n.reloadUI + " " + getHotkeyDisplayText(reloadUIKeymap) : this.i18n.reloadUI);
 
         this.menuItems.append(menuTop);
 
@@ -1355,7 +1356,7 @@ export default class PluginSnippets extends Plugin {
             this.topBarElement.classList.add("toolbar__item--active");
             // 移除 aria-label 属性，在菜单打开时不显示 tooltip
             this.topBarElement.removeAttribute("aria-label");
-            this.hideTooltip();
+            hideTooltip();
         }
     }
 
@@ -1373,7 +1374,7 @@ export default class PluginSnippets extends Plugin {
             this.topBarElement.classList.remove("toolbar__item--active");
             // topBarCommand 有可能变，所以每次都重新获取
             const topBarKeymap = this.getCustomKeymapByCommand("openSnippetsManager");
-            const title = topBarKeymap ? this.displayName + " " + this.getHotkeyDisplayText(topBarKeymap) : this.displayName;
+            const title = topBarKeymap ? this.displayName + " " + getHotkeyDisplayText(topBarKeymap) : this.displayName;
             this.topBarElement.setAttribute("aria-label", title);
         }
 
@@ -4403,73 +4404,12 @@ export default class PluginSnippets extends Plugin {
     }
 
     /**
-     * 判断是否是 Mac（原生代码 app/src/protyle/util/compatibility.ts ）
-     * @returns 是否是 Mac
-     */
-    private isMac(): boolean {
-        return navigator.platform.toUpperCase().indexOf("MAC") > -1;
-    }
-
-    /**
      * 通过命令名称获取用户自定义快捷键
      * @param command 命令名称
      * @returns 用户自定义快捷键
      */
     private getCustomKeymapByCommand(command: string): string {
         return window.siyuan.config.keymap.plugin?.[PLUGIN_NAME]?.[command]?.custom || "";
-    }
-
-    /**
-     * 获取快捷键显示文本（原生代码 app/src/protyle/util/compatibility.ts updateHotkeyTip() ）
-     * @param hotkey 快捷键
-     * @returns 快捷键显示文本
-     */
-    private getHotkeyDisplayText(hotkey: string): string {
-        if (this.isMac()) {
-            return hotkey;
-        }
-
-        const KEY_MAP = new Map(Object.entries({
-            "⌘": "Ctrl",
-            "⌃": "Ctrl",
-            "⇧": "Shift",
-            "⌥": "Alt",
-            "⇥": "Tab",
-            "⌫": "Backspace",
-            "⌦": "Delete",
-            "↩": "Enter",
-        }));
-
-        const keys = [];
-
-        if ((hotkey.indexOf("⌘") > -1 || hotkey.indexOf("⌃") > -1)) keys.push(KEY_MAP.get("⌘"));
-        if (hotkey.indexOf("⇧") > -1) keys.push(KEY_MAP.get("⇧"));
-        if (hotkey.indexOf("⌥") > -1) keys.push(KEY_MAP.get("⌥"));
-
-        // 不能去最后一个，需匹配 F2
-        // noinspection RegExpSingleCharAlternation
-        const lastKey = hotkey.replace(/⌘|⇧|⌥|⌃/g, "");
-        if (lastKey) {
-            keys.push(KEY_MAP.get(lastKey) || lastKey);
-        }
-
-        return keys.join("+");
-    }
-
-    /**
-     * 隐藏 tooltip（原生代码 app/src/dialog/tooltip.ts ）
-     */
-    private hideTooltip() {
-        document.getElementById("tooltip")!.classList.add("fn__none");
-    }
-
-    /**
-     * 显示元素 tooltip
-     * @param element 元素
-     */
-    private showElementTooltip(element: HTMLElement) {
-        // 让元素触发 mouseover 事件，bubbles: true 启用冒泡，以激活原生的监听器，然后执行原生的 showTooltip()（原生代码 app/src/dialog/tooltip.ts ）
-        element.dispatchEvent(new Event("mouseover", { bubbles: true }));
     }
 
     /**
@@ -4549,19 +4489,6 @@ export default class PluginSnippets extends Plugin {
     }
 
     /**
-     * 判断当前激活元素是否为输入框（input 或 textarea）
-     * @returns 是否为输入框
-     */
-    private isInputElementActive(): boolean {
-        const activeElement = document.activeElement;
-        if (!activeElement) return false;
-        const tagName = activeElement.tagName.toLowerCase();
-        const type = activeElement.getAttribute("type");
-        // 忽略按钮元素
-        return (tagName === "input" && type !== "checkbox") || tagName === "textarea";
-    }
-
-    /**
      * 全局键盘按下事件处理
      * @param event 键盘事件
      */
@@ -4623,7 +4550,7 @@ export default class PluginSnippets extends Plugin {
                 event.stopPropagation();
             }
             // 如果当前在输入框中使用键盘，则不处理菜单按键事件
-            if (this.isInputElementActive()) return;
+            if (isInputElementActive()) return;
 
             this.menu.element.dispatchEvent(new CustomEvent("click", {detail: event.key}));
             return;
