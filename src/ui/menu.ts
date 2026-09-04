@@ -6,7 +6,7 @@
 // 经插件侧已 public 化的运行态/服务直连（manager/dialog/store/sync/console/i18n/镜像配置等）。
 import {Menu, platformUtils} from "siyuan";
 import {hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, showElementTooltip} from "../utils";
-import {isSnippetsTypeEnabled} from "../domain/snippet";
+import {filterSnippetsByKeyword, isSnippetsTypeEnabled, sortSnippets} from "../domain/snippet";
 import {MenuDragSort} from "./menu-drag-sort";
 import type PluginSnippets from "../index";
 import type {Snippet, SnippetType} from "../types";
@@ -182,8 +182,8 @@ export class SnippetsMenu {
             const target = event.target as HTMLInputElement;
             const tagName = target.tagName.toLowerCase();
             if (tagName === "input" && target.dataset.action === "search") {
-                // 筛选代码片段
-                const filterSnippetsIds = this.filterSnippetsIds(target.value);
+                // 筛选代码片段（过滤逻辑见 domain/snippet.ts filterSnippetsByKeyword）
+                const filterSnippetsIds = filterSnippetsByKeyword(this.plugin.snippetsList, this.plugin.snippetSearchType, target.value);
                 if (filterSnippetsIds) {
                     this.menuItems.querySelectorAll(".jcsm-snippet-item").forEach((item: HTMLElement) => {
                         if (filterSnippetsIds.includes(item.dataset.id!)) {
@@ -593,42 +593,6 @@ export class SnippetsMenu {
     };
 
     /**
-     * 筛选代码片段（不区分大小写）
-     * @param searchText 搜索文本
-     * @returns 筛选后的代码片段 ID 数组，如果禁用搜索或搜索文本为空则返回 false
-     */
-    private filterSnippetsIds(searchText: string): string[] | false {
-        // 如果禁用搜索或搜索文本为空，返回 false，表示不搜索
-        if (this.plugin.snippetSearchType === 0 || !searchText || searchText.trim() === "") {
-            return false;
-        }
-
-        const normalizedText = searchText.toLowerCase().trim();
-
-        return this.plugin.snippetsList
-            .filter((snippet: Snippet) => {
-                switch (this.plugin.snippetSearchType) {
-                    case 1:
-                        // 按标题筛选
-                        return (snippet.name || snippet.content.slice(0, 200)).toLowerCase().includes(normalizedText);
-                    case 2:
-                        // 按代码内容筛选
-                        return snippet.content.toLowerCase().includes(normalizedText);
-                    case 3:
-                        // 按标题和代码内容筛选
-                        return (
-                            snippet.name.toLowerCase().includes(normalizedText) ||
-                            snippet.content.toLowerCase().includes(normalizedText)
-                        );
-                    default:
-                        // 不支持的搜索类型，直接跳过
-                        return false;
-                }
-            })
-            .map((snippet: Snippet) => snippet.id!); // 只返回 id 字符串数组
-    }
-
-    /**
      * 是否显示发布服务开关
      */
     isShowPublishCheckbox() {
@@ -641,53 +605,9 @@ export class SnippetsMenu {
      * @returns 代码片段列表 HTML 字符串
      */
     genMenuSnippetsItems(argSnippetsList?: Snippet[]): string {
-        let snippetsList: Snippet[] = argSnippetsList ?? this.plugin.snippetsList ?? [];
-        if (!argSnippetsList) {
-            // 深拷贝 snippetsList，避免排序影响原数据
-            if (this.plugin.snippetSortType !== "fixedSort" && this.plugin.snippetSortType !== "customSort") {
-                if (typeof structuredClone === "function") {
-                    snippetsList = structuredClone(snippetsList);
-                } else {
-                    snippetsList = JSON.parse(JSON.stringify(snippetsList));
-                }
-            }
-
-            // 排序
-            switch (this.plugin.snippetSortType) {
-                case "fixedSort":
-                    break;
-                case "customSort":
-                    break;
-                case "enabledASC":
-                    snippetsList.sort((a, b) => Number(b.enabled) - Number(a.enabled));
-                    break;
-                case "enabledDESC":
-                    snippetsList.sort((a, b) => Number(a.enabled) - Number(b.enabled));
-                    break;
-                case "fileNameASC":
-                    snippetsList.sort((a, b) => a.name.localeCompare(b.name));
-                    break;
-                case "fileNameDESC":
-                    snippetsList.sort((a, b) => b.name.localeCompare(a.name));
-                    break;
-                case "fileNameNatASC":
-                    snippetsList.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-                    break;
-                case "fileNameNatDESC":
-                    snippetsList.sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }));
-                    break;
-                case "createdASC":
-                    // 创建时间要从 id 中获取，id 的格式是 "20250813161014-se1mend"，其中 "20250813161014" 是创建时间，"se1mend" 是随机字符串
-                    snippetsList.sort((a, b) => a.id!.slice(0, 14).localeCompare(b.id!.slice(0, 14)));
-                    break;
-                case "createdDESC":
-                    snippetsList.sort((a, b) => b.id!.slice(0, 14).localeCompare(a.id!.slice(0, 14)));
-                    break;
-                default:
-                    break;
-            }
-        }
-        snippetsList = snippetsList ?? [];
+        // 传入指定列表（如新增副本的单个菜单项）时不排序；默认按插件排序方式处理全量列表
+        // （含深拷贝与按键排序，见 domain/snippet.ts sortSnippets）
+        const snippetsList = argSnippetsList ?? sortSnippets(this.plugin.snippetsList ?? [], this.plugin.snippetSortType);
 
         const isTouch = this.plugin.isMobile || this.plugin.isTouchDevice;
         const showPublishCheckbox = this.isShowPublishCheckbox();
