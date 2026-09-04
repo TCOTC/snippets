@@ -8,7 +8,7 @@ import type PluginSnippets from "../index";
 import {SnippetsConfig} from "../config/config";
 import type {Snippet, SnippetType} from "../types";
 import {SnippetsDialog} from "./snippets-dialog";
-import {attachDialogObject, getDialogObject} from "../utils";
+import {attachDialogObject, getDialogKeyHandler, getDialogObject} from "../utils";
 import {EditorManager} from "./editor-manager";
 
 /** 构造 SnippetsDialog 替身插件 */
@@ -235,6 +235,11 @@ describe("openEditDialog 取消关闭与待定 JS 重载（issue #40）", () => 
                 cancel: "取消",
                 codeSnippetJS: "输入 JS 代码片段",
                 codeSnippetCSS: "输入 CSS 代码片段",
+                cancelConfirm: "⚠️ 取消操作确认",
+                cancelConfirmEditSnippet: "${x} 的修改未保存，确定要放弃修改代码片段${y}吗？",
+                cancelConfirmNewSnippet: "有未保存的修改，确定要退出新建代码片段${y}吗？",
+                continueEdit: "继续编辑",
+                giveUpEdit: "放弃修改",
             },
             console: {log: vi.fn(), warn: vi.fn(), error: vi.fn()},
             postReloadUI: vi.fn(),
@@ -348,6 +353,34 @@ describe("openEditDialog 取消关闭与待定 JS 重载（issue #40）", () => 
         await vi.waitFor(() => {
             expect(plugin.postReloadUI).toHaveBeenCalledTimes(1);
         });
+    });
+
+    it("有变更取消时放弃修改确认框默认聚焦红色主按钮，回车先触发该按钮", async () => {
+        (plugin as unknown as {isReloadUIRequired: boolean}).isReloadUIRequired = false;
+        (plugin as unknown as {snippetsList: Snippet[]}).snippetsList = [jsSnippet("1", "片段", true)];
+        const dialogElement = await openAndArmDestroy(jsSnippet("1", "片段", true));
+        // 保存态内容与编辑框中内容（空）不同 → 取消时弹放弃修改确认框
+        (plugin.snippetManager.getSnippetById as ReturnType<typeof vi.fn>)
+            .mockResolvedValue({...jsSnippet("1", "片段", true), content: "已保存内容"});
+        const closeSpy = vi.spyOn(dialog, "closeByElement");
+        (dialogElement.querySelector("button[data-action='cancel']") as HTMLButtonElement)
+            .dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        // 等待放弃修改确认框出现
+        await vi.waitFor(() => {
+            expect(document.body.querySelector('.b3-dialog--open[data-key="jcsm-snippet-cancel"]')).not.toBeNull();
+        });
+        const cancelDialog = document.body.querySelector('.b3-dialog--open[data-key="jcsm-snippet-cancel"]') as HTMLElement;
+        const confirmButton = cancelDialog.querySelector("button[data-type='confirm']") as HTMLButtonElement;
+        // 红色主按钮（放弃修改）默认聚焦
+        expect(confirmButton.classList.contains("b3-button--remove")).toBe(true);
+        expect(document.activeElement).toBe(confirmButton);
+        // Enter：焦点在按钮上时对话框级键盘动作交还浏览器默认行为（激活聚焦按钮），不自行执行默认确认
+        getDialogKeyHandler(cancelDialog)?.("Enter");
+        expect(closeSpy).not.toHaveBeenCalled();
+        // 浏览器默认行为 = 触发聚焦按钮的 click → 执行放弃修改并关闭编辑对话框
+        confirmButton.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        expect(closeSpy).toHaveBeenCalledTimes(2);
+        expect(dialogElement.classList.contains("b3-dialog--open")).toBe(false);
     });
 });
 
