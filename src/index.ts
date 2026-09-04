@@ -10,14 +10,12 @@ import {ListenerRegistry} from "./services/listener-registry";
 import {SnippetManager} from "./services/snippet-manager";
 import {SnippetsMenu} from "./ui/menu";
 
-// 思源插件 API
 import {
     fetchPost,
     getFrontend,
     Plugin
 } from "siyuan";
 
-// 工具函数
 import {isPromiseFulfilled} from "./utils";
 
 // CodeMirror 编辑器工厂与生命周期管理见 src/ui/editor-manager.ts，编辑对话框见 src/ui/snippets-dialog.ts
@@ -25,10 +23,6 @@ import {EditorManager} from "./ui/editor-manager";
 import {SettingDialog} from "./ui/setting-dialog";
 import {SnippetsDialog} from "./ui/snippets-dialog";
 
-const PLUGIN_NAME = "snippets";                    // 插件名
-// const TAB_TYPE = "custom-tab"; // 自定义标签页
-
-// noinspection JSUnusedGlobalSymbols
 export default class PluginSnippets extends Plugin {
     /**
      * 是否为移动端
@@ -348,8 +342,6 @@ export default class PluginSnippets extends Plugin {
         // 停止文件监听
         this.fileWatchService.stop();
 
-        // TODO自定义页签: 移除所有自定义页签
-
         // 停止主题模式监听
         this.editorManager?.stopThemeModeWatch();
 
@@ -401,15 +393,6 @@ export default class PluginSnippets extends Plugin {
                 this.showErrorMessage(this.i18n.reloadUIFailed);
             }
         });
-    }
-
-    /**
-     * 通过命令名称获取用户自定义快捷键
-     * @param command 命令名称
-     * @returns 用户自定义快捷键
-     */
-    getCustomKeymapByCommand(command: string): string {
-        return window.siyuan.config.keymap.plugin?.[PLUGIN_NAME]?.[command]?.custom || "";
     }
 
     // 全局键盘按下/移除事件监听与开合判断（globalKeyDownHandler/destroyGlobalKeyDownHandler/isDialogAndMenuOpen）

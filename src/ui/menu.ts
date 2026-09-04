@@ -9,6 +9,8 @@ import {MenuDragSort} from "./menu-drag-sort";
 import type PluginSnippets from "../index";
 import type {Snippet, SnippetType} from "../types";
 
+const PLUGIN_NAME = "snippets";                    // 插件名
+
 /**
  * 顶栏菜单管理器
  * 菜单状态（menu/menuItems/呼吸标志）为本类内部状态，拖拽交互与拖拽状态见 MenuDragSort（src/ui/menu-drag-sort.ts）；
@@ -78,11 +80,20 @@ export class SnippetsMenu {
     }
 
     /**
+     * 通过命令名称获取用户自定义快捷键
+     * @param command 命令名称
+     * @returns 用户自定义快捷键
+     */
+    private getCustomKeymapByCommand(command: string): string {
+        return window.siyuan.config.keymap.plugin?.[PLUGIN_NAME]?.[command]?.custom || "";
+    }
+
+    /**
      * 初始化顶栏按钮
      * 顶栏按钮即菜单入口：schema onApply（topBarPosition 变更）/生命周期装配均调用本方法。
      */
     async initTopBar() {
-        const topBarKeymap = this.plugin.getCustomKeymapByCommand("openSnippetsManager");
+        const topBarKeymap = this.getCustomKeymapByCommand("openSnippetsManager");
         const title = !this.plugin.isMobile && topBarKeymap ? this.plugin.displayName + " " + platformUtils.updateHotkeyTip(topBarKeymap) : this.plugin.displayName;
         this.topBarElement = this.plugin.addTopBar({
             icon: "iconJcsm",
@@ -170,7 +181,7 @@ export class SnippetsMenu {
         const newSnippetButton = menuTop.querySelector("button[data-type='new']") as HTMLButtonElement;
         newSnippetButton.setAttribute("aria-label", this.plugin.i18n.add + " " + this.plugin.snippetsType.toUpperCase());
         const reloadUIButton = menuTop.querySelector("button[data-type='reload']") as HTMLButtonElement;
-        const reloadUIKeymap = this.plugin.getCustomKeymapByCommand("reloadUI");
+        const reloadUIKeymap = this.getCustomKeymapByCommand("reloadUI");
         reloadUIButton.setAttribute("aria-label", (!this.plugin.isMobile && reloadUIKeymap) ? this.plugin.i18n.reloadUI + " " + platformUtils.updateHotkeyTip(reloadUIKeymap) : this.plugin.i18n.reloadUI);
 
         this.menuItems.append(menuTop);
@@ -312,7 +323,7 @@ export class SnippetsMenu {
             // topBarElement 不存在时说明 isMobile 为 true，此时不需要修改顶栏按钮样式
             this.topBarElement.classList.remove("toolbar__item--active");
             // topBarCommand 有可能变，所以每次都重新获取
-            const topBarKeymap = this.plugin.getCustomKeymapByCommand("openSnippetsManager");
+            const topBarKeymap = this.getCustomKeymapByCommand("openSnippetsManager");
             const title = topBarKeymap ? this.plugin.displayName + " " + platformUtils.updateHotkeyTip(topBarKeymap) : this.plugin.displayName;
             this.topBarElement.setAttribute("aria-label", title);
         }
