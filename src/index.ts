@@ -17,11 +17,10 @@ import {SnippetsMenu} from "./ui/menu";
 import {
     fetchPost,
     getFrontend,
-    platformUtils,
     Plugin,
     Setting
 } from "siyuan";
-// 未使用的：Custom、confirm、openTab、adaptHotkey、getBackend、Protyle、openWindow、IOperation、openMobileFileById、lockScreen、ICard、ICardData、exitSiYuan、getModelByDockType、getAllEditor、Files、platformUtils、openAttributePanel、saveLayout
+// 未使用的：Custom、confirm、openTab、adaptHotkey、getBackend、Protyle、openWindow、IOperation、openMobileFileById、lockScreen、ICard、ICardData、exitSiYuan、getModelByDockType、getAllEditor、Files、openAttributePanel、saveLayout
 
 // 工具函数
 import {isPromiseFulfilled} from "./utils";
@@ -177,28 +176,6 @@ export default class PluginSnippets extends Plugin {
     declare topBarPosition: "left" | "right";
 
     /**
-     * 初始化顶栏按钮
-     */
-    private async topBarInit() {
-        const topBarKeymap = this.getCustomKeymapByCommand("openSnippetsManager");
-        const title = !this.isMobile && topBarKeymap ? this.displayName + " " + platformUtils.updateHotkeyTip(topBarKeymap) : this.displayName;
-        this.topBarElement = this.addTopBar({
-            icon: "iconJcsm",
-            title: title,
-            position: this.topBarPosition || "right",
-            callback: () => {
-                this.openSnippetsManager();
-            }
-        });
-    }
-
-    // 顶栏按钮点击回调：打开代码片段管理器
-    private openSnippetsManager = async () => {
-        if (this.snippetsDialog.getAllModalElements().length > 0) return;
-        await this.menuView.open();
-    };
-
-    /**
      * 布局加载完成
      */
     public async onLayoutReady() {
@@ -228,7 +205,7 @@ export default class PluginSnippets extends Plugin {
             </symbol>
         `);
 
-        this.topBarInit().then();
+        this.menuView.initTopBar().then();
 
         // 注册快捷键（都默认置空）
         this.addCommand({
@@ -236,7 +213,7 @@ export default class PluginSnippets extends Plugin {
             hotkey: "",
             callback: () => {
                 // 快捷键唤起菜单时，如果菜单已经打开，要先关闭再重新打开，所以这里直接执行就好，会自动关闭菜单再重开
-                this.openSnippetsManager();
+                this.menuView.openSnippetsManager();
             },
         });
         this.addCommand({
@@ -422,7 +399,7 @@ export default class PluginSnippets extends Plugin {
             menuSnippetsItemsHtml: () => this.menuView.genMenuSnippetsItems(),
             updateAllEditorConfigs: (reason) => this.editorManager.updateAllEditorConfigs(reason),
             removeTopBarElement: () => this.topBarElement?.remove(),
-            initTopBar: () => this.topBarInit(),
+            initTopBar: () => this.menuView.initTopBar(),
             setMenuPosition: (isUpdate) => this.menuView.setMenuPosition(isUpdate),
             startFileWatch: () => this.fileWatchService.start(),
             stopFileWatch: () => this.fileWatchService.stop(),
@@ -568,7 +545,7 @@ export default class PluginSnippets extends Plugin {
     }
 
     /**
-     * 通过命令名称获取用户自定义快捷键（SnippetsMenu/topBarInit 直连访问，故公开）
+     * 通过命令名称获取用户自定义快捷键（SnippetsMenu 直连访问，故公开）
      * @param command 命令名称
      * @returns 用户自定义快捷键
      */
