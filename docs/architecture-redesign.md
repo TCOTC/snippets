@@ -19,6 +19,7 @@
 ### 已完成提交（main，最新在上）
 | commit | 内容 |
 |---|---|
+| `248b39a` | refactor: 清理迁移过程性注释（去外迁/阶段/Host/jcsm 收敛措辞，保留职责与业务机制说明） |
 | `3dc9eb4` | refactor: 单模块使用的插件类成员迁入模块内部（topBarElement/isTouchDevice 迁 SnippetsMenu、version 迁 ConfigService、setting 直连 configService） |
 | `783dec0` | refactor: 清理多余类型声明（零引用 Window 扩展/上游已含 saveExportFile 补充声明/监听器类型下沉 listener-registry） |
 | `29b9e31` | refactor: window.siyuan.jcsm 全量收敛移除（阶段 6 收官）——运行态标志/片段缓存/监听簿记/主题 observer 改由实例承载，通知按钮去全局函数 |
@@ -218,7 +219,8 @@
 12. （29b9e31）**阶段 6 收官——jcsm 运行态全量收敛**：isMobile/isTouchDevice/isReloadUIRequired/snippetsList/snippetsType → 插件实例字段（读点不变，onLayoutReady 重算/自拉重建/重载回退默认）；disableNotification → 通知按钮改元素事件绑定（FeedbackService 直连 configService），删除 onLayoutReady 的全局挂载；themeObserver → `EditorManager` 实例字段；listeners 簿记三字段 → `ListenerRegistry` 实例字段；`types.d.ts` jcsm 类型块整体删除、index 移除 jcsm 初始化与 uninstall 的 `delete window.siyuan.jcsm`，相关注释刷新。至此 `window.siyuan.jcsm` 全量退出本插件。
 13. （783dec0）**类型声明清理**（对照已安装 siyuan 类型包逐一核实）：删除零引用的 Window 扩展 JSAndroid/JSHarmony/webkit（历史遗留外链桥）；删除上游 siyuan.d.ts 已含的 saveExportFile 补充声明（注释“待 petal 发布新版后可移除”已到期）；监听器簿记类型（ListenerItem/ElementListeners/ListenersArray）从 types.d.ts 下沉至唯一使用方 listener-registry.ts（文件内私有类型）；Setting 扩展的 addItem 覆盖保留（上游 title 必选、本插件 i18n 键可缺失，属有意放宽）；types.d.ts 仅保留 Snippet/SnippetType/SettingItem/FileState 与必要的 siyuan 模块扩展。
 14. （3dc9eb4）**单模块使用的插件类成员归位**（逐成员核查引用分布后迁移）：`topBarElement`（仅 SnippetsMenu 创建/定位/高亮/移除）与 `isTouchDevice`（仅 genMenuSnippetsItems 读）迁入 SnippetsMenu 内部字段（ctx.removeTopBarElement 改指 menuView 公开方法，index 删除字段与 onLayoutReady 触摸检测赋值）；`version`（仅 config-service 读）迁为 config-service 模块常量 CONFIG_VERSION；`setting`（仅 setting-dialog 读，index 仅作 configService.setting 转发）删除插件字段与转发赋值，SettingDialog 直连 `plugin.configService.setting`。插件类剩余成员均为真跨模块共享（服务/视图引用、isMobile、snippetsList/snippetsType、isReloadUIRequired、配置镜像 declare 投影层）。
-15. 之后：继续阶段 5（menu.ts 剩余区块/搜索交互细拆或视图化）与收尾清理（`data: any` 类型化等）。
+15. （248b39a）**注释清理（全库 17 文件）**：删除只对迁移过程有用的注释措辞——“原 index.ts xx 外迁，行为等价”“阶段 N：消灭 xxSync 镜像”“简洁化：不设 Host（import type 避免循环依赖）”“jcsm 收敛（阶段 N）”“收敛自 window.siyuan.jcsm”“与旧实现保持一致”等；保留并改写职责/业务机制说明（模块职责、origin 语义、求值时机、配置镜像投影、禁原文约束等），文件头统一为「职责」描述 + 必要的机制说明。用户原创业务注释（问题案例/TODO/思源参考链接等）全部保留。
+16. 之后：继续阶段 5（menu.ts 剩余区块/搜索交互细拆或视图化）与收尾清理（`data: any` 类型化等）。
 
 ---
 
