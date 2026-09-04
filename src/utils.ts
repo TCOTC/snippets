@@ -57,3 +57,25 @@ export const htmlToElement = (html: string): HTMLElement => {
     div.innerHTML = html;
     return div.firstChild as HTMLElement;
 };
+
+/**
+ * 使对话框或菜单元素显示在最上层（设置 zIndex）
+ * @param element 元素
+ */
+export const moveElementToTop = (element: HTMLElement) => {
+    if (!element) return;
+
+    let maxZIndex = 0;
+    // 查找所有打开的代码片段编辑对话框和菜单，如果 zIndex 不是最大的才增加
+    const allElements = document.querySelectorAll(".b3-dialog--open[data-key='jcsm-snippet-dialog'], #commonMenu[data-name='PluginSnippets']");
+    allElements.forEach((el: HTMLElement) => {
+        const zIndex = Number(el.style.zIndex);
+        if (zIndex > maxZIndex) {
+            maxZIndex = zIndex;
+        }
+    });
+    const dialogZIndex = Number(element.style.zIndex);
+    if (dialogZIndex < maxZIndex) {
+        element.style.zIndex = (++window.siyuan.zIndex).toString();
+    }
+};

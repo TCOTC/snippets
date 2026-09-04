@@ -1,7 +1,7 @@
 import "./index.scss";
 import {FileState, ListenersArray, Snippet, SnippetType} from "./types";
 import {isSnippetsTypeEnabled, isValidJavaScriptCode} from "./domain/snippet";
-import {hideTooltip, htmlToElement, isInputElementActive, showElementTooltip} from "./utils";
+import {hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, showElementTooltip} from "./utils";
 import {getFile, putFile, renameFile} from "./services/storage";
 import {EventBus} from "./core/event-bus";
 
@@ -1262,7 +1262,7 @@ export default class PluginSnippets extends Plugin {
         this.addListener(this.menu.element, "click", this.menuClickHandler);
         this.addListener(this.menu.element, "mousedown", () => {
             // 点击菜单时要显示在最上层
-            this.moveElementToTop(this.menu.element);
+            moveElementToTop(this.menu.element);
         });
         this.addListener(this.menu.element, "input", (event: InputEvent) => {
             const target = event.target as HTMLInputElement;
@@ -3534,7 +3534,7 @@ export default class PluginSnippets extends Plugin {
         // 如果已经有打开的对应 snippetId 的 Dialog，则仅激活它，不重复创建
         const existedDialog = document.querySelector(`.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id="${snippet.id}"]`) as HTMLDivElement;
         if (existedDialog) {
-            this.moveElementToTop(existedDialog);
+            moveElementToTop(existedDialog);
             return true;
         }
 
@@ -3792,7 +3792,7 @@ export default class PluginSnippets extends Plugin {
 
         this.addListener(dialog.element, "mousedown", () => {
             // 点击 Dialog 时要显示在最上层
-            this.moveElementToTop(dialog.element);
+            moveElementToTop(dialog.element);
             // 移除菜单上的 b3-menu__item--current，否则 this.globalKeyDownHandler() 会操作菜单
             this.clearMenuSelection();
         });
@@ -4435,28 +4435,6 @@ export default class PluginSnippets extends Plugin {
             }
         };
     })();
-
-    /**
-     * 使对话框或菜单元素显示在最上层（设置 zIndex）
-     * @param element 元素
-     */
-    private moveElementToTop(element: HTMLElement) {
-        if (!element) return;
-
-        let maxZIndex = 0;
-        // 查找所有打开的代码片段编辑对话框和菜单，如果 zIndex 不是最大的才增加
-        const allElements = document.querySelectorAll(".b3-dialog--open[data-key='jcsm-snippet-dialog'], #commonMenu[data-name='PluginSnippets']");
-        allElements.forEach((element: HTMLElement) => {
-            const zIndex = Number(element.style.zIndex);
-            if (zIndex > maxZIndex) {
-                maxZIndex = zIndex;
-            }
-        });
-        const dialogZIndex = Number(element.style.zIndex);
-        if (dialogZIndex < maxZIndex) {
-            element.style.zIndex = (++window.siyuan.zIndex).toString();
-        }
-    }
 
     /**
      * 全局键盘按下事件处理
