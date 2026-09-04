@@ -1,15 +1,15 @@
 // ui/snippets-dialog.ts SnippetsDialog 核心公开方法单测
 // 覆盖：reloadUI（无变更直接重载/有变更弹确认再重载）、openDeleteDialog 确认回调、
 //       closeByElement（空参防御/无 dialogObject 防御/编辑对话框清理与延迟兜底销毁）、
-//       getAllModalElements/closeAllDialogs。
-// 不覆盖 openEditDialog 的 CodeMirror 装配流（依赖编辑器实例化）。
+//       getAllModalElements/closeAllDialogs、openEditDialog 取消关闭后补触发待定 JS 重载（issue #40）。
 // @vitest-environment jsdom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 import type PluginSnippets from "../index";
 import {SnippetsConfig} from "../config/config";
 import type {Snippet, SnippetType} from "../types";
 import {SnippetsDialog} from "./snippets-dialog";
-import {attachDialogObject} from "../utils";
+import {attachDialogObject, getDialogObject} from "../utils";
+import {EditorManager} from "./editor-manager";
 
 /** 构造 SnippetsDialog 替身插件 */
 const createPlugin = () => {
@@ -191,6 +191,162 @@ describe("SnippetsDialog", () => {
             expect(spy).toHaveBeenCalledTimes(2);
             expect(d1.destroyNative).toHaveBeenCalled();
             expect(d2.destroyNative).toHaveBeenCalled();
+        });
+    });
+});
+
+/**
+ * openEditDialog 取消关闭后补触发待定 JS 重载（issue #40）
+ * 复现路径：菜单禁用 JS 代码片段时若编辑对话框仍打开，自动重载被延迟；随后在代码编辑器中
+ * 关闭该片段开关并点击"取消"关闭对话框 → 应补触发自动重新加载界面。
+ * 本组测试真实装配 openEditDialog（含 CodeMirror 编辑器实例化）并驱动取消流程。
+ */
+describe("openEditDialog 取消关闭与待定 JS 重载（issue #40）", () => {
+    /** 带 CodeMirror/编辑器所需运行态的 window.siyuan 桩 */
+    const stubFullWindowSiyuan = () => {
+        (window as unknown as {
+            siyuan: {
+                menus: {menu: {element: {style: {zIndex: string}}}};
+                dialogs: unknown[];
+                zIndex: number;
+                config: {appearance: {mode: number}; editor: {codeTabSpaces: number}};
+            };
+        }).siyuan = {
+            menus: {menu: {element: {style: {zIndex: "100"}}}},
+            dialogs: [],
+            zIndex: 100,
+            config: {
+                appearance: {mode: 0},
+                editor: {codeTabSpaces: 4},
+            },
+        };
+    };
+
+    /** 构造 SnippetsDialog 替身插件（编辑器管理器用真实 EditorManager，便于验证重载门控） */
+    const createDialogPlugin = () => {
+        const plugin = {
+            isMobile: false,
+            isReloadUIRequired: true,
+            snippetsList: [] as Snippet[],
+            snippetsType: "js" as SnippetType,
+            config: new SnippetsConfig(),
+            i18n: {
+                save: "保存",
+                cancel: "取消",
+                codeSnippetJS: "输入 JS 代码片段",
+                codeSnippetCSS: "输入 CSS 代码片段",
+            },
+            console: {log: vi.fn(), warn: vi.fn(), error: vi.fn()},
+            postReloadUI: vi.fn(),
+            addListener: (element: HTMLElement, event: string, fn: (e: Event) => void, options?: AddEventListenerOptions) => {
+                element.addEventListener(event, fn as EventListener, options);
+            },
+            removeListener: vi.fn(),
+            menuView: {
+                isShowPublishCheckbox: () => false,
+                setSnippetEditButtonActive: vi.fn(),
+                removeSnippetEditButtonActive: vi.fn(),
+                destroyGlobalKeyDownHandler: vi.fn(),
+            },
+            snippetManager: {
+                getSnippetById: vi.fn(),
+                removeSnippetElement: vi.fn(),
+            },
+            syncService: undefined,
+        } as unknown as PluginSnippets;
+        (plugin as unknown as {editorManager: EditorManager}).editorManager = new EditorManager(plugin);
+        return plugin;
+    };
+
+    const jsSnippet = (id: string, name: string, enabled: boolean): Snippet =>
+        ({id, name, type: "js", content: "", enabled, disabledInPublish: false});
+
+    let plugin: PluginSnippets;
+    let dialog: SnippetsDialog;
+
+    beforeEach(() => {
+        document.body.innerHTML = "";
+        stubFullWindowSiyuan();
+        // jsdom 未实现 rAF/cAF，CodeMirror 编辑器实例化需要
+        (window as unknown as {requestAnimationFrame: (cb: FrameRequestCallback) => number}).requestAnimationFrame =
+            (cb: FrameRequestCallback) => window.setTimeout(cb, 16);
+        (window as unknown as {cancelAnimationFrame: (id: number) => void}).cancelAnimationFrame =
+            (id: number) => window.clearTimeout(id);
+        plugin = createDialogPlugin();
+        dialog = new SnippetsDialog(plugin);
+    });
+
+    afterEach(() => {
+        document.body.innerHTML = "";
+        // 停止可能已启动的主题模式监听，避免跨用例残留
+        (plugin as unknown as {editorManager: EditorManager}).editorManager.stopThemeModeWatch();
+    });
+
+    /** 打开 JS 片段编辑对话框并让其原生 destroy 同步移除 b3-dialog--open（对齐原生 destroy 首行行为） */
+    const openAndArmDestroy = async (snippet: Snippet) => {
+        await dialog.openEditDialog(snippet);
+        const dialogElement = document.querySelector(`.b3-dialog--open[data-key="jcsm-snippet-dialog"][data-snippet-id="${snippet.id}"]`) as HTMLElement;
+        expect(dialogElement).not.toBeNull();
+        const dialogObject = getDialogObject(dialogElement)!;
+        (dialogObject as unknown as {destroyNative: () => void}).destroyNative = () => {
+            dialogElement.classList.remove("b3-dialog--open");
+        };
+        return dialogElement;
+    };
+
+    it("菜单已禁用 JS 片段（待定重载）时取消关闭编辑器 → 自动重新加载界面", async () => {
+        // 步骤 1-2：菜单已禁用片段（保存态 enabled=false，isReloadUIRequired=true），打开编辑对话框时开关仍为开
+        (plugin as unknown as {isReloadUIRequired: boolean}).isReloadUIRequired = true;
+        (plugin as unknown as {snippetsList: Snippet[]}).snippetsList = [jsSnippet("1", "片段", false)];
+        const dialogElement = await openAndArmDestroy(jsSnippet("1", "片段", true));
+        const switchInput = dialogElement.querySelector("input[data-type='snippetSwitch']") as HTMLInputElement;
+        expect(switchInput.checked).toBe(true);
+        // 步骤 5：在代码编辑器中关闭代码片段开关（与已保存的禁用态一致）
+        switchInput.checked = false;
+        (plugin.snippetManager.getSnippetById as ReturnType<typeof vi.fn>).mockResolvedValue(jsSnippet("1", "片段", false));
+        // 步骤 6：点击取消关闭代码编辑器 → 补触发待定重载
+        (dialogElement.querySelector("button[data-action='cancel']") as HTMLButtonElement)
+            .dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        await vi.waitFor(() => {
+            expect(plugin.postReloadUI).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    it("无待定 JS 重载时取消关闭编辑器 → 不自动重新加载界面", async () => {
+        (plugin as unknown as {isReloadUIRequired: boolean}).isReloadUIRequired = false;
+        (plugin as unknown as {snippetsList: Snippet[]}).snippetsList = [jsSnippet("1", "片段", true)];
+        const dialogElement = await openAndArmDestroy(jsSnippet("1", "片段", true));
+        (plugin.snippetManager.getSnippetById as ReturnType<typeof vi.fn>).mockResolvedValue(jsSnippet("1", "片段", true));
+        (dialogElement.querySelector("button[data-action='cancel']") as HTMLButtonElement)
+            .dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        // 等取消流程走完（getSnippetById 被调用）后确认没有触发重载
+        await vi.waitFor(() => {
+            expect(plugin.snippetManager.getSnippetById).toHaveBeenCalled();
+        });
+        expect(plugin.postReloadUI).not.toHaveBeenCalled();
+    });
+
+    it("仍有其他编辑对话框打开时取消关闭 → 延迟重载，最后一个对话框关闭后才触发", async () => {
+        (plugin as unknown as {snippetsList: Snippet[]}).snippetsList = [jsSnippet("1", "片段一", false), jsSnippet("2", "片段二", true)];
+        // 打开两个编辑对话框（桌面多编辑器模式，均非模态）
+        const dialogElementA = await openAndArmDestroy(jsSnippet("1", "片段一", true));
+        const dialogElementB = await openAndArmDestroy(jsSnippet("2", "片段二", true));
+        (plugin.snippetManager.getSnippetById as ReturnType<typeof vi.fn>).mockImplementation(async (id: string) =>
+            id === "1" ? jsSnippet("1", "片段一", false) : jsSnippet("2", "片段二", true));
+        // 关闭片段一（保存态已禁用）→ 片段一开关拨到关，取消
+        (dialogElementA.querySelector("input[data-type='snippetSwitch']") as HTMLInputElement).checked = false;
+        (dialogElementA.querySelector("button[data-action='cancel']") as HTMLButtonElement)
+            .dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        // 片段二仍打开 → 暂不重载
+        await vi.waitFor(() => {
+            expect(plugin.snippetManager.getSnippetById).toHaveBeenCalledTimes(1);
+        });
+        expect(plugin.postReloadUI).not.toHaveBeenCalled();
+        // 取消关闭片段二 → 已无打开的编辑对话框 → 补触发重载
+        (dialogElementB.querySelector("button[data-action='cancel']") as HTMLButtonElement)
+            .dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        await vi.waitFor(() => {
+            expect(plugin.postReloadUI).toHaveBeenCalledTimes(1);
         });
     });
 });

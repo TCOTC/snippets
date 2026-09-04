@@ -89,9 +89,13 @@ export class Dialog {
         if (options.content) {
             this.element.innerHTML = options.content;
         }
+        // 原生结构为 .b3-dialog > .b3-dialog__container（snippets-dialog 多编辑器模式依赖它定位容器）
         const inner = document.createElement("div");
         inner.className = "b3-dialog";
         this.element.appendChild(inner);
+        const container = document.createElement("div");
+        container.className = "b3-dialog__container";
+        inner.appendChild(container);
         // 原生 Dialog 构造即把 element 挂到 document.body（setting-dialog/snippets-dialog 依赖）
         if (typeof document !== "undefined") {
             document.body.appendChild(this.element);

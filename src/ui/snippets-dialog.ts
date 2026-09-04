@@ -155,6 +155,11 @@ export class SnippetsDialog {
                 // 需要先关闭 Dialog，因为后面的 removeSnippetElement 会根据是否打开了 Dialog 来判断代码片段是否正在预览
                 this.closeByElement(dialog.element);
 
+                // 补触发待定重载：在菜单等处禁用/移除 JS 代码片段时，若编辑对话框仍打开，自动重载会被
+                // 延迟（见 EditorManager.maybeAutoReloadUI）；此处对话框已关闭（取消/放弃修改），若有
+                // 待定重载且已无其他打开的编辑对话框，则补触发 https://github.com/TCOTC/snippets/issues/40
+                this.plugin.editorManager.maybeAutoReloadUI();
+
                 if (snippet.type === "css") {
                     // 退出预览操作，新建的代码片段需要移除元素，已有的代码片段需要恢复原始元素 https://github.com/TCOTC/snippets/issues/26
                     if (isNew) {
