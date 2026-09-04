@@ -5,7 +5,7 @@
 import {fetchPost} from "siyuan";
 import {isValidJavaScriptCode} from "../domain/snippet";
 import {genNewSnippetId} from "../utils";
-import {getFile} from "./storage";
+import {getFile} from "../utils";
 import type PluginSnippets from "../index";
 import type {FileState} from "../types";
 

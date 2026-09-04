@@ -3,7 +3,7 @@
 // 从本地文件（json/zip）导入——zip 上传解压后递归定位 json；校验、ID 去重、覆盖前备份、整表替换写库。
 import {fetchPost, saveExportFile, showMessage} from "siyuan";
 import {genNewSnippetId} from "../utils";
-import {getFile, putFile, renameFile} from "./storage";
+import {getFile, putFile, renameFile} from "../utils";
 import type PluginSnippets from "../index";
 import type {Snippet} from "../types";
 
