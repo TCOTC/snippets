@@ -81,24 +81,24 @@
 |---|---|---|
 | `snippet_save` / `snippet_delete` / `snippet_toggle` / `snippet_toggle_publish` / `snippets_sort` | 已保存内容/开关/排序 | **保留**：插件写库只调 snippet API、内核不广播，需自定义广播同步其他插件实例；已去原文化（只发元数据 + ID） |
 | `snippet_toggle_global` | 全局开关 | **保留（可精简）**：`/api/setting/setSnippet` 已即时广播使其他实例原生全量重渲染；Sync 仅保留“预览片段保护”与“菜单开关刷新” |
-| `snippet_element_update` / `snippet_element_remove`（预览态） | 实时预览/退出预览 | **保留**：临时内容未保存，内核无法同步，这是插件唯一必须自理的跨窗口状态；其中 `previewState: true` 预览已豁免原文，`previewState: false` 退出预览应去原文化（自拉已保存片段恢复） |
+| `snippet_element_update` / `snippet_element_remove`（预览态） | 实时预览/退出预览 | **保留**：临时内容未保存，内核无法同步，这是插件唯一必须自理的跨窗口状态；`previewState: true` 预览豁免原文，`previewState: false` 退出预览已去原文化（自拉已保存片段恢复） |
 | `setting_apply` | 插件配置 | **保留**：petal 配置本地写不跨窗口，内核不广播 |
 | `window_online` / `window_offline` / `window_online_feedback` | 窗口保活发现 | 保留（消息广播前需确认有其他窗口在线） |
 
 **已决问题**：
 1. ~~是否确认删除“可删”消息~~（已撤销：同内核多实例下插件写库不经内核广播，插件广播不能删）。
-2. **CSS 实时预览放行原文（2026-09-04 用户拍板，方案 a）**：编辑中的 CSS 实时预览（`previewState: true`）广播豁免“禁原文”，允许携带编辑中的 CSS 文本——预览内容未保存、接收窗口无法自拉，且预览由本窗口显式操作触发、受众是同内核可信实例。豁免范围严格限定：仅 CSS 编辑中预览；**退出预览**（`previewState: false`）恢复用的是已保存片段，应去原文化（接收窗口自拉）。
+2. **CSS 实时预览放行原文（2026-09-04 用户拍板，方案 a）**：编辑中的 CSS 实时预览（`previewState: true`）广播豁免“禁原文”，允许携带编辑中的 CSS 文本——预览内容未保存、接收窗口无法自拉，且预览由本窗口显式操作触发、受众是同内核可信实例。豁免范围严格限定：仅 CSS 编辑中预览；**退出预览**（`previewState: false`）恢复用的是已保存片段，已去原文化（接收窗口自拉）。
 
 ### 广播协议约束：消息不得携带代码片段原文（敏感信息）
 - **硬性约束（用户要求）**：跨窗口广播消息体中不允许包含 snippet 的 `content` 原文（代码可能含密钥、内网地址等敏感信息），只允许携带非敏感元数据（`snippetId`、`snippetType`、`name`、开关状态等）。
 - 接收窗口需要片段内容时，一律自行调用 `/api/snippet/getSnippet` 获取权威数据，禁止依赖消息中的原文。
 - **豁免项（2026-09-04 用户拍板）**：编辑中的 CSS 实时预览同步（`snippet_element_update` 且 `previewState: true`）允许携带原文（content），因为内容未保存、接收窗口无法自拉；范围仅限此预览场景。
-- **现状违规点（待改造）**：`snippet_element_update` 的退出预览用法（`previewState: false`，携带已保存的 realSnippet）含原文但可自拉，应去原文化（只发 `snippetId` + `previewState: false`，接收窗口自拉后恢复）。`snippet_save`（saveSnippet）已去原文化（见下）；其余消息（`snippet_toggle`、`snippet_toggle_publish`、`snippet_delete`、`snippet_element_remove`、`snippets_sort`、`setting_apply`）均只含元数据，合规。
+- **现状违规点（待改造）**：无。`snippet_element_update` 的退出预览用法（`previewState: false`）已去原文化（只发 `snippetId` + `previewState: false`，接收窗口自拉后恢复）；`snippet_save` 已去原文化；其余消息（`snippet_toggle`、`snippet_toggle_publish`、`snippet_delete`、`snippet_element_remove`、`snippets_sort`、`setting_apply`）均只含元数据，合规。
 - **snippet_save 已去原文化（2026-09-04，暂未提交）**：本地 `saveSnippet` 广播只发 `{ snippetId, isCopy, copySnippetId }`（写入已 `await saveSnippetsList` 落库，接收窗口按 ID 自拉即可）；`saveSnippetSync` 改为先记录本窗口旧片段、再 `getSnippetById` 自拉权威数据后走 store（复制：自拉副本后镜像菜单/对话框更新；非复制：与旧片段比较后按需更新注入元素）。
 
 ### 下一步建议（朝目标架构，拆可验证子批推进）
 1. 阶段 2（Store 收敛）已完成：`domain/snippet-store.ts` 的 `remove`/`upsert`/`insertBefore`/`move`/`replaceAll` 已承接全部本地结构写，计数统一由 `SNIPPETS_CHANGED` 事件驱动。
-2. 阶段 3：`services/sync.ts` 类型化广播协议并让远程消息映射到 store，消除 `*Sync` 镜像；广播仅发非敏感元数据与 ID（禁原文），CSS 编辑中实时预览（`previewState: true`）豁免；`snippet_element_update` 退出预览用法去原文化。
+2. 阶段 3：`services/sync.ts` 类型化广播协议并让远程消息映射到 store，消除 `*Sync` 镜像；广播仅发非敏感元数据与 ID（禁原文），CSS 编辑中实时预览（`previewState: true`）豁免。
 3. 之后：config 声明式（阶段 4）、UI 视图化（阶段 5）、jcsm 收敛（阶段 6）。
 
 ---
