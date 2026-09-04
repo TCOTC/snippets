@@ -1,5 +1,5 @@
 import "./index.scss";
-import {ListenersArray, Snippet, SnippetType} from "./types";
+import {Snippet, SnippetType} from "./types";
 import {isSnippetsTypeEnabled, isValidJavaScriptCode} from "./domain/snippet";
 import {SNIPPETS_CHANGED, SnippetStore} from "./domain/snippet-store";
 import {createSnippetsConfigItems} from "./config/schema";
@@ -11,6 +11,7 @@ import {hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, show
 import {EventBus} from "./core/event-bus";
 import {ImportExportService} from "./services/import-export";
 import {FeedbackService} from "./services/feedback";
+import {ListenerRegistry} from "./services/listener-registry";
 
 // 思源插件 API
 import {
@@ -115,6 +116,11 @@ export default class PluginSnippets extends Plugin {
     private feedbackService!: FeedbackService;
 
     /**
+     * 事件监听器统一簿记（实现见 src/services/listener-registry.ts，addListener/removeListener 委托到它）
+     */
+    private listenerRegistry!: ListenerRegistry;
+
+    /**
      * 启用插件
      */
     public async onload() {
@@ -210,6 +216,14 @@ export default class PluginSnippets extends Plugin {
             displayName: () => this.displayName,
             i18n: () => this.i18n,
             readConfig: (key) => (this as any)[key],
+        });
+
+        // 初始化事件监听器簿记（状态存于 jcsm 跨 reload 存活；addListener/removeListener 经实例委托到它）
+        this.listenerRegistry = new ListenerRegistry({
+            logger: this.console,
+            consoleDebug: () => this.consoleDebug,
+            checkThemeWatch: () => this.editorManager.checkAndManageThemeWatch(),
+            isDialogOrMenuOpen: () => this.isDialogAndMenuOpen(),
         });
 
         // 订阅代码片段列表变更事件：菜单打开时刷新各类型计数
@@ -478,7 +492,7 @@ export default class PluginSnippets extends Plugin {
         this.editorManager?.stopThemeModeWatch();
 
         // 移除所有监听器
-        this.destroyListeners();
+        this.listenerRegistry.destroy();
 
         // 最后移除全局变量
         delete window.siyuan.jcsm;
@@ -3370,229 +3384,25 @@ export default class PluginSnippets extends Plugin {
     // ================================ 事件监听管理 ================================
 
     /**
-     * 事件监听器的映射
-     * 卸载插件的时候会移除所有插件添加的元素及其监听器，但元素有可能是上一个实例添加的，所以各个实例要共用一个 listeners 对象
-     */
-    get listeners(): ListenersArray {
-        const jcsm = window.siyuan.jcsm ??= {};
-        jcsm.listeners ??= [] as ListenersArray;
-        return jcsm.listeners as ListenersArray;
-    }
-    set listeners(value: ListenersArray | undefined) { (window.siyuan.jcsm ??= {}).listeners = value; }
-
-    /**
-     * 监听器检查定时器 ID
-     */
-    get listenerCheckIntervalId() { return window.siyuan.jcsm?.listenerCheckIntervalId ?? null; }
-    set listenerCheckIntervalId(value: number | null) { (window.siyuan.jcsm ??= {}).listenerCheckIntervalId = value; }
-
-    /**
-     * 是否正在检查监听器元素
-     */
-    get isCheckingListeners() { return window.siyuan.jcsm?.isCheckingListeners ?? false; }
-    set isCheckingListeners(value: boolean) { (window.siyuan.jcsm ??= {}).isCheckingListeners = value; }
-    // 执行 addListener 和 removeListener 之后，如果 listeners 里还有监听器，每隔一段时间检查一次元素是否在 DOM 中，如果不在则移除监听器。直到 listeners 里没有监听器为止才不需要间隔时间检查
-    // 感觉有可能存在本插件外部移除 Dialog 的情况
-
-    /**
-     * 检查监听器元素是否还在 DOM 中
-     * 如果元素不在 DOM 中，则移除对应的监听器
-     * 如果 listeners 中还有监听器，则每隔一段时间检查一次
-     * 直到 listeners 中没有监听器为止才停止检查
-     */
-    private checkListenerElement() {
-        // 如果已经在检查中，则不重复执行
-        if (this.isCheckingListeners) {
-            return;
-        }
-
-        // 设置检查标志
-        this.isCheckingListeners = true;
-
-        // 检查主题监听状态
-        this.editorManager.checkAndManageThemeWatch();
-
-        // 如果没有监听器，停止定时器并返回
-        if (!this.listeners || this.listeners.length === 0) {
-            this.isCheckingListeners = false;
-            this.stopListenerCheckInterval();
-            return;
-        }
-
-        this.console.log("check Listener:", this.listeners);
-
-        // 如果窗口内没有打开的 Dialog 和菜单，则移除 Document 的监听器
-        if (!this.isDialogAndMenuOpen()) {
-            this.removeListener(document.documentElement);
-        }
-
-        // 检查每个元素的监听器
-        for (let i = this.listeners.length - 1; i >= 0; i--) {
-            const elementListeners = this.listeners[i];
-            const { element, listeners } = elementListeners;
-
-            // 检查元素是否还在 DOM 中
-            if (!document.contains(element)) {
-                // 元素不在 DOM 中，移除该元素的所有监听器
-                listeners.forEach(({ event, fn, options }) => {
-                    element.removeEventListener(event, fn, options);
-                });
-                // 从数组中移除该元素的记录
-                this.listeners.splice(i, 1);
-                this.console.warn("checkListenerElement: remove listener of element which is not in DOM", element);
-            }
-        }
-
-        // 如果还有监听器，则启动定期检查
-        if (this.listeners && this.listeners.length > 0) {
-            this.startListenerCheckInterval();
-        } else {
-            // 没有监听器了，重置检查标志并停止定时器
-            this.isCheckingListeners = false;
-            this.stopListenerCheckInterval();
-        }
-    }
-
-    /**
-     * 启动监听器检查定时器
-     */
-    private startListenerCheckInterval() {
-        // 如果已经有定时器在运行，则不重复启动
-        if (this.listenerCheckIntervalId) {
-            return;
-        }
-
-        // 每隔 30 秒检查一次（调试时每隔 20 秒检查一次）
-        this.listenerCheckIntervalId = window.setInterval(() => {
-            this.isCheckingListeners = false; // 重置检查标志
-            this.checkListenerElement();
-        }, this.consoleDebug ? 20000 : 30000);
-    }
-
-    /**
-     * 停止监听器检查定时器
-     */
-    private stopListenerCheckInterval() {
-        if (this.listenerCheckIntervalId) {
-            window.clearInterval(this.listenerCheckIntervalId);
-            this.listenerCheckIntervalId = null;
-        }
-    }
-
-    /**
-     * 添加事件监听器
+     * 添加事件监听器（统一簿记见 src/services/listener-registry.ts）
      * @param element 元素
      * @param event 事件
      * @param fn 回调函数
      * @param options 监听器选项
      */
     private addListener(element: HTMLElement, event: string, fn: (event?: Event) => void, options?: AddEventListenerOptions) {
-        // 查找元素是否已存在监听器记录
-        let elementListeners = this.listeners.find(item => item.element === element);
-        if (!elementListeners) {
-            // 创建该元素的监听器列表
-            elementListeners = { element, listeners: [] };
-            this.listeners.push(elementListeners);
-        }
-
-        // 检查是否已存在相同的监听器
-        if (elementListeners.listeners.some(item => item.event === event && item.fn === fn && item.options === options)) {
-            // 如果元素上已经存在相同的监听器，则不重复添加
-            return;
-        }
-
-        // 将监听器添加到列表中、注册监听器
-        elementListeners.listeners.push({ event, fn, options });
-        element.addEventListener(event, fn, options);
-
-        // 启动监听器元素检查机制
-        this.checkListenerElement();
+        this.listenerRegistry.add(element, event, fn, options);
     }
 
     /**
-     * 移除事件监听器
+     * 移除事件监听器（统一簿记见 src/services/listener-registry.ts）
      * @param element 元素
      * @param event 事件
      * @param fn 回调函数
      * @param options 监听器选项
      */
     private removeListener(element: HTMLElement, event?: string, fn?: (event?: Event) => void, options?: AddEventListenerOptions) {
-        this.console.log("removeListener:", element);
-        if (!element) {
-            this.console.warn("removeListener: element is not found");
-            return;
-        }
-
-        // 查找元素的监听器记录
-        const elementIndex = this.listeners.findIndex(item => item.element === element);
-        if (elementIndex === -1) return;
-
-        const elementListeners = this.listeners[elementIndex];
-        if (!elementListeners) {
-            // 未获取到 elementListeners，有可能是重复调用了 removeListener，直接返回
-            this.console.warn("removeListener: elementListeners is not found");
-            return;
-        }
-
-        if (event) {
-            if (fn) {
-                // 移除特定的监听器
-                element.removeEventListener(event, fn, options);
-                const index = elementListeners.listeners.findIndex(item =>
-                    item.event === event && item.fn === fn && item.options === options
-                );
-                if (index > -1) {
-                    elementListeners.listeners.splice(index, 1);
-                    // 如果移除后该元素没有任何监听器了，从数组中移除该元素的记录
-                    if (elementListeners.listeners.length === 0) {
-                        this.listeners.splice(elementIndex, 1);
-                    }
-                }
-            } else {
-                // 只移除该事件类型的所有监听器
-                // 先筛选出所有该事件类型的监听器
-                const toRemove = elementListeners.listeners.filter(item => item.event === event);
-                toRemove.forEach(({ event, fn, options }) => {
-                    element.removeEventListener(event, fn, options);
-                });
-                // 从监听器列表中移除所有该事件类型的监听器
-                elementListeners.listeners = elementListeners.listeners.filter(item => item.event !== event);
-                // 如果移除后该元素没有任何监听器了，从数组中移除该元素的记录
-                if (elementListeners.listeners.length === 0) {
-                    this.listeners.splice(elementIndex, 1);
-                }
-            }
-        } else {
-            // 移除该元素的所有监听器
-            elementListeners.listeners.forEach(({ event, fn, options }) => {
-                element.removeEventListener(event, fn, options);
-            });
-            // 从数组中移除该元素的记录
-            this.listeners.splice(elementIndex, 1);
-        }
-
-        // 启动监听器元素检查机制
-        this.checkListenerElement();
-    }
-
-    /**
-     * 销毁监听器
-     */
-    private destroyListeners() {
-        // 移除所有监听器
-        for (const elementListeners of this.listeners) {
-            const { element, listeners } = elementListeners;
-            // 移除该元素上的所有监听器
-            listeners.forEach(({ event, fn, options }) => {
-                element.removeEventListener(event, fn, options);
-            });
-        }
-        // 清空 listeners 数组
-        this.listeners = undefined;
-        // 重置检查标志
-        this.isCheckingListeners = false;
-        // 停止监听器检查定时器
-        this.stopListenerCheckInterval();
+        this.listenerRegistry.remove(element, event, fn, options);
     }
 
 
@@ -3620,6 +3430,7 @@ export default class PluginSnippets extends Plugin {
      */
     private syncService: BroadcastService | null = null;
 }
+
 
 
 
