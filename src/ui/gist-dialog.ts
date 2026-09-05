@@ -92,36 +92,34 @@ export class GistDialog {
             // 结构复用代码片段编辑对话框：.jcsm-dialog 占满 .b3-dialog__body（flex 布局见 index.scss），
             // 中部 .jcsm-dialog-container 为可滚动内容区（flex:1 + min-height:0），底部 .b3-dialog__action 常驻
             content: `
-<div class="jcsm-dialog">
-    <div class="jcsm-dialog-container">
-        <div class="fn__flex fn__flex-center fn__flex-wrap" data-action="gistPublishToolbar">
-            <span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="gistPublishFilter" data-pub-filter="all">${this.plugin.i18n.gistPublishFilterAll}</span>
-            <div class="fn__space"></div>
-            <span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="gistPublishFilter" data-pub-filter="css">CSS</span>
-            <div class="fn__space"></div>
-            <span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="gistPublishFilter" data-pub-filter="js">JS</span>
-            <div class="fn__space"></div>
-            <span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="gistPublishFilter" data-pub-filter="enabled">${this.plugin.i18n.gistPublishFilterEnabled}</span>
-            <div class="fn__space"></div>
-            <span class="b3-label__text fn__flex-1" data-action="gistPublishCount"></span>
-        </div>
-        <div class="jcsm-gist-publish-list"></div>
-        <div class="fn__hr"></div>
-        <div class="fn__flex fn__flex-column fn__flex-wrap" data-action="gistPublishTarget">
-            <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-secret" checked>${this.plugin.i18n.gistPublishTargetNewSecret}</label>
-            <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-public">${this.plugin.i18n.gistPublishTargetNewPublic}</label>
-            <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="update">${publishState ? this.plugin.i18n.gistPublishTargetUpdateLast : this.plugin.i18n.gistPublishTargetUpdate}</label>
-            <div class="fn__flex fn__flex-center" style="margin-top: 4px;">
-                <input class="b3-text-field fn__flex-1" data-action="gistPublishGistId" type="text" spellcheck="false" placeholder="${this.plugin.i18n.gistPublishGistIdPlaceholder}">
-            </div>
-        </div>
-        <div class="jcsm-gist-publish-summary b3-label__text" data-action="gistPublishSummary"></div>
-    </div>
-    <div class="b3-dialog__action">
-        <button class="b3-button b3-button--cancel" data-type="cancel">${this.plugin.i18n.cancel}</button>
+<div class="b3-dialog__content">
+    <div class="fn__flex fn__flex-center fn__flex-wrap">
+        <span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="gistPublishFilter" data-pub-filter="all">${this.plugin.i18n.gistPublishFilterAll}</span>
         <div class="fn__space"></div>
-        <button class="b3-button b3-button--text" data-action="gistPublish">${this.plugin.i18n.gistPublishButton}</button>
+        <span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="gistPublishFilter" data-pub-filter="css">CSS</span>
+        <div class="fn__space"></div>
+        <span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="gistPublishFilter" data-pub-filter="js">JS</span>
+        <div class="fn__space"></div>
+        <span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="gistPublishFilter" data-pub-filter="enabled">${this.plugin.i18n.gistPublishFilterEnabled}</span>
+        <div class="fn__space"></div>
+        <span class="b3-label__text fn__flex-1" data-action="gistPublishCount"></span>
     </div>
+    <div class="jcsm-gist-publish-list"></div>
+    <div class="fn__hr"></div>
+    <div class="fn__flex fn__flex-column fn__flex-wrap" data-action="gistPublishTarget">
+        <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-secret" checked>${this.plugin.i18n.gistPublishTargetNewSecret}</label>
+        <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-public">${this.plugin.i18n.gistPublishTargetNewPublic}</label>
+        <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="update">${publishState ? this.plugin.i18n.gistPublishTargetUpdateLast : this.plugin.i18n.gistPublishTargetUpdate}</label>
+        <div class="fn__flex fn__flex-center" style="margin-top: 4px;">
+            <input class="b3-text-field fn__flex-1" data-action="gistPublishGistId" type="text" spellcheck="false" placeholder="${this.plugin.i18n.gistPublishGistIdPlaceholder}">
+        </div>
+    </div>
+    <div class="jcsm-gist-publish-summary b3-label__text" data-action="gistPublishSummary"></div>
+</div>
+<div class="b3-dialog__action">
+    <button class="b3-button b3-button--cancel" data-type="cancel">${this.plugin.i18n.cancel}</button>
+    <div class="fn__space"></div>
+    <button class="b3-button b3-button--text" data-action="gistPublish">${this.plugin.i18n.gistPublishButton}</button>
 </div>
             `,
             width: this.plugin.isMobile ? "92vw" : "720px",
@@ -386,29 +384,28 @@ export class GistDialog {
 
         const dialog = new Dialog({
             title: this.plugin.i18n.gistImport,
-            // 结构同发布对话框：.jcsm-dialog + .jcsm-dialog-container（滚动区）+ 底部 .b3-dialog__action
+            // 结构与设置对话框同构：正文整块放原生 .b3-dialog__content（原生 flex:1 + overflow 保证
+            // 正文整体滚动、action 固定底部），不依赖自定义 flex 高度链
             content: `
-<div class="jcsm-dialog">
-    <div class="jcsm-dialog-container">
-        <div class="fn__flex">
-            <input class="b3-text-field fn__flex-1" data-action="gistUrl" type="text" spellcheck="false" placeholder="${this.plugin.i18n.gistImportUrlPlaceholder}">
-            <div class="fn__space"></div>
-            <span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="gistFetch">${this.plugin.i18n.gistImportFetch}</span>
-        </div>
-        <div class="b3-label__text" data-action="gistTokenHint"></div>
-        <div class="fn__flex fn__flex-center" data-action="gistModeGroup">
-            <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-mode" value="merge" checked>${this.plugin.i18n.gistImportModeMerge}</label>
-            <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-mode" value="overwrite">${this.plugin.i18n.gistImportModeOverwrite}</label>
-            <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-mode" value="fork">${this.plugin.i18n.gistImportModeFork}</label>
-        </div>
-        <div class="fn__hr"></div>
-        <div class="jcsm-gist-result"></div>
-    </div>
-    <div class="b3-dialog__action">
-        <button class="b3-button b3-button--cancel" data-type="cancel">${this.plugin.i18n.cancel}</button>
+<div class="b3-dialog__content">
+    <div class="fn__flex">
+        <input class="b3-text-field fn__flex-1" data-action="gistUrl" type="text" spellcheck="false" placeholder="${this.plugin.i18n.gistImportUrlPlaceholder}">
         <div class="fn__space"></div>
-        <button class="b3-button b3-button--text" data-action="gistImport">${this.plugin.i18n.gistImportButton}</button>
+        <span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="gistFetch">${this.plugin.i18n.gistImportFetch}</span>
     </div>
+    <div class="b3-label__text" data-action="gistTokenHint"></div>
+    <div class="fn__flex fn__flex-center" data-action="gistModeGroup">
+        <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-mode" value="merge" checked>${this.plugin.i18n.gistImportModeMerge}</label>
+        <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-mode" value="overwrite">${this.plugin.i18n.gistImportModeOverwrite}</label>
+        <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-mode" value="fork">${this.plugin.i18n.gistImportModeFork}</label>
+    </div>
+    <div class="fn__hr"></div>
+    <div class="jcsm-gist-result"></div>
+</div>
+<div class="b3-dialog__action">
+    <button class="b3-button b3-button--cancel" data-type="cancel">${this.plugin.i18n.cancel}</button>
+    <div class="fn__space"></div>
+    <button class="b3-button b3-button--text" data-action="gistImport">${this.plugin.i18n.gistImportButton}</button>
 </div>
             `,
             width: this.plugin.isMobile ? "92vw" : "720px",

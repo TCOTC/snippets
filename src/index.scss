@@ -439,27 +439,12 @@ div[data-key="jcsm-setting-dialog"] {
   font-size: 12px;
 }
 // Gist 导入 / 发布对话框（data-key 前缀 jcsm-gist-）
-// 结构复用 .jcsm-dialog（占满 .b3-dialog__body），本段补充滚动列表与行/选项布局。
-// 高度分配的正确模型：.jcsm-dialog-container 为纵向 flex，其直接子项中只有列表
-// （.jcsm-gist-publish-list / .jcsm-gist-result）允许伸缩（flex:1 撑满剩余空间并内部滚动），
-// 其余固定内容一律 flex-shrink:0，保证内容超高时列表不会被其它行压缩塌陷。
+// 结构与设置对话框同构：正文整块放原生 .b3-dialog__content（原生 CSS 保证 flex:1 + overflow，
+// 使整块正文统一滚动、底部 .b3-dialog__action 固定），不依赖自定义 flex 高度链，
+// 因此列表无需自己滚动/分配高度，不存在塌陷问题。本段仅保留行与选项等局部样式。
 .b3-dialog--open[data-key^="jcsm-gist"] {
-  .jcsm-dialog-container {
-    // 继承自 .jcsm-dialog 的 overflow:hidden 会把超高内容裁掉；
-    // 弹窗自身高度受限（80vh），内容超高时应滚动而非裁剪
-    overflow-y: auto;
-
-    // 除滚动列表外，其余直接子项禁止被压缩
-    > :not(.jcsm-gist-publish-list):not(.jcsm-gist-result) {
-      flex-shrink: 0;
-    }
-  }
-
   .jcsm-gist-publish-list,
   .jcsm-gist-result {
-    flex: 1;
-    min-height: 0; // 允许收缩到 0 以触发内部滚动（高度链正确时即占满剩余空间）
-    overflow-y: auto;
     margin-top: 8px;
     border: 1px solid var(--b3-border-color);
     border-radius: var(--b3-border-radius);
@@ -468,6 +453,7 @@ div[data-key="jcsm-setting-dialog"] {
 
   // 单行（发布勾选 / 导入预览）：checkbox 与文字垂直居中
   .jcsm-gist-row {
+    display: flex;
     align-items: center;
     padding: 4px 2px;
     cursor: pointer;
@@ -518,11 +504,5 @@ div[data-key="jcsm-setting-dialog"] {
   .jcsm-gist-publish-summary {
     margin-top: 4px;
     word-break: break-all;
-    // 文件名预览是辅助信息：几十个文件名拼接并强制换行时自然高度可达数千像素，
-    // 若任其无限撑高会挤占列表（flex 剩余空间变负）导致列表塌陷到 0；
-    // 这里限制在几行内滚动，保证列表始终获得剩余高度
-    max-height: 64px;
-    overflow-y: auto;
-    flex-shrink: 0;
   }
 }
