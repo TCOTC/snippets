@@ -129,9 +129,73 @@ export class GistTokenService {
     }
 }
 
+/** Token 设置区域容器标记（SettingDialog 点击分发经 closest 定位到本作用域） */
+const GIST_TOKEN_SCOPE_CLASS = "jcsm-gist-token";
+
+/**
+ * 处理 Token 设置区域的点击动作（保存 / 清除 / 切换明文显示）
+ * 设置对话框的 click 监听挂在对话框元素上且使用捕获阶段并 stopPropagation，
+ * 区域内元素自绑的 click 监听不会触发，因此这里把动作集中成可被对话框分发调用的函数。
+ * @param plugin 插件实例
+ * @param action data-action 值（gistTokenSave / gistTokenClear / gistTokenTogglePassword）
+ * @param element 触发元素（用于向上定位 Token 作用域）
+ */
+export function handleGistTokenAction(plugin: PluginSnippets, action: string, element: HTMLElement): void {
+    const scope = element.closest(`.${GIST_TOKEN_SCOPE_CLASS}`) as HTMLElement | null;
+    if (!scope) {
+        return;
+    }
+    const tokenInput = scope.querySelector("input[data-action='gistTokenInput']") as HTMLInputElement | null;
+    const statusElement = scope.querySelector("span[data-action='gistTokenStatus']") as HTMLElement | null;
+    const refreshStatus = (hasToken: boolean) => {
+        if (statusElement) {
+            statusElement.textContent = hasToken
+                ? plugin.i18n.gistTokenStatusConfigured
+                : plugin.i18n.gistTokenStatusNotConfigured;
+        }
+    };
+
+    if (action === "gistTokenTogglePassword" && tokenInput) {
+        // 眼睛图标切换明文显示（仅用于输入确认，不落盘明文）
+        tokenInput.type = tokenInput.type === "password" ? "text" : "password";
+        return;
+    }
+    if (action === "gistTokenSave") {
+        // 保存 Token：输入为空时提示，避免误把「清除」语义揉进保存
+        const token = tokenInput?.value.trim() ?? "";
+        if (!token) {
+            plugin.showErrorMessage(plugin.i18n.gistTokenEmpty);
+            return;
+        }
+        void plugin.gistTokenService.saveToken(token).then(success => {
+            if (success) {
+                if (tokenInput) {
+                    tokenInput.value = "";
+                }
+                refreshStatus(true);
+                showMessage(plugin.displayName + ": " + plugin.i18n.gistTokenSaved, 3000, "info");
+            }
+        });
+        return;
+    }
+    if (action === "gistTokenClear") {
+        // 清除 Token：删除磁盘密文并清空缓存
+        void plugin.gistTokenService.removeToken().then(success => {
+            if (success) {
+                if (tokenInput) {
+                    tokenInput.value = "";
+                }
+                refreshStatus(false);
+                showMessage(plugin.displayName + ": " + plugin.i18n.gistTokenRemoved, 3000, "info");
+            }
+        });
+    }
+}
+
 /**
  * 构建设置面板中的 GitHub Token 管理区域元素
- * 事件直接在元素上绑定（不经 SettingDialog 的 data-action 分发，避免命名空间冲突）：
+ * 区域内按钮/眼睛图标的点击由 SettingDialog 的 data-action 分发调用
+ * handleGistTokenAction 处理（见 src/ui/setting-dialog.ts）：
  * - 「保存 Token」：把输入框明文经 GistTokenService 加密落盘；
  * - 「清除 Token」：删除磁盘密文并清空会话缓存；
  * - 输入框留空不回显明文（安全），placeholder 与状态文案提示当前是否已配置。
@@ -139,7 +203,7 @@ export class GistTokenService {
  * @returns Token 设置区域元素
  */
 export function buildGistTokenSettingElement(plugin: PluginSnippets): HTMLElement {
-    const container = htmlToElement(`<div class="fn__block">
+    const container = htmlToElement(`<div class="fn__block ${GIST_TOKEN_SCOPE_CLASS}">
     <div class="fn__flex fn__flex-center" style="flex-wrap: wrap;">
         <a class="b3-button b3-button--outline fn__flex-center ariaLabel" href="${FINE_GRAINED_TOKEN_URL}" target="_blank" rel="noopener noreferrer" aria-label="${FINE_GRAINED_TOKEN_URL}" data-position="north">
             <svg><use xlink:href="#iconGithub"></use></svg>${plugin.i18n.gistTokenCreateFineGrained}
@@ -163,52 +227,14 @@ export function buildGistTokenSettingElement(plugin: PluginSnippets): HTMLElemen
     </div>
 </div>`);
 
-    const tokenInput = container.querySelector("input[data-action='gistTokenInput']") as HTMLInputElement;
-    const togglePasswordIcon = container.querySelector("svg[data-action='gistTokenTogglePassword']") as SVGElement;
-    const saveButton = container.querySelector("span[data-action='gistTokenSave']") as HTMLElement;
-    const clearButton = container.querySelector("span[data-action='gistTokenClear']") as HTMLElement;
     const statusElement = container.querySelector("span[data-action='gistTokenStatus']") as HTMLElement;
 
-    // 已配置状态展示（明文不回显）
+    // 初始状态：会话缓存无明文时尝试从磁盘预热（幂等），随后按结果刷新状态文案
     const refreshStatus = (hasToken: boolean) => {
         statusElement.textContent = hasToken
             ? plugin.i18n.gistTokenStatusConfigured
             : plugin.i18n.gistTokenStatusNotConfigured;
     };
-
-    // 眼睛图标切换明文显示（仅用于输入确认，不落盘明文）
-    togglePasswordIcon.addEventListener("click", () => {
-        tokenInput.type = tokenInput.type === "password" ? "text" : "password";
-    });
-
-    // 保存 Token：输入为空时提示，避免误把「清除」语义揉进保存
-    saveButton.addEventListener("click", () => {
-        const token = tokenInput.value.trim();
-        if (!token) {
-            plugin.showErrorMessage(plugin.i18n.gistTokenEmpty);
-            return;
-        }
-        void plugin.gistTokenService.saveToken(token).then(success => {
-            if (success) {
-                tokenInput.value = "";
-                refreshStatus(true);
-                showMessage(plugin.displayName + ": " + plugin.i18n.gistTokenSaved, 3000, "info");
-            }
-        });
-    });
-
-    // 清除 Token：删除磁盘密文并清空缓存
-    clearButton.addEventListener("click", () => {
-        void plugin.gistTokenService.removeToken().then(success => {
-            if (success) {
-                tokenInput.value = "";
-                refreshStatus(false);
-                showMessage(plugin.displayName + ": " + plugin.i18n.gistTokenRemoved, 3000, "info");
-            }
-        });
-    });
-
-    // 初始状态：会话缓存无明文时尝试从磁盘预热（幂等），随后按结果刷新状态文案
     void plugin.gistTokenService.loadToken().then(hasToken => {
         refreshStatus(hasToken || plugin.gistTokenService.hasToken);
     });

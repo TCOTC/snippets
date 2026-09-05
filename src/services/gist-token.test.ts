@@ -6,7 +6,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 import {showMessage} from "siyuan";
 import type PluginSnippets from "../index";
-import {buildGistTokenSettingElement, GistTokenService} from "./gist-token";
+import {buildGistTokenSettingElement, GistTokenService, handleGistTokenAction} from "./gist-token";
 
 /** 内存存储插件替身（loadData 无文件返回空串，与思源语义一致） */
 const setup = () => {
@@ -42,11 +42,6 @@ const setup = () => {
     // 设置元素构建函数经 plugin.gistTokenService 访问服务
     (plugin as any).gistTokenService = service;
     return {plugin, service, store};
-};
-
-/** 点击元素 */
-const click = (element: HTMLElement) => {
-    element.dispatchEvent(new MouseEvent("click", {bubbles: true}));
 };
 
 /** 等待异步链（加密/落盘/加载） */
@@ -141,7 +136,6 @@ describe("buildGistTokenSettingElement", () => {
         const {plugin, service, store} = setup();
         const element = buildGistTokenSettingElement(plugin);
         const input = element.querySelector("input[data-action='gistTokenInput']") as HTMLInputElement;
-        const save = element.querySelector("span[data-action='gistTokenSave']") as HTMLElement;
         const status = element.querySelector("span[data-action='gistTokenStatus']") as HTMLElement;
         expect(element.querySelector("a[href='https://github.com/settings/personal-access-tokens/new?description=SiYuan+Snippets+Gist&gists=write']")).not.toBeNull();
         expect(element.querySelector("a[href='https://github.com/settings/tokens/new']")).not.toBeNull();
@@ -149,7 +143,7 @@ describe("buildGistTokenSettingElement", () => {
         expect(element.querySelector("svg[data-action='gistTokenTogglePassword']")).not.toBeNull();
 
         input.value = "ghp_secret";
-        click(save);
+        handleGistTokenAction(plugin, "gistTokenSave", element);
         await vi.waitFor(() => expect(store.size).toBe(1));
 
         expect(service.hasToken).toBe(true);
@@ -161,8 +155,7 @@ describe("buildGistTokenSettingElement", () => {
     it("输入为空点保存：提示且不落盘", async () => {
         const {plugin, store} = setup();
         const element = buildGistTokenSettingElement(plugin);
-        const save = element.querySelector("span[data-action='gistTokenSave']") as HTMLElement;
-        click(save);
+        handleGistTokenAction(plugin, "gistTokenSave", element);
         await waitChain();
         expect(plugin.showErrorMessage).toHaveBeenCalledWith(plugin.i18n.gistTokenEmpty);
         expect(store.size).toBe(0);
@@ -172,15 +165,13 @@ describe("buildGistTokenSettingElement", () => {
         const {plugin, service, store} = setup();
         const element = buildGistTokenSettingElement(plugin);
         const input = element.querySelector("input[data-action='gistTokenInput']") as HTMLInputElement;
-        const save = element.querySelector("span[data-action='gistTokenSave']") as HTMLElement;
-        const clear = element.querySelector("span[data-action='gistTokenClear']") as HTMLElement;
         const status = element.querySelector("span[data-action='gistTokenStatus']") as HTMLElement;
         // 先保存再清除
         input.value = "ghp_secret";
-        click(save);
+        handleGistTokenAction(plugin, "gistTokenSave", element);
         await vi.waitFor(() => expect(service.hasToken).toBe(true));
 
-        click(clear);
+        handleGistTokenAction(plugin, "gistTokenClear", element);
         await vi.waitFor(() => expect(store.size).toBe(0));
         expect(service.hasToken).toBe(false);
         await vi.waitFor(() => expect(status.textContent).toBe(plugin.i18n.gistTokenStatusNotConfigured));
@@ -199,11 +190,10 @@ describe("buildGistTokenSettingElement", () => {
         const {plugin} = setup();
         const element = buildGistTokenSettingElement(plugin);
         const input = element.querySelector("input[data-action='gistTokenInput']") as HTMLInputElement;
-        const toggle = element.querySelector("svg[data-action='gistTokenTogglePassword']") as SVGElement;
         expect(input.type).toBe("password");
-        click(toggle as unknown as HTMLElement);
+        handleGistTokenAction(plugin, "gistTokenTogglePassword", element);
         expect(input.type).toBe("text");
-        click(toggle as unknown as HTMLElement);
+        handleGistTokenAction(plugin, "gistTokenTogglePassword", element);
         expect(input.type).toBe("password");
     });
 });

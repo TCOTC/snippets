@@ -3,6 +3,7 @@
 // 参考原生代码 app/src/plugin/Setting.ts Setting.open 方法。
 import {Constants, Dialog, openSetting} from "siyuan";
 import {attachDialogObject, isDialogButtonFocused, setDialogKeyHandler} from "../utils";
+import {handleGistTokenAction} from "../services/gist-token";
 import type PluginSnippets from "../index";
 
 // 思源 3.7.0+ 的 openSetting 支持第二个参数 tab 用于指定初始选项卡
@@ -230,6 +231,12 @@ export class SettingDialog {
                     event.preventDefault();
                     event.stopPropagation();
                     void this.plugin.importExportService.importSnippets(action === "importSnippetsWithOverwrite");
+                } else if (action === "gistTokenSave" || action === "gistTokenClear" || action === "gistTokenTogglePassword") {
+                    // GitHub Token 区域按钮：设置对话框的捕获阶段监听会截断目标元素自绑事件，
+                    // 因此保存/清除/切换明文统一经 handleGistTokenAction 处理（见 src/services/gist-token.ts）
+                    event.preventDefault();
+                    event.stopPropagation();
+                    handleGistTokenAction(this.plugin, action, target);
                 }
                 // TODO功能: 移动端的导出导入
             }
