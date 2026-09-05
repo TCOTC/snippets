@@ -1,6 +1,8 @@
 {
   "githubToken": "GitHub Token",
-  "gistTokenOpenGithubButton": "開啟 GitHub Token 建立頁面",
+  "gistTokenCreateFineGrained": "建立 Token（Gist 權限已預勾選）",
+  "gistTokenCreateClassic": "建立經典 Token（需手動勾選 Gist）",
+  "gistTokenCreateHint": "fine-grained：資源擁有者請選自己，Gists 權限已預設勾選；經典 Token：需手動勾選 gist 權限。產生後將下方 ghp_ 開頭的令牌貼上儲存。",
   "gistTokenPlaceholder": "ghp_…",
   "gistTokenSaveButton": "儲存 Token",
   "gistTokenClearButton": "清除 Token",

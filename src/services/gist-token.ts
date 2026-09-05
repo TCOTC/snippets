@@ -9,6 +9,11 @@ import {showMessage} from "siyuan";
 import {htmlToElement} from "../utils";
 import type PluginSnippets from "../index";
 
+/** 经典 Token 创建页（需手动勾选 gist scope；GitHub 不支持 URL 预选） */
+const CLASSIC_TOKEN_URL = "https://github.com/settings/tokens/new";
+/** fine-grained Token 创建页（URL 参数预选 Gists 账户权限为 write，打开即默认勾选） */
+const FINE_GRAINED_TOKEN_URL = "https://github.com/settings/personal-access-tokens/new?description=SiYuan+Snippets+Gist&gists=write";
+
 /**
  * GitHub Token 服务（明文仅存于会话内存：vault.cachedToken；onunload 时 clear 即可）
  */
@@ -134,13 +139,17 @@ export class GistTokenService {
  * @returns Token 设置区域元素
  */
 export function buildGistTokenSettingElement(plugin: PluginSnippets): HTMLElement {
-    const tokenUrl = "https://github.com/settings/tokens/new";
     const container = htmlToElement(`<div class="fn__block">
-    <div class="fn__flex fn__flex-center">
-        <a class="b3-button b3-button--outline fn__flex-center fn__size200 ariaLabel" href="${tokenUrl}" target="_blank" rel="noopener noreferrer" aria-label="${tokenUrl}" data-position="north">
-            <svg><use xlink:href="#iconGithub"></use></svg>${plugin.i18n.gistTokenOpenGithubButton}
+    <div class="fn__flex fn__flex-center" style="flex-wrap: wrap;">
+        <a class="b3-button b3-button--outline fn__flex-center ariaLabel" href="${FINE_GRAINED_TOKEN_URL}" target="_blank" rel="noopener noreferrer" aria-label="${FINE_GRAINED_TOKEN_URL}" data-position="north">
+            <svg><use xlink:href="#iconGithub"></use></svg>${plugin.i18n.gistTokenCreateFineGrained}
+        </a>
+        <div class="fn__space"></div>
+        <a class="b3-button b3-button--outline fn__flex-center ariaLabel" href="${CLASSIC_TOKEN_URL}" target="_blank" rel="noopener noreferrer" aria-label="${CLASSIC_TOKEN_URL}" data-position="north">
+            <svg><use xlink:href="#iconGithub"></use></svg>${plugin.i18n.gistTokenCreateClassic}
         </a>
     </div>
+    <div class="b3-label__text fn__block" style="margin-top: 4px;">${plugin.i18n.gistTokenCreateHint}</div>
     <div class="b3-form__icona fn__block" style="margin-top: 8px;">
         <input data-action="gistTokenInput" type="password" class="b3-text-field b3-form__icona-input" placeholder="${plugin.i18n.gistTokenPlaceholder}" spellcheck="false" autocomplete="off">
         <svg data-action="gistTokenTogglePassword" class="b3-form__icona-icon" style="cursor: pointer; user-select: none;"><use xlink:href="#iconEye"></use></svg>

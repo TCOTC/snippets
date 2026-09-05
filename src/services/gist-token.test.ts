@@ -15,7 +15,9 @@ const setup = () => {
         displayName: "Snippets",
         i18n: {
             gistTokenEmpty: "请输入 Token",
-            gistTokenOpenGithubButton: "打开创建页",
+            gistTokenCreateFineGrained: "创建 Token（Gist 已预勾选）",
+            gistTokenCreateClassic: "创建经典 Token",
+            gistTokenCreateHint: "fine-grained 选自己，经典需勾 gist",
             gistTokenPlaceholder: "ghp_…",
             gistTokenSaveButton: "保存 Token",
             gistTokenClearButton: "清除 Token",
@@ -141,7 +143,9 @@ describe("buildGistTokenSettingElement", () => {
         const input = element.querySelector("input[data-action='gistTokenInput']") as HTMLInputElement;
         const save = element.querySelector("span[data-action='gistTokenSave']") as HTMLElement;
         const status = element.querySelector("span[data-action='gistTokenStatus']") as HTMLElement;
+        expect(element.querySelector("a[href='https://github.com/settings/personal-access-tokens/new?description=SiYuan+Snippets+Gist&gists=write']")).not.toBeNull();
         expect(element.querySelector("a[href='https://github.com/settings/tokens/new']")).not.toBeNull();
+        expect(element.querySelector(".b3-label__text")?.textContent).toContain("fine-grained");
         expect(element.querySelector("svg[data-action='gistTokenTogglePassword']")).not.toBeNull();
 
         input.value = "ghp_secret";

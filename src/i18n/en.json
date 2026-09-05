@@ -1,6 +1,8 @@
 {
   "githubToken": "GitHub Token",
-  "gistTokenOpenGithubButton": "Open GitHub Token page",
+  "gistTokenCreateFineGrained": "Create Token (Gist permission preselected)",
+  "gistTokenCreateClassic": "Create classic Token (select Gist manually)",
+  "gistTokenCreateHint": "Fine-grained: pick yourself as the resource owner; Gists permission is preselected. Classic: check the gist scope. Then paste the ghp_ token below.",
   "gistTokenPlaceholder": "ghp_…",
   "gistTokenSaveButton": "Save Token",
   "gistTokenClearButton": "Clear Token",

@@ -1,6 +1,8 @@
 {
   "githubToken": "GitHub Token",
-  "gistTokenOpenGithubButton": "GitHub トークン作成ページを開く",
+  "gistTokenCreateFineGrained": "トークンを作成（Gist 権限を事前選択）",
+  "gistTokenCreateClassic": "クラシックトークンを作成（Gist を手動選択）",
+  "gistTokenCreateHint": "fine-grained：リソース所有者に自分を選択してください。Gists 権限は事前選択済みです。クラシック：gist 権限を手動で選択してください。生成後、下の ghp_ で始まるトークンを貼り付けて保存します。",
   "gistTokenPlaceholder": "ghp_…",
   "gistTokenSaveButton": "トークンを保存",
   "gistTokenClearButton": "トークンを削除",
