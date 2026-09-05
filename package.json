@@ -58,6 +58,7 @@
     "@codemirror/view": "^6.43.11",
     "@uiw/codemirror-theme-vscode": "^4.25.11",
     "acorn": "^8.18.0",
-    "prettier": "^3.9.6"
+    "prettier": "^3.9.6",
+    "siyuan-token-vault": "github:TCOTC/siyuan-token-vault#8b666168a554f3038b58f0aed9823dd74a5a185d"
   }
 }

@@ -53,6 +53,9 @@ importers:
       prettier:
         specifier: ^3.9.6
         version: 3.9.6
+      siyuan-token-vault:
+        specifier: github:TCOTC/siyuan-token-vault#8b666168a554f3038b58f0aed9823dd74a5a185d
+        version: https://codeload.github.com/TCOTC/siyuan-token-vault/tar.gz/8b666168a554f3038b58f0aed9823dd74a5a185d
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -1707,6 +1710,11 @@ packages:
   siyuan@https://codeload.github.com/siyuan-note/petal/tar.gz/f3f8988bca2d2db7e13b091985790503149d45be:
     resolution: {gitHosted: true, integrity: sha512-4QlI77XvOg7ofdMTMdqkSxE0KQeZm934cV34A98N4sX9qHJREXG71wXEMpMDR3UzB1jZ+nJ2HMWtoivkGitoeQ==, tarball: https://codeload.github.com/siyuan-note/petal/tar.gz/f3f8988bca2d2db7e13b091985790503149d45be}
     version: 1.2.6
+
+  siyuan-token-vault@https://codeload.github.com/TCOTC/siyuan-token-vault/tar.gz/8b666168a554f3038b58f0aed9823dd74a5a185d:
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/TCOTC/siyuan-token-vault/tar.gz/8b666168a554f3038b58f0aed9823dd74a5a185d}
+    version: 0.1.1
+    engines: {node: '>=20'}
 
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
@@ -3480,6 +3488,8 @@ snapshots:
       '@dop251/types-goja_nodejs-global': 0.0.0-20260212111938-1f56ff5bcf14
       '@dop251/types-goja_nodejs-url': 0.0.0-20260212111938-1f56ff5bcf14
       zod: 4.5.4
+
+  siyuan-token-vault@https://codeload.github.com/TCOTC/siyuan-token-vault/tar.gz/8b666168a554f3038b58f0aed9823dd74a5a185d: {}
 
   source-map-js@1.2.1: {}
 

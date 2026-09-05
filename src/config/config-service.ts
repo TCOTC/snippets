@@ -7,6 +7,7 @@
 // 配置文件读写经插件生命周期方法（loadData/saveData/removeData）与本模块自持的存储键名。
 import {hideMessage, Setting} from "siyuan";
 import {htmlToElement, PLUGIN_NAME, settleWriteResponse, SNIPPET_DIALOG_SELECTOR} from "../utils";
+import {buildGistTokenSettingElement} from "../services/gist-token";
 import type PluginSnippets from "../index";
 import type {SettingItem} from "../types";
 
@@ -600,6 +601,13 @@ const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfigItem[]
                 plugin.menuView.setMenuPosition(true);
             }
         },
+    },
+    {
+        key: "githubToken",
+        type: "createActionElement",
+        // GitHub Token 管理区域：事件在元素内部直接绑定（gist-token.ts buildGistTokenSettingElement），
+        // 不经 saveFromDialog 收集（Token 绝不写入 plugin-config.json，见 gist-token.ts 顶部约束）
+        createActionElement: () => buildGistTokenSettingElement(plugin),
     },
     {
         key: "exportSnippets",

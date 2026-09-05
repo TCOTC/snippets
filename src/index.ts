@@ -10,6 +10,7 @@ import {ImportExportService} from "./services/import-export";
 import {FeedbackService} from "./services/feedback";
 import {ListenerRegistry} from "./services/listener-registry";
 import {SnippetManager} from "./services/snippet-manager";
+import {GistTokenService} from "./services/gist-token";
 import {WsMainSnippetSync} from "./services/ws-main";
 import {SnippetsMenu} from "./ui/menu";
 
@@ -99,6 +100,12 @@ export default class PluginSnippets extends Plugin {
     syncService: BroadcastService | null = null;
 
     /**
+     * GitHub Token 加密存储服务（实现见 src/services/gist-token.ts；
+     * Token 密文独立落盘，绝不进入 plugin-config.json）
+     */
+    gistTokenService!: GistTokenService;
+
+    /**
      * ws-main 消息同步服务（监听思源内核 setSnippet 广播刷新列表与已打开菜单，
      * 实现见 src/services/ws-main.ts；start 于布局无关装配段调用）
      */
@@ -183,6 +190,9 @@ export default class PluginSnippets extends Plugin {
         // 初始化导入导出服务（列表读写/菜单刷新经服务内转发）
         this.importExportService = new ImportExportService(this);
 
+        // 初始化 GitHub Token 加密存储服务（Token 独立密文落盘，见 src/services/gist-token.ts）
+        this.gistTokenService = new GistTokenService(this);
+
         // 初始化通知/错误提示服务（配置开关经实例字段读取）
         this.feedbackService = new FeedbackService(this);
 
@@ -245,6 +255,9 @@ export default class PluginSnippets extends Plugin {
         // 实现见 src/services/ws-main.ts）
         this.wsMainSync.start();
 
+        // 预热 GitHub Token 到会话缓存（磁盘无密文时静默；密文损坏时提示重配，见 gist-token.ts）
+        void this.gistTokenService.loadToken();
+
         console.log(this.displayName, "plugin onloaded");
     }
 
@@ -298,6 +311,9 @@ export default class PluginSnippets extends Plugin {
         // 移除所有登记的监听器（兜底：含 document 级全局键盘等宿主流元素上的监听器，
         // 实现见 listener-registry.ts ListenerRegistry.destroy）
         this.listenerRegistry.destroy();
+
+        // 清空 GitHub Token 会话缓存（只清内存，不删除磁盘密文，下次加载自动恢复）
+        this.gistTokenService.clear();
 
         console.log(this.displayName, "plugin unloaded");
     }
