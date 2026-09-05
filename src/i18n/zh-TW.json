@@ -51,6 +51,8 @@
   "gistPublishFilterEnabled": "已啟用",
   "gistPublishDisabled": "已停用",
   "gistPublishSelectedCount": "已勾選 ${count} 個",
+  "gistPublishSelectAll": "全選",
+  "gistPublishSelectNone": "取消全選",
   "gistPublishFilterEmpty": "目前篩選下沒有可發佈的代碼片段",
   "gistPublishFilesPreview": "將寫入：",
   "gistPublishTargetNewSecret": "新建 secret Gist（持有連結者仍可見）",

@@ -48,6 +48,8 @@ const i18n: Record<string, string> = {
     gistPublishFilterEnabled: "已启用",
     gistPublishDisabled: "已停用",
     gistPublishSelectedCount: "已勾选 ${count} 个",
+    gistPublishSelectAll: "全选",
+    gistPublishSelectNone: "取消全选",
     gistPublishFilterEmpty: "筛选无结果",
     gistPublishFilesPreview: "将写入",
     gistPublishTargetNewSecret: "新建 secret",
@@ -274,6 +276,69 @@ describe("GistDialog.openPublish", () => {
         expect(options.snippets.map((snippet: Snippet) => snippet.id)).toEqual(["a-20250101000000-aaa"]);
         expect(plugin.snippetsDialog.closeByElement).toHaveBeenCalled();
         expect(showMessage).toHaveBeenCalledWith(expect.stringContaining("gist-new"), 6000, "info");
+    });
+
+    it("全选按钮：初始未全选显示全选，点击后全选可见片段并变取消全选，再点恢复", async () => {
+        const {dialog} = setup({});
+        await dialog.openPublish();
+        await waitChain();
+
+        const list = document.querySelector(".jcsm-gist-publish-list") as HTMLElement;
+        const toggleAll = document.querySelector("[data-action='gistPublishToggleAll']") as HTMLElement;
+        // 仅已启用片段默认勾选 → 未全选，按钮显示「全选」
+        expect(toggleAll.textContent).toBe(i18n.gistPublishSelectAll);
+
+        // 全选：两个可见片段全部勾选，计数 2，按钮变「取消全选」
+        click(toggleAll);
+        await waitChain();
+        const afterSelectAll = Array.from(list.querySelectorAll("input[data-pub-id]")) as HTMLInputElement[];
+        expect(afterSelectAll.every(input => input.checked)).toBe(true);
+        expect(toggleAll.textContent).toBe(i18n.gistPublishSelectNone);
+        expect(document.querySelector("[data-action='gistPublishCount']")?.textContent).toContain("2");
+
+        // 取消全选：计数 0，按钮恢复「全选」
+        click(toggleAll);
+        await waitChain();
+        const afterSelectNone = Array.from(list.querySelectorAll("input[data-pub-id]")) as HTMLInputElement[];
+        expect(afterSelectNone.every(input => !input.checked)).toBe(true);
+        expect(toggleAll.textContent).toBe(i18n.gistPublishSelectAll);
+        expect(document.querySelector("[data-action='gistPublishCount']")?.textContent).toContain("0");
+    });
+
+    it("全选作用于当前筛选：JS 筛选下只全选 JS 片段，不影响 CSS 片段", async () => {
+        const {dialog} = setup({
+            snippets: [
+                makeSnippet("a-20250101000000-aaa", "片段A", false, "css"),
+                makeSnippet("b-20250101000001-bbb", "片段B", false, "js"),
+            ],
+        });
+        await dialog.openPublish();
+        await waitChain();
+
+        // 默认两个片段：a 为 css、b 为 js
+        const filterSelect = document.querySelector("select[data-action='gistPublishFilter']") as HTMLSelectElement;
+        const list = document.querySelector(".jcsm-gist-publish-list") as HTMLElement;
+        const toggleAll = document.querySelector("[data-action='gistPublishToggleAll']") as HTMLElement;
+
+        // 切到 JS 筛选
+        filterSelect.value = "js";
+        filterSelect.dispatchEvent(new Event("change", {bubbles: true}));
+        await waitChain();
+        expect(Array.from(list.querySelectorAll("input[data-pub-id]"))).toHaveLength(1);
+
+        // 全选 JS 片段
+        click(toggleAll);
+        await waitChain();
+        expect((list.querySelector("input[data-pub-id]") as HTMLInputElement).checked).toBe(true);
+
+        // 切回全部：CSS 片段仍未被勾选（全选只作用于当时的 JS 筛选结果）
+        filterSelect.value = "all";
+        filterSelect.dispatchEvent(new Event("change", {bubbles: true}));
+        await waitChain();
+        const checkboxes = Array.from(list.querySelectorAll("input[data-pub-id]")) as HTMLInputElement[];
+        const byId = Object.fromEntries(checkboxes.map(input => [input.dataset.pubId, input.checked]));
+        expect(byId["a-20250101000000-aaa"]).toBe(false); // CSS 片段未受影响
+        expect(byId["b-20250101000001-bbb"]).toBe(true);   // JS 片段保持勾选
     });
 
     it("公开新建：需要二次确认（openConfirm）后才发布", async () => {

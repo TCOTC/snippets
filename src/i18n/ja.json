@@ -51,6 +51,8 @@
   "gistPublishFilterEnabled": "有効のみ",
   "gistPublishDisabled": "無効",
   "gistPublishSelectedCount": "選択中 ${count} 件",
+  "gistPublishSelectAll": "すべて選択",
+  "gistPublishSelectNone": "選択を解除",
   "gistPublishFilterEmpty": "現在のフィルターに一致するスニペットがありません",
   "gistPublishFilesPreview": "書き込まれます：",
   "gistPublishTargetNewSecret": "新しい secret Gist を作成（リンク保持者には表示されます）",

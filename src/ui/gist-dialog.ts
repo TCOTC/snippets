@@ -94,13 +94,14 @@ export class GistDialog {
             content: `
 <div class="b3-dialog__content">
     <div class="fn__flex fn__flex-center fn__flex-wrap">
-        <span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="gistPublishFilter" data-pub-filter="all">${this.plugin.i18n.gistPublishFilterAll}</span>
+        <select class="b3-select" data-action="gistPublishFilter">
+            <option value="all">${this.plugin.i18n.gistPublishFilterAll}</option>
+            <option value="css">CSS</option>
+            <option value="js">JS</option>
+            <option value="enabled">${this.plugin.i18n.gistPublishFilterEnabled}</option>
+        </select>
         <div class="fn__space"></div>
-        <span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="gistPublishFilter" data-pub-filter="css">CSS</span>
-        <div class="fn__space"></div>
-        <span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="gistPublishFilter" data-pub-filter="js">JS</span>
-        <div class="fn__space"></div>
-        <span class="b3-button b3-button--outline fn__flex-center fn__size200" data-action="gistPublishFilter" data-pub-filter="enabled">${this.plugin.i18n.gistPublishFilterEnabled}</span>
+        <span class="b3-button b3-button--outline fn__flex-center" data-action="gistPublishToggleAll"></span>
         <div class="fn__space"></div>
         <span class="b3-label__text fn__flex-1" data-action="gistPublishCount"></span>
     </div>
@@ -158,10 +159,12 @@ export class GistDialog {
 
         // 渲染片段勾选清单与计数
         const listContainer = dialog.element.querySelector(".jcsm-gist-publish-list") as HTMLElement;
+        // 下拉筛选初始同步当前筛选值
+        (dialog.element.querySelector("select[data-action='gistPublishFilter']") as HTMLSelectElement).value = this.publishFilter;
         const renderList = () => this.renderPublishList(listContainer, dialog.element);
         renderList();
 
-        // 点击分发（筛选/发布）
+        // 点击分发（全选切换/发布）
         const clickHandler = (event: MouseEvent) => {
             event.stopPropagation();
             const target = event.target as HTMLElement;
@@ -173,28 +176,32 @@ export class GistDialog {
                 return;
             }
             const action = target.closest("[data-action]")?.getAttribute("data-action");
-            if (action === "gistPublishFilter") {
-                const filter = target.closest("[data-pub-filter]")?.getAttribute("data-pub-filter") as typeof this.publishFilter;
-                if (filter) {
-                    this.publishFilter = filter;
-                    renderList();
-                }
+            if (action === "gistPublishToggleAll") {
+                this.toggleSelectAllPublish();
+                renderList();
             } else if (action === "gistPublish") {
                 void this.handlePublish(dialog.element);
             }
         };
         this.plugin.addListener(dialog.element, "click", clickHandler, {capture: true});
 
-        // change 分发（勾选片段/切换目标/输入 gist id 实时刷新摘要）
+        // change 分发（切换筛选/切换目标/勾选片段/输入 gist id 实时刷新摘要）
         const changeHandler = (event: Event) => {
             event.stopPropagation();
             const target = event.target as HTMLElement;
+            if (target.tagName === "SELECT") {
+                // 下拉筛选切换
+                const select = target as HTMLSelectElement;
+                const filter = select.value as typeof this.publishFilter;
+                if (filter === "all" || filter === "css" || filter === "js" || filter === "enabled") {
+                    this.publishFilter = filter;
+                    renderList();
+                }
+                return;
+            }
             if (target.tagName === "INPUT") {
                 const input = target as HTMLInputElement;
-                if (input.dataset.action === "gistPublishFilter") {
-                    this.publishFilter = input.dataset.pubFilter as typeof this.publishFilter;
-                    renderList();
-                } else if (input.type === "radio") {
+                if (input.type === "radio") {
                     syncTargetState();
                     renderList();
                 } else if (input.type === "checkbox") {
@@ -220,6 +227,31 @@ export class GistDialog {
             this.publishCheckedIds.add(snippetId);
         } else {
             this.publishCheckedIds.delete(snippetId);
+        }
+    }
+
+    /** 当前筛选下可见片段是否已全部勾选 */
+    private isCurrentFilterAllChecked(): boolean {
+        const visible = this.filterSnippets(this.plugin.snippetsList);
+        return visible.length > 0 && visible.every(snippet => this.publishCheckedIds.has(snippet.id));
+    }
+
+    /**
+     * 全选 / 取消全选（作用于当前筛选结果）：
+     * 当前可见片段已全部勾选时取消全选，否则全选可见片段
+     */
+    private toggleSelectAllPublish() {
+        const visible = this.filterSnippets(this.plugin.snippetsList);
+        if (visible.length === 0) {
+            return;
+        }
+        const allChecked = this.isCurrentFilterAllChecked();
+        for (const snippet of visible) {
+            if (allChecked) {
+                this.publishCheckedIds.delete(snippet.id);
+            } else {
+                this.publishCheckedIds.add(snippet.id);
+            }
         }
     }
 
@@ -265,8 +297,15 @@ export class GistDialog {
     private renderPublishSummary(dialogElement: HTMLElement) {
         const countElement = dialogElement.querySelector("[data-action='gistPublishCount']") as HTMLElement;
         const summaryElement = dialogElement.querySelector("[data-action='gistPublishSummary']") as HTMLElement;
+        const toggleAllButton = dialogElement.querySelector("[data-action='gistPublishToggleAll']") as HTMLElement;
         const selected = this.selectedPublishSnippets();
         countElement.textContent = this.plugin.i18n.gistPublishSelectedCount.replace("${count}", String(selected.length));
+        // 全选按钮文案随当前筛选勾选状态切换：全部已勾选时显示「取消全选」，否则显示「全选」
+        if (toggleAllButton) {
+            toggleAllButton.textContent = this.isCurrentFilterAllChecked()
+                ? this.plugin.i18n.gistPublishSelectNone
+                : this.plugin.i18n.gistPublishSelectAll;
+        }
         const files = buildPublishFiles(selected);
         const fileNamePreview = files.length === 0
             ? ""
