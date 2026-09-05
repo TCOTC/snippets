@@ -1,7 +1,14 @@
 # Gist 导入 / 发布功能设计
 
-> 状态：草案（供评审），对应 [TCOTC/snippets#36](https://github.com/TCOTC/snippets/issues/36)「支持从 gist 导入/同步到 gist」。
+> 状态：**已实施**（v1 范围落地：Token 加密存储 / 从 Gist 导入 / 发布到 Gist），对应 [TCOTC/snippets#36](https://github.com/TCOTC/snippets/issues/36)「支持从 gist 导入/同步到 gist」。
 > 目标版本：snippets 2.x。Token 保存使用独立库 [siyuan-token-vault](https://github.com/TCOTC/siyuan-token-vault)（v0.1.1+）。
+
+## 0. 实施记录
+
+- M1（Token）：`siyuan-token-vault` 依赖 + `GistTokenService`（src/services/gist-token.ts）密文落盘；设置面板新增 GitHub Token 管理区域（保存/清除/状态，明文不回显）；Token 不经 configItems valueItems、绝不写入 plugin-config.json。
+- M2（导入）：`src/services/gist.ts`（REST 客户端 + URL 解析 + 错误归一）、`src/services/gist-sync.ts`（文件 ↔ 片段映射、conf 单文件特例、raw 超限兜底）、`src/ui/gist-dialog.ts`（导入预览勾选对话框，merge / overwrite / fork 三模式，经 `ImportExportService.importSnippetsFromData` 复用落库管道）；文件名 ID 解析与三模式规划为纯逻辑（domain/gist-file.ts、domain/import-plan.ts）。
+- M3（发布）：`buildPublishFiles`/`planUpdateFiles`/`validatePublishSnippets` 纯逻辑 + `publishToGist`（新建或更新镜像、PATCH 同 ID 重命名/未勾选删除）；发布对话框（筛选/勾选清单、secret/public/更新上次目标、public 与删除旧文件二次确认、成功链接）；发布目标记忆存独立状态文件。
+- 交互与设计差异（与正文不一致处以本节为准）：发布更新目标不可改可见性（GitHub PATCH 不支持），新建时才选 secret/public；conf 特例保留原 id 与 enabled（本地 JSON 导入语义一致）；成功消息含新增/更新计数。
 
 ## 1. 背景与目标
 
