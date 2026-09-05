@@ -265,8 +265,10 @@ describe("GistDialog.openPublish", () => {
         const summary = content.querySelector("[data-action='gistPublishSummary']");
         expect(listIndex).toBeGreaterThan(Array.from(content.children).indexOf(targetGroup as HTMLElement));
         expect(listIndex).toBeGreaterThan(Array.from(content.children).indexOf(summary as HTMLElement));
-        // gist id 输入框始终可用（不做禁用联动）
+        // gist id 输入框默认隐藏（仅「更新指定 Gist」时显示）
+        const gistIdRow = document.querySelector("[data-action='gistPublishGistIdRow']") as HTMLElement;
         const gistIdInput = document.querySelector("input[data-action='gistPublishGistId']") as HTMLInputElement;
+        expect(gistIdRow.classList.contains("fn__none")).toBe(true);
         expect(gistIdInput.disabled).toBe(false);
         // 仅已启用片段默认勾选
         const checkedIds = checkboxes.filter(input => input.checked).map(input => input.dataset.pubId);
@@ -286,6 +288,28 @@ describe("GistDialog.openPublish", () => {
         expect(options.snippets.map((snippet: Snippet) => snippet.id)).toEqual(["a-20250101000000-aaa"]);
         expect(plugin.snippetsDialog.closeByElement).toHaveBeenCalled();
         expect(showMessage).toHaveBeenCalledWith(expect.stringContaining("gist-new"), 6000, "info");
+    });
+
+    it("gist id 输入行仅在选中「更新指定 Gist」时显示", async () => {
+        const {dialog} = setup({});
+        await dialog.openPublish();
+        await waitChain();
+
+        const gistIdRow = document.querySelector("[data-action='gistPublishGistIdRow']") as HTMLElement;
+        // 默认新建 secret：输入行隐藏
+        expect(gistIdRow.classList.contains("fn__none")).toBe(true);
+
+        // 选中「更新指定 Gist」：输入行显示
+        const updateRadio = document.querySelector("input[value='update']") as HTMLInputElement;
+        updateRadio.click();
+        await waitChain();
+        expect(gistIdRow.classList.contains("fn__none")).toBe(false);
+
+        // 切回新建 secret：输入行重新隐藏
+        const secretRadio = document.querySelector("input[value='new-secret']") as HTMLInputElement;
+        secretRadio.click();
+        await waitChain();
+        expect(gistIdRow.classList.contains("fn__none")).toBe(true);
     });
 
     it("全选按钮：初始未全选显示全选，点击后全选可见片段并变取消全选，再点恢复", async () => {

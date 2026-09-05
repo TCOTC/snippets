@@ -54,6 +54,8 @@ export class GistDialog {
     private publishCheckedIds = new Set<string>();
     /** 发布对话框当前筛选（all/css/js/enabled） */
     private publishFilter: "all" | "css" | "js" | "enabled" = "all";
+    /** 上次发布的 Gist id（供「更新上次发布的 Gist」选项使用；无历史时为空） */
+    private lastPublishGistId = "";
 
     /**
      * 打开「发布到 Gist」对话框
@@ -86,11 +88,10 @@ export class GistDialog {
 
         // 读取上次发布目标（无历史时以新建 secret 为默认）
         const publishState = await this.plugin.gistSyncService.loadPublishState();
+        this.lastPublishGistId = publishState?.gistId ?? "";
 
         const dialog = new Dialog({
             title: this.plugin.i18n.gistPublish,
-            // 结构复用代码片段编辑对话框：.jcsm-dialog 占满 .b3-dialog__body（flex 布局见 index.scss），
-            // 中部 .jcsm-dialog-container 为可滚动内容区（flex:1 + min-height:0），底部 .b3-dialog__action 常驻
             content: `
 <div class="b3-dialog__content">
     <div class="fn__flex fn__flex-center fn__flex-wrap">
@@ -107,15 +108,15 @@ export class GistDialog {
     </div>
     <div class="fn__hr"></div>
     <div class="fn__flex fn__flex-column" data-action="gistPublishTarget">
-        <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-secret" checked>${this.plugin.i18n.gistPublishTargetNewSecret}</label>
+        <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-secret"${publishState ? "" : " checked"}>${this.plugin.i18n.gistPublishTargetNewSecret}</label>
         <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-public">${this.plugin.i18n.gistPublishTargetNewPublic}</label>
-        <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="update">${publishState ? this.plugin.i18n.gistPublishTargetUpdateLast : this.plugin.i18n.gistPublishTargetUpdate}</label>
-        <div class="fn__flex fn__flex-center" style="padding: 8px 0 0;">
+        ${publishState ? `<label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="update-last" checked>${this.plugin.i18n.gistPublishTargetUpdateLast}</label>` : ""}
+        <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="update">${this.plugin.i18n.gistPublishTargetUpdate}</label>
+        <div class="fn__flex fn__flex-center fn__none" data-action="gistPublishGistIdRow">
             <input class="b3-text-field fn__flex-1" data-action="gistPublishGistId" type="text" spellcheck="false" placeholder="${this.plugin.i18n.gistPublishGistIdPlaceholder}">
         </div>
     </div>
     <div class="jcsm-gist-publish-summary b3-label__text" data-action="gistPublishSummary"></div>
-    <div class="fn__hr"></div>
     <div class="jcsm-gist-publish-list"></div>
 </div>
 <div class="b3-dialog__action">
@@ -138,14 +139,17 @@ export class GistDialog {
             this.plugin.snippetsDialog.closeByElement(dialog.element);
         };
 
-        // 上次发布目标预填 gist id（有历史时默认选中「更新上次发布的 Gist」）
-        // 输入框保持始终可用（不做 disabled 联动）：用户可直接点入填写要更新的 gist id
+        // gist id 输入框仅在选择「更新指定 Gist」时显示（「更新上次发布的 Gist」使用记忆的 gist id）
+        const gistIdRow = dialog.element.querySelector("[data-action='gistPublishGistIdRow']") as HTMLElement;
         const gistIdInput = dialog.element.querySelector("input[data-action='gistPublishGistId']") as HTMLInputElement;
-        const updateRadio = dialog.element.querySelector("input[value='update']") as HTMLInputElement;
+        // 输入框预填上次发布 gist id，便于在「更新指定 Gist」下直接沿用或修改
         if (publishState) {
             gistIdInput.value = publishState.gistId;
-            updateRadio.checked = true;
         }
+        const syncGistIdRow = () => {
+            gistIdRow.classList.toggle("fn__none", this.publishTarget(dialog.element) !== "update");
+        };
+        syncGistIdRow();
 
         // 键盘：Esc 关闭
         setDialogKeyHandler(dialog.element, (key) => {
@@ -199,8 +203,9 @@ export class GistDialog {
             if (target.tagName === "INPUT") {
                 const input = target as HTMLInputElement;
                 if (input.type === "radio") {
-                    // 切换发布目标（新建 secret/公开 / 更新）：发布时实时读取选中项，此处无需其它联动
-                    renderList();
+                    // 切换发布目标：新建 secret/公开 / 更新上次 / 更新指定
+                    // 「更新指定 Gist」时显示 gist id 输入行，其余隐藏
+                    syncGistIdRow();
                 } else if (input.type === "checkbox") {
                     this.syncPublishChecked(input);
                 }
@@ -211,10 +216,10 @@ export class GistDialog {
         this.plugin.console.log("gist publish dialog opened");
     }
 
-    /** 当前发布目标选择（new-secret/new-public/update） */
-    private publishTarget(dialogElement: HTMLElement): "new-secret" | "new-public" | "update" {
+    /** 当前发布目标选择（new-secret/new-public/update-last/update） */
+    private publishTarget(dialogElement: HTMLElement): "new-secret" | "new-public" | "update-last" | "update" {
         const checked = dialogElement.querySelector("input[name='jcsm-gist-target']:checked") as HTMLInputElement | null;
-        return (checked?.value as "new-secret" | "new-public" | "update") ?? "new-secret";
+        return (checked?.value as "new-secret" | "new-public" | "update-last" | "update") ?? "new-secret";
     }
 
     /** checkbox 变更同步勾选集合 */
@@ -339,15 +344,18 @@ export class GistDialog {
         let confirmText = "";
         const confirmTitle = this.plugin.i18n.gistPublishConfirm;
         let publishTarget: {kind: "create"; publicGist: boolean} | {kind: "update"; gistId: string};
-        if (target === "update") {
-            const gistId = parseGistUrl((dialogElement.querySelector("input[data-action='gistPublishGistId']") as HTMLInputElement).value);
-            if (!gistId) {
+        if (target === "update" || target === "update-last") {
+            // 更新既有 gist：「更新上次发布的 Gist」用记忆的 gist id；「更新指定 Gist」读输入框
+            const inputId = target === "update"
+                ? parseGistUrl((dialogElement.querySelector("input[data-action='gistPublishGistId']") as HTMLInputElement).value)
+                : parseGistUrl(this.lastPublishGistId);
+            if (!inputId) {
                 this.plugin.showErrorMessage(this.plugin.i18n.gistPublishInvalidGistId);
                 return;
             }
             // 拉取现有 gist 计算将删除的旧文件（镜像语义），供确认文本展示
             try {
-                const existing = await getGist(gistId, {token: this.plugin.gistTokenService.token});
+                const existing = await getGist(inputId, {token: this.plugin.gistTokenService.token});
                 const rows = buildPublishFiles(selected);
                 const payload = planUpdateFiles(existing, rows);
                 const deleteCount = Object.values(payload).filter(value => value === null).length;
@@ -358,7 +366,7 @@ export class GistDialog {
                 this.plugin.showErrorMessage(this.gistErrorMessage(error));
                 return;
             }
-            publishTarget = {kind: "update", gistId};
+            publishTarget = {kind: "update", gistId: inputId};
         } else {
             // 新建：可见性在创建时确定（更新既有 gist 无法改变可见性）
             publishTarget = {kind: "create", publicGist: target === "new-public"};
