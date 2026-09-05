@@ -3,7 +3,7 @@
   "gistTokenCreateFineGrained": "建立 Token（Gist 權限已預勾選）",
   "gistTokenCreateClassic": "建立經典 Token（需手動勾選 Gist）",
   "gistTokenCreateHint": "兩種 Token 皆可使用：fine-grained 以 github_pat_ 開頭（Gists 權限已預勾選）；經典 Token 以 ghp_ 開頭（需手動勾選 gist 權限）。產生後貼上到下方儲存。",
-  "gistTokenPlaceholder": "ghp_ 或 github_pat_…",
+  "gistTokenPlaceholder": "github_pat_ 或 ghp_…",
   "gistTokenSaveButton": "儲存 Token",
   "gistTokenClearButton": "清除 Token",
   "gistTokenStatusConfigured": "已設定",

@@ -3,7 +3,7 @@
   "gistTokenCreateFineGrained": "Create Token (Gist permission preselected)",
   "gistTokenCreateClassic": "Create classic Token (select Gist manually)",
   "gistTokenCreateHint": "Both token types work: fine-grained starts with github_pat_ (Gists permission preselected), classic starts with ghp_ (check the gist scope). Paste the token below and save.",
-  "gistTokenPlaceholder": "ghp_ or github_pat_…",
+  "gistTokenPlaceholder": "github_pat_ or ghp_…",
   "gistTokenSaveButton": "Save Token",
   "gistTokenClearButton": "Clear Token",
   "gistTokenStatusConfigured": "Configured",
