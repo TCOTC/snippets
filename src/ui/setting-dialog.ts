@@ -215,6 +215,11 @@ export class SettingDialog {
                     event.preventDefault();
                     event.stopPropagation();
                     void this.plugin.importExportService.exportSnippetsToFile();
+                } else if (action === "gistImport") {
+                    // 打开从 Gist 导入对话框（先关闭设置对话框，避免模态叠加）
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.plugin.gistDialog.openImport(dialog.element);
                 } else if (action === "importSnippetsWithAppend" || action === "importSnippetsWithOverwrite") {
                     // 浏览器文件选择导入（overwrite 为 true 时覆盖现有片段）
                     event.preventDefault();

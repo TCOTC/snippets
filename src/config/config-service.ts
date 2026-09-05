@@ -610,6 +610,12 @@ const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfigItem[]
         createActionElement: () => buildGistTokenSettingElement(plugin),
     },
     {
+        key: "gistImport",
+        description: "gistImportDescription",
+        type: "createActionElement",
+        createActionElement: () => createOutlineActionElement("gistImport", "iconDownload", plugin.i18n.gistImportButton),
+    },
+    {
         key: "exportSnippets",
         description: "exportSnippetsDescription",
         type: "createActionElement",

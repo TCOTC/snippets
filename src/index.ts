@@ -11,6 +11,7 @@ import {FeedbackService} from "./services/feedback";
 import {ListenerRegistry} from "./services/listener-registry";
 import {SnippetManager} from "./services/snippet-manager";
 import {GistTokenService} from "./services/gist-token";
+import {GistSyncService} from "./services/gist-sync";
 import {WsMainSnippetSync} from "./services/ws-main";
 import {SnippetsMenu} from "./ui/menu";
 
@@ -24,6 +25,7 @@ import {
 import {EditorManager} from "./ui/editor-manager";
 import {SettingDialog} from "./ui/setting-dialog";
 import {SnippetsDialog} from "./ui/snippets-dialog";
+import {GistDialog} from "./ui/gist-dialog";
 
 export default class PluginSnippets extends Plugin {
     /**
@@ -104,6 +106,16 @@ export default class PluginSnippets extends Plugin {
      * Token 密文独立落盘，绝不进入 plugin-config.json）
      */
     gistTokenService!: GistTokenService;
+
+    /**
+     * Gist 拉取/导入编排服务（实现见 src/services/gist-sync.ts）
+     */
+    gistSyncService!: GistSyncService;
+
+    /**
+     * Gist 导入/发布对话框管理器（实现见 src/ui/gist-dialog.ts）
+     */
+    gistDialog!: GistDialog;
 
     /**
      * ws-main 消息同步服务（监听思源内核 setSnippet 广播刷新列表与已打开菜单，
@@ -192,6 +204,12 @@ export default class PluginSnippets extends Plugin {
 
         // 初始化 GitHub Token 加密存储服务（Token 独立密文落盘，见 src/services/gist-token.ts）
         this.gistTokenService = new GistTokenService(this);
+
+        // 初始化 Gist 同步服务（拉取/导入编排，见 src/services/gist-sync.ts）
+        this.gistSyncService = new GistSyncService(this);
+
+        // 初始化 Gist 对话框管理器（导入/发布对话框，见 src/ui/gist-dialog.ts）
+        this.gistDialog = new GistDialog(this);
 
         // 初始化通知/错误提示服务（配置开关经实例字段读取）
         this.feedbackService = new FeedbackService(this);

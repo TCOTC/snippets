@@ -4,6 +4,8 @@
 // 落库成功后经 SnippetManager.applyImportedSnippets 立即应用并广播到其他窗口（见 snippet-manager.ts）。
 import {saveExportFile, showMessage} from "siyuan";
 import {isValidCssSnippetContent, snippetTitle} from "../domain/snippet";
+import {planImport} from "../domain/import-plan";
+import type {ImportMode} from "../domain/import-plan";
 import {escapeHtml, fetchPostPromise, genNewSnippetId, getFile, putFile, renameFile} from "../utils";
 import type PluginSnippets from "../index";
 import type {Snippet} from "../types";
@@ -161,16 +163,7 @@ export class ImportExportService {
                     }
 
                     // 验证导入数据格式
-                    if (!this.validateImportData(importData)) {
-                        // 优先定位 CSS 内容违规（与思源内核安全校验同判据），否则给通用格式提示
-                        const invalidCssSnippets = this.findInvalidCssSnippets(importData);
-                        if (invalidCssSnippets.length > 0) {
-                            // 报错消息经 innerHTML 渲染（思源 showMessage），且片段名可能回退到内容前 200 字
-                            // （内容本身含违规标签），整条消息先转义再展示
-                            this.plugin.showErrorMessage(escapeHtml(this.plugin.i18n.invalidCssSnippetContent + ": " + invalidCssSnippets.map((snippet) => snippetTitle(snippet)).join(", ")));
-                        } else {
-                            this.plugin.showErrorMessage(this.plugin.i18n.importSnippetsInvalidFormat);
-                        }
+                    if (!(await this.validateImportDataWithReport(importData))) {
                         return;
                     }
 
@@ -194,22 +187,11 @@ export class ImportExportService {
                         newSnippetsList = [...processedImportedSnippets, ...currentSnippets];
                     }
 
-                    // 落库成功后再整表应用导入结果（失败时 saveSnippetsList 已自行弹错，
-                    // 此处仅中止导入，避免整表落库被拒后仍“假成功”地替换本地列表）
-                    try {
-                        await this.plugin.snippetManager.saveSnippetsList(newSnippetsList);
-                    } catch {
-                        return;
-                    }
-                    // 立即应用并广播导入结果：更新 Store 缓存、对齐注入元素、刷新已打开菜单并广播到
-                    // 其他窗口（实现见 SnippetManager.applyImportedSnippets，本地导入与跨窗口导入广播共用）
-                    await this.plugin.snippetManager.applyImportedSnippets(newSnippetsList);
-
-                    // 显示成功消息
+                    // 落库 → 应用并广播 → 成功消息（失败时 saveSnippetsList 已自行弹错）
                     const successMessage = overwrite
                         ? this.plugin.i18n.importSnippetsOverwriteSuccess
                         : this.plugin.i18n.importSnippetsAppendSuccess;
-                    showMessage(this.plugin.displayName + ": " + successMessage, 3000, "info");
+                    await this.commitImport(newSnippetsList, successMessage);
 
                 } catch (error) {
                     this.plugin.console.error("importSnippets: Failed to import snippets", error);
@@ -228,6 +210,79 @@ export class ImportExportService {
             this.plugin.console.error("importSnippets: Failed to create file input", error);
             this.plugin.showErrorMessage(this.plugin.i18n.importSnippetsFailed + ": " + error.message);
         }
+    }
+
+    /**
+     * 以三模式导入已就绪的片段数据（Gist 导入等数据源公共入口）
+     * 语义与文档 docs/gist-sync.md 5.4 一致；本地文件导入（importSnippets）保持原有追加/覆盖语义不动。
+     * @param importData 导入片段（映射层已保证均携带 id 且 enabled 就绪）
+     * @param mode merge（同 ID 更新）/ overwrite（全表替换，先备份）/ fork（全部重生成新增）
+     * @returns 成功返回 { addedCount, updatedCount }；失败返回 false（错误已提示）
+     */
+    async importSnippetsFromData(importData: Snippet[], mode: ImportMode): Promise<{addedCount: number; updatedCount: number} | false> {
+        try {
+            if (!(await this.validateImportDataWithReport(importData))) {
+                return false;
+            }
+            const currentSnippets = await this.plugin.snippetManager.getSnippetsList();
+            if (!currentSnippets) {
+                this.plugin.showErrorMessage(this.plugin.i18n.getSnippetsListFailed);
+                return false;
+            }
+            // merge 会改动本地既有片段、overwrite 会整表替换，均先备份；fork 纯新增不备份
+            if (mode !== "fork") {
+                await this.createBackup(currentSnippets);
+            }
+            const plan = planImport(currentSnippets, importData, mode, () => genNewSnippetId(this.plugin.snippetsList));
+            // 成功消息由调用方（如 Gist 导入对话框）组装展示，此处只落库与广播
+            const committed = await this.commitImport(plan.list, "");
+            return committed ? {addedCount: plan.addedCount, updatedCount: plan.updatedCount} : false;
+        } catch (error) {
+            this.plugin.console.error("importSnippetsFromData: Failed to import snippets", error);
+            this.plugin.showErrorMessage(this.plugin.i18n.importSnippetsFailed + ": " + error.message);
+            return false;
+        }
+    }
+
+    /**
+     * 校验导入数据格式并按失败原因分类提示（本地文件导入与 Gist 导入共用）
+     * @param data 导入的数据
+     * @returns 是否通过校验（未通过时已弹错误提示）
+     */
+    private async validateImportDataWithReport(data: any): Promise<boolean> {
+        if (!this.validateImportData(data)) {
+            // 优先定位 CSS 内容违规（与思源内核安全校验同判据），否则给通用格式提示
+            const invalidCssSnippets = this.findInvalidCssSnippets(data);
+            if (invalidCssSnippets.length > 0) {
+                // 报错消息经 innerHTML 渲染（思源 showMessage），且片段名可能回退到内容前 200 字
+                // （内容本身含违规标签），整条消息先转义再展示
+                this.plugin.showErrorMessage(escapeHtml(this.plugin.i18n.invalidCssSnippetContent + ": " + invalidCssSnippets.map((snippet) => snippetTitle(snippet)).join(", ")));
+            } else {
+                this.plugin.showErrorMessage(this.plugin.i18n.importSnippetsInvalidFormat);
+            }
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * 落库并应用导入结果（保存失败时 saveSnippetsList 已自行弹错，返回 false；成功后
+     * 经 SnippetManager.applyImportedSnippets 更新 Store、对齐注入元素、广播其他窗口）
+     * @param newSnippetsList 待落库列表
+     * @param successMessage 成功消息文案（为空则不弹成功消息，由调用方组装）
+     * @returns 是否成功
+     */
+    private async commitImport(newSnippetsList: Snippet[], successMessage: string): Promise<boolean> {
+        try {
+            await this.plugin.snippetManager.saveSnippetsList(newSnippetsList);
+        } catch {
+            return false;
+        }
+        await this.plugin.snippetManager.applyImportedSnippets(newSnippetsList);
+        if (successMessage) {
+            showMessage(this.plugin.displayName + ": " + successMessage, 3000, "info");
+        }
+        return true;
     }
 
     /**
