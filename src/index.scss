@@ -489,15 +489,19 @@ div[data-key="jcsm-setting-dialog"] {
   }
 
   // 单选选项（导入模式 / 发布目标）
-  .jcsm-gist-option {
-    display: inline-flex;
+  // 结构沿用思源 b3-label（radio 与文字），这里覆盖 b3-label 默认的粗内边距/分隔线，
+  // 使多个选项在弹窗内紧凑排列（发布目标纵向、导入模式横向）
+  .jcsm-gist-option.b3-label {
+    display: flex;
     align-items: center;
-    margin-right: 16px;
     cursor: pointer;
-    line-height: 24px;
+    padding: 4px 0;
+    border-bottom: none;
+    line-height: 22px;
+    margin-right: 16px;
 
     input[type="radio"] {
-      margin-right: 6px;
+      margin-right: 8px;
     }
   }
 

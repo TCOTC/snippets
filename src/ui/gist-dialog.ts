@@ -105,17 +105,18 @@ export class GistDialog {
         <div class="fn__space"></div>
         <span class="b3-label__text fn__flex-1" data-action="gistPublishCount"></span>
     </div>
-    <div class="jcsm-gist-publish-list"></div>
     <div class="fn__hr"></div>
-    <div class="fn__flex fn__flex-column fn__flex-wrap" data-action="gistPublishTarget">
-        <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-secret" checked>${this.plugin.i18n.gistPublishTargetNewSecret}</label>
-        <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-public">${this.plugin.i18n.gistPublishTargetNewPublic}</label>
-        <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="update">${publishState ? this.plugin.i18n.gistPublishTargetUpdateLast : this.plugin.i18n.gistPublishTargetUpdate}</label>
-        <div class="fn__flex fn__flex-center" style="margin-top: 4px;">
+    <div class="fn__flex fn__flex-column" data-action="gistPublishTarget">
+        <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-secret" checked>${this.plugin.i18n.gistPublishTargetNewSecret}</label>
+        <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-public">${this.plugin.i18n.gistPublishTargetNewPublic}</label>
+        <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="update">${publishState ? this.plugin.i18n.gistPublishTargetUpdateLast : this.plugin.i18n.gistPublishTargetUpdate}</label>
+        <div class="fn__flex fn__flex-center" style="padding: 8px 0 0;">
             <input class="b3-text-field fn__flex-1" data-action="gistPublishGistId" type="text" spellcheck="false" placeholder="${this.plugin.i18n.gistPublishGistIdPlaceholder}">
         </div>
     </div>
     <div class="jcsm-gist-publish-summary b3-label__text" data-action="gistPublishSummary"></div>
+    <div class="fn__hr"></div>
+    <div class="jcsm-gist-publish-list"></div>
 </div>
 <div class="b3-dialog__action">
     <button class="b3-button b3-button--cancel" data-type="cancel">${this.plugin.i18n.cancel}</button>
@@ -137,18 +138,14 @@ export class GistDialog {
             this.plugin.snippetsDialog.closeByElement(dialog.element);
         };
 
-        // 上次发布目标预填 gist id（更新单选默认选中）；无历史则更新输入框留空且禁用
+        // 上次发布目标预填 gist id（有历史时默认选中「更新上次发布的 Gist」）
+        // 输入框保持始终可用（不做 disabled 联动）：用户可直接点入填写要更新的 gist id
         const gistIdInput = dialog.element.querySelector("input[data-action='gistPublishGistId']") as HTMLInputElement;
         const updateRadio = dialog.element.querySelector("input[value='update']") as HTMLInputElement;
         if (publishState) {
             gistIdInput.value = publishState.gistId;
             updateRadio.checked = true;
         }
-        const syncTargetState = () => {
-            const target = this.publishTarget(dialog.element);
-            gistIdInput.disabled = target !== "update";
-        };
-        syncTargetState();
 
         // 键盘：Esc 关闭
         setDialogKeyHandler(dialog.element, (key) => {
@@ -202,7 +199,7 @@ export class GistDialog {
             if (target.tagName === "INPUT") {
                 const input = target as HTMLInputElement;
                 if (input.type === "radio") {
-                    syncTargetState();
+                    // 切换发布目标（新建 secret/公开 / 更新）：发布时实时读取选中项，此处无需其它联动
                     renderList();
                 } else if (input.type === "checkbox") {
                     this.syncPublishChecked(input);
@@ -434,9 +431,9 @@ export class GistDialog {
     </div>
     <div class="b3-label__text" data-action="gistTokenHint"></div>
     <div class="fn__flex fn__flex-center" data-action="gistModeGroup">
-        <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-mode" value="merge" checked>${this.plugin.i18n.gistImportModeMerge}</label>
-        <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-mode" value="overwrite">${this.plugin.i18n.gistImportModeOverwrite}</label>
-        <label class="jcsm-gist-option"><input type="radio" name="jcsm-gist-mode" value="fork">${this.plugin.i18n.gistImportModeFork}</label>
+        <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-mode" value="merge" checked>${this.plugin.i18n.gistImportModeMerge}</label>
+        <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-mode" value="overwrite">${this.plugin.i18n.gistImportModeOverwrite}</label>
+        <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-mode" value="fork">${this.plugin.i18n.gistImportModeFork}</label>
     </div>
     <div class="fn__hr"></div>
     <div class="jcsm-gist-result"></div>

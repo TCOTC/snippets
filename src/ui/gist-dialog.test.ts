@@ -258,6 +258,16 @@ describe("GistDialog.openPublish", () => {
         const list = document.querySelector(".jcsm-gist-publish-list") as HTMLElement;
         const checkboxes = Array.from(list.querySelectorAll("input[data-pub-id]")) as HTMLInputElement[];
         expect(checkboxes).toHaveLength(2);
+        // 列表位于弹窗正文末尾（目标选项/摘要之前的内容在其上方）
+        const content = document.querySelector(".b3-dialog__content") as HTMLElement;
+        const listIndex = Array.from(content.children).indexOf(list);
+        const targetGroup = content.querySelector("[data-action='gistPublishTarget']");
+        const summary = content.querySelector("[data-action='gistPublishSummary']");
+        expect(listIndex).toBeGreaterThan(Array.from(content.children).indexOf(targetGroup as HTMLElement));
+        expect(listIndex).toBeGreaterThan(Array.from(content.children).indexOf(summary as HTMLElement));
+        // gist id 输入框始终可用（不做禁用联动）
+        const gistIdInput = document.querySelector("input[data-action='gistPublishGistId']") as HTMLInputElement;
+        expect(gistIdInput.disabled).toBe(false);
         // 仅已启用片段默认勾选
         const checkedIds = checkboxes.filter(input => input.checked).map(input => input.dataset.pubId);
         expect(checkedIds).toEqual(["a-20250101000000-aaa"]);
