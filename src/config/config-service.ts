@@ -35,7 +35,7 @@ interface SnippetsConfigItem {
 }
 
 
-export const STORAGE_NAME = "plugin-config.json";  // 配置文件名（index 侧 removeData 亦使用）
+export const STORAGE_NAME = "plugin-config.json";  // 配置文件名（loadData/saveData 存储键）
 
 /**
  * 配置服务

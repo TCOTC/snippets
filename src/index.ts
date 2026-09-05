@@ -2,7 +2,7 @@ import "./index.scss";
 import {Snippet, SnippetType} from "./types";
 import {SnippetStore} from "./domain/snippet-store";
 import {SnippetsConfig} from "./config/config";
-import {ConfigService, STORAGE_NAME} from "./config/config-service";
+import {ConfigService} from "./config/config-service";
 import {settleWriteResponse} from "./utils";
 import {BroadcastService} from "./services/sync";
 import {FileWatchService} from "./services/file-watch";
@@ -338,13 +338,17 @@ export default class PluginSnippets extends Plugin {
 
     /**
      * 卸载插件
-     * 思源卸载流程先执行 onunload 再执行本方法，因此这里只保留卸载专属逻辑：删除配置文件。
+     * 思源卸载流程先执行 onunload 再执行本方法，因此这里只保留卸载专属逻辑：删除插件数据目录。
+     * 存储根目录（data/storage/petal/snippets/）删除后，其下全部文件与子目录（plugin-config.json、
+     * secret/ 中的 GitHub Token 密文、gist-publish-state.json / gist-import-state.json、backups/ 等）
+     * 一并清理；内核 /api/file/removeFile 对应 os.RemoveAll，会递归删除整棵目录树。
      */
     public async uninstall() {
-        // 移除配置文件：removeData 在只读模式/插件已销毁等场景会 reject，归一为 { code: 非 0 } 后统一判定
-        const removeResponse = await settleWriteResponse(this.removeData(STORAGE_NAME));
+        // removeData 会把空存储名归一为插件数据根目录路径，一次递归删除全部插件持久化数据；
+        // 只读模式/插件已销毁等场景会 reject，归一为 { code: 非 0 } 后统一判定
+        const removeResponse = await settleWriteResponse(this.removeData(""));
         if (removeResponse.code !== 0) {
-            // 写入失败
+            // 删除失败（数据目录本就存在时内核返回 0；404 仅在目录不存在时出现，通常不可达）
             this.showErrorMessage(this.i18n.removeConfigFailed + " [" + removeResponse.code + ": " + removeResponse.msg + "]", 20000, "error");
             return;
         }

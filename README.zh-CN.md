@@ -49,5 +49,6 @@
 - 重构插件代码 [#28](https://github.com/TCOTC/snippets/issues/28)
 - 导入代码片段后立即应用并广播到其他窗口 [#31](https://github.com/TCOTC/snippets/issues/31)
 - 改进代码片段数据状态同步 [#32](https://github.com/TCOTC/snippets/issues/32)
+- 支持从 GitHub Gist 导入、发布到 Gist [#36](https://github.com/TCOTC/snippets/issues/36)
 - 取消关闭代码编辑器时补触发待定的 JS 代码片段自动重载 [#40](https://github.com/TCOTC/snippets/issues/40)
 - 适配思源 v3.7.0 CSS 片段异常检查 [#43](https://github.com/TCOTC/snippets/issues/43)
