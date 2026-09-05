@@ -468,23 +468,39 @@ div[data-key="jcsm-setting-dialog"] {
       margin-right: 8px;
     }
 
-    .jcsm-gist-row-sub {
-      flex-shrink: 0;
-      font-size: 12px;
-      color: var(--b3-theme-on-surface-light);
-      margin-left: 12px;
+    // 名称占满剩余宽度，超长单行省略（完整名称经 title/点击弹窗查看）
+    .jcsm-gist-name {
+      flex: 1;
+      min-width: 0;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 45%;
+
+      &[data-action] {
+        cursor: pointer;
+
+        &:hover {
+          color: var(--b3-theme-primary);
+        }
+      }
     }
 
-    .jcsm-gist-type {
-      margin-left: 12px;
+    // 类型：能从扩展名解析时展示的只读静态文本（如 CSS / JS）
+    .jcsm-gist-type-static {
       flex-shrink: 0;
+      margin-left: 12px;
+      font-size: 12px;
+      color: var(--b3-theme-on-surface-light);
+    }
+
+    // 类型下拉：仅解析不出类型时出现，供用户指定导入类型。
+    // 使用思源默认 b3-select 内边距（4px 8px），不覆盖 padding 以免文字不垂直居中
+    .jcsm-gist-type {
+      flex-shrink: 0;
+      margin-left: 12px;
       height: 28px;
-      padding-top: 0;
-      padding-bottom: 0;
+      width: 72px;
+      padding: 0 6px;
     }
   }
 
@@ -495,7 +511,7 @@ div[data-key="jcsm-setting-dialog"] {
     display: flex;
     align-items: center;
     cursor: pointer;
-    padding: 4px 0;
+    padding: 4px;
     border-bottom: none;
     line-height: 22px;
     margin-right: 16px;
@@ -512,5 +528,72 @@ div[data-key="jcsm-setting-dialog"] {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+}
+
+// 对比 / 预览对话框（data-key jcsm-gist-result，发布预览与导入 diff 共用）
+.b3-dialog--open[data-key="jcsm-gist-result"] {
+  .jcsm-gist-dialog-name {
+    font-weight: 500;
+    margin-bottom: 8px;
+    word-break: break-all;
+  }
+
+  // 发布预览：代码只读展示（保留原格式、自动换行）
+  .jcsm-gist-preview {
+    code {
+      display: block;
+      font-family: var(--b3-font-family-code);
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      user-select: text;
+    }
+  }
+
+  // 导入对比：行级 diff（+ 新增 / − 删除 / 空格 相同，折叠行用占位提示）
+  .jcsm-gist-compare {
+    .jcsm-gist-diff-row {
+      display: flex;
+      align-items: flex-start;
+      font-family: var(--b3-font-family-code);
+      font-size: 13px;
+      line-height: 1.6;
+      padding: 0 4px;
+      border-radius: var(--b3-border-radius);
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .jcsm-gist-diff-mark {
+      flex-shrink: 0;
+      width: 20px;
+      text-align: center;
+      user-select: none;
+      margin-right: 6px;
+    }
+
+    .jcsm-gist-diff-add {
+      background-color: color-mix(in srgb, var(--b3-theme-success) 14%, transparent);
+
+      .jcsm-gist-diff-mark {
+        color: var(--b3-theme-success);
+      }
+    }
+
+    .jcsm-gist-diff-del {
+      background-color: color-mix(in srgb, var(--b3-theme-error) 14%, transparent);
+
+      .jcsm-gist-diff-mark {
+        color: var(--b3-theme-error);
+      }
+    }
+
+    .jcsm-gist-diff-skip {
+      font-style: italic;
+      color: var(--b3-theme-on-surface-light);
+      padding: 2px 0 2px 30px;
+    }
   }
 }

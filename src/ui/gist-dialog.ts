@@ -12,12 +12,20 @@ import type {GistApiError} from "../services/gist";
 import type {GistImportData, GistSyncService} from "../services/gist-sync";
 import {buildPublishFiles, planUpdateFiles, validatePublishSnippets} from "../services/gist-sync";
 import type {ImportMode} from "../domain/import-plan";
+import {DIFF_SKIPPED, diffLines, diffWithContext} from "../domain/gist-diff";
 import {snippetTitle} from "../domain/snippet";
 import type {Snippet, SnippetType} from "../types";
 import type PluginSnippets from "../index";
 
 /** 导入对话框 data-key（纳入模态协调） */
 const GIST_IMPORT_DIALOG_KEY = "jcsm-gist-import";
+
+/**
+ * 文件名能否从扩展名解析出片段类型（.css/.js/.mjs/.cjs）
+ * 能解析时类型不可改（显示静态文本）；解析不出时才提供类型下拉供选择
+ */
+const hasResolvableType = (fileName: string): boolean => /\.(css|js|mjs|cjs)$/i.test(fileName);
+
 
 /** 结果预览中的一行（勾选状态与映射结果一一对应） */
 interface PreviewRow {
@@ -182,6 +190,15 @@ export class GistDialog {
                 renderList();
             } else if (action === "gistPublish") {
                 void this.handlePublish(dialog.element);
+            } else if (action === "gistPublishPreview") {
+                // 点击片段名：弹窗预览该片段内容
+                event.preventDefault();
+                event.stopPropagation();
+                const snippetId = (target.closest("[data-pub-id]") as HTMLElement)?.dataset.pubId ?? "";
+                const snippet = this.plugin.snippetsList.find(item => item.id === snippetId);
+                if (snippet) {
+                    this.openSnippetPreview(snippet);
+                }
             }
         };
         this.plugin.addListener(dialog.element, "click", clickHandler, {capture: true});
@@ -257,7 +274,7 @@ export class GistDialog {
         }
     }
 
-    /** 按当前筛选渲染片段勾选清单 */
+    /** 按当前筛选渲染片段勾选清单（发布）：单行名称，点击名称预览内容 */
     private renderPublishList(listContainer: HTMLElement, dialogElement: HTMLElement) {
         const snippets = this.filterSnippets(this.plugin.snippetsList);
         if (this.plugin.snippetsList.length === 0) {
@@ -272,12 +289,16 @@ export class GistDialog {
             this.renderPublishSummary(dialogElement);
             return;
         }
-        listContainer.innerHTML = snippets.map(snippet => `
-<label class="fn__flex jcsm-gist-row">
+        listContainer.innerHTML = snippets.map(snippet => {
+            const title = snippet.enabled
+                ? snippetTitle(snippet)
+                : `${snippetTitle(snippet)} · ${this.plugin.i18n.gistPublishDisabled}`;
+            return `
+<label class="jcsm-gist-row">
     <input type="checkbox" data-pub-id="${snippet.id}"${this.publishCheckedIds.has(snippet.id) ? " checked" : ""}>
-    <span class="fn__flex-1 fn__ellipsis">${this.escape(snippetTitle(snippet))}</span>
-    <span class="jcsm-gist-row-sub fn__flex-center">${snippet.type.toUpperCase()}${snippet.enabled ? "" : " · " + this.plugin.i18n.gistPublishDisabled}</span>
-</label>`).join("");
+    <span class="jcsm-gist-name fn__flex-1" data-action="gistPublishPreview" data-pub-id="${snippet.id}" title="${this.escape(title)}">${this.escape(snippetTitle(snippet))}</span>
+</label>`;
+        }).join("");
         this.renderPublishSummary(dialogElement);
     }
 
@@ -498,6 +519,11 @@ export class GistDialog {
                 void this.handleFetch(dialog.element);
             } else if (action === "gistImport") {
                 void this.handleImport(dialog.element);
+            } else if (action === "gistImportCompare") {
+                // 点击预览行：对比 Gist 文件与本地相同 ID 片段的差异
+                event.preventDefault();
+                event.stopPropagation();
+                this.openImportCompare(target);
             }
         };
         this.plugin.addListener(dialog.element, "click", clickHandler, {capture: true});
@@ -517,7 +543,7 @@ export class GistDialog {
         dialog.element.querySelectorAll("input[name='jcsm-gist-mode']").forEach(radio => {
             radio.addEventListener("change", () => {
                 if (this.importData) {
-                    this.renderResult(resultContainer, dialog.element);
+                    this.renderResult(resultContainer);
                 }
             });
         });
@@ -546,7 +572,7 @@ export class GistDialog {
         try {
             const service = this.getSyncService();
             this.importData = await service.fetchImportData(gistId);
-            this.renderResult(resultContainer, dialogElement);
+            this.renderResult(resultContainer);
         } catch (error) {
             this.importData = undefined;
             resultContainer.textContent = "";
@@ -578,71 +604,159 @@ export class GistDialog {
     }
 
     /** 渲染拉取结果：conf 特例按片段列表，普通 gist 按文件列表 */
-    private renderResult(resultContainer: HTMLElement, dialogElement: HTMLElement) {
+    private renderResult(resultContainer: HTMLElement) {
         const data = this.importData;
         if (!data) {
             return;
         }
         if (data.confSnippets) {
-            this.renderConfRows(resultContainer, dialogElement, data);
+            this.renderConfRows(resultContainer, data);
         } else {
-            this.renderFileRows(resultContainer, dialogElement, data);
+            this.renderFileRows(resultContainer, data);
         }
     }
 
-    /** conf 特例：逐片段行（保留原 id/enabled） */
-    private renderConfRows(resultContainer: HTMLElement, dialogElement: HTMLElement, data: GistImportData) {
-        const mode = this.getSelectedMode(dialogElement);
-        const localIds = new Set(this.plugin.snippetsList.map(snippet => snippet.id));
+    /** conf 特例：逐片段行（保留原 id/enabled；单行名称，点击对比同 ID 差异） */
+    private renderConfRows(resultContainer: HTMLElement, data: GistImportData) {
         const rowsHtml = data.confSnippets!.map((snippet, index) => {
-            const actionText = mode === "merge" && !!snippet.id && localIds.has(snippet.id)
-                ? this.plugin.i18n.gistImportActionUpdate
-                : this.plugin.i18n.gistImportActionNew;
+            const title = snippet.name || snippet.content.slice(0, 50);
             return `
-<label class="fn__flex jcsm-gist-row">
+<label class="jcsm-gist-row">
     <input type="checkbox" data-gist-row="${index}" checked>
-    <div class="fn__flex-1 fn__flex fn__flex-column">
-        <span class="fn__ellipsis">${this.escape(snippet.name || snippet.content.slice(0, 50))}</span>
-        <span class="jcsm-gist-row-sub">${snippet.id ? snippet.id : ""}</span>
-    </div>
-    <span class="jcsm-gist-row-sub fn__flex-center">${snippet.type.toUpperCase()}</span>
-    <span class="jcsm-gist-row-sub fn__flex-center">${actionText}</span>
+    <span class="jcsm-gist-name fn__flex-1" data-action="gistImportCompare" data-gist-src="conf" data-gist-row="${index}" title="${this.escape(title)}">${this.escape(snippet.name || snippet.content.slice(0, 50))}</span>
+    <span class="jcsm-gist-type-static">${snippet.type.toUpperCase()}</span>
 </label>`;
         }).join("");
         resultContainer.innerHTML = rowsHtml || this.plugin.i18n.gistImportEmpty;
     }
 
-    /** 普通 gist：逐文件行（id 提取、类型下拉、动作列、截断兜底失败标记） */
-    private renderFileRows(resultContainer: HTMLElement, dialogElement: HTMLElement, data: GistImportData) {
-        const mode = this.getSelectedMode(dialogElement);
-        const localIds = new Set(this.plugin.snippetsList.map(snippet => snippet.id));
+    /** 普通 gist：逐文件行（单行名称；类型可解析时静态文本，解析不出时才给下拉；名称点击对比） */
+    private renderFileRows(resultContainer: HTMLElement, data: GistImportData) {
         const rowsHtml = data.files.map((file, index) => {
             if (file.isConf) {
                 return "";
             }
-            const actionText = mode === "merge" && file.id && localIds.has(file.id)
-                ? this.plugin.i18n.gistImportActionUpdate
-                : mode === "overwrite"
-                    ? this.plugin.i18n.gistImportActionOverwrite
-                    : this.plugin.i18n.gistImportActionNew;
-            const errorTitle = file.fetchError ? ` title="${this.escape(file.fetchError)}"` : "";
+            const errorTitle = file.fetchError ? `（${this.plugin.i18n.gistImportTruncatedFailed}）` : "";
             // 默认勾选 css/js 家族文件；README/其它说明文件不勾选（conf 特例文件另行处理）
-            const checkable = /\.(css|js|mjs|cjs)$/i.test(file.fileName);
+            const checkable = hasResolvableType(file.fileName);
+            const subHint = (file.id ?? this.plugin.i18n.gistImportNoId) + errorTitle;
+            const title = `${file.fileName}${errorTitle}\n${subHint}`;
+            // 类型：能由扩展名解析时只读展示；解析不出时提供下拉（见 hasResolvableType）
+            const typeControl = checkable
+                ? `<span class="jcsm-gist-type-static">${file.type.toUpperCase()}</span>`
+                : `<select class="b3-select jcsm-gist-type" data-gist-type="${index}">
+    <option value="css"${file.type === "css" ? " selected" : ""}>CSS</option>
+    <option value="js"${file.type === "js" ? " selected" : ""}>JS</option>
+</select>`;
             return `
-<label class="fn__flex jcsm-gist-row">
+<label class="jcsm-gist-row">
     <input type="checkbox" data-gist-row="${index}"${checkable ? " checked" : ""}${file.fetchError ? " disabled" : ""}>
-    <div class="fn__flex-1 fn__flex fn__flex-column">
-        <span class="fn__ellipsis"${errorTitle}>${this.escape(file.fileName)}</span>
-        <span class="jcsm-gist-row-sub">${file.id ? file.id : this.plugin.i18n.gistImportNoId}${file.fetchError ? "（" + this.plugin.i18n.gistImportTruncatedFailed + "）" : ""}</span>
-    </div>
-    <select class="b3-select jcsm-gist-type" data-gist-type="${index}">
-        <option value="css"${file.type === "css" ? " selected" : ""}>CSS</option>
-        <option value="js"${file.type === "js" ? " selected" : ""}>JS</option>
-    </select>
-    <span class="jcsm-gist-row-sub fn__flex-center">${actionText}</span>
+    <span class="jcsm-gist-name fn__flex-1" data-action="gistImportCompare" data-gist-src="file" data-gist-row="${index}" title="${this.escape(title)}">${this.escape(file.fileName)}</span>
+    ${typeControl}
 </label>`;
         }).join("");
         resultContainer.innerHTML = rowsHtml || this.plugin.i18n.gistImportEmpty;
+    }
+
+    /**
+     * 打开导入行对比：Gist 文件 ↔ 本地相同 ID 片段的行级差异
+     */
+    private openImportCompare(trigger: HTMLElement) {
+        const data = this.importData;
+        if (!data) {
+            return;
+        }
+        const src = (trigger.closest("[data-gist-src]") as HTMLElement)?.dataset.gistSrc;
+        const index = Number((trigger.closest("[data-gist-row]") as HTMLElement)?.dataset.gistRow);
+        if ((src !== "file" && src !== "conf") || Number.isNaN(index)) {
+            return;
+        }
+
+        // 取 Gist 侧名称/内容与本地侧同 ID 片段
+        let gistName = "";
+        let gistContent = "";
+        let gistId = "";
+        let local: Snippet | undefined;
+        if (src === "file") {
+            const file = data.files[index];
+            if (!file) return;
+            gistName = file.fileName;
+            gistContent = file.content;
+            gistId = file.id ?? "";
+            local = gistId ? this.plugin.snippetsList.find(snippet => snippet.id === gistId) : undefined;
+        } else {
+            const snippet = data.confSnippets?.[index];
+            if (!snippet) return;
+            gistName = snippet.name || snippet.content.slice(0, 50);
+            gistContent = snippet.content;
+            gistId = snippet.id ?? "";
+            local = gistId ? this.plugin.snippetsList.find(item => item.id === gistId) : undefined;
+        }
+
+        let body: string;
+        if (!local) {
+            // 本地无相同 ID：说明将作为新增导入，并展示 Gist 侧内容（无需假 diff）
+            body = `
+<div class="jcsm-gist-compare">
+    <div class="b3-label__text">${this.plugin.i18n.gistCompareNoLocal}</div>
+    <div class="jcsm-gist-preview"><code>${this.escape(gistContent) || "&nbsp;"}</code></div>
+</div>`;
+        } else {
+            const lines = diffWithContext(diffLines(local.content, gistContent));
+            const identical = lines.length > 0 && lines.every(line => line.type === "equal");
+            body = identical
+                ? `<div class="b3-label__text">${this.plugin.i18n.gistCompareIdentical}</div>`
+                : `
+<div class="jcsm-gist-compare">
+    <div class="b3-label__text">${this.plugin.i18n.gistCompareLegend}</div>
+    ${this.renderDiffRows(lines)}
+</div>`;
+        }
+        this.openResultDialog(this.plugin.i18n.gistCompareTitle, gistName, body);
+    }
+
+    /** 渲染 diff 行为 HTML（+ 新增 / - 删除 / 空 相同 / ⋯ 折叠） */
+    private renderDiffRows(lines: {type: "equal" | "del" | "add"; text: string}[]): string {
+        return lines.map(line => {
+            if (line.type === "equal" && line.text === DIFF_SKIPPED) {
+                return `<div class="jcsm-gist-diff-skip">${this.escape(this.plugin.i18n.gistDiffSkipped)}</div>`;
+            }
+            const mark = line.type === "del" ? "−" : line.type === "add" ? "+" : " ";
+            return `<div class="jcsm-gist-diff-row jcsm-gist-diff-${line.type}"><span class="jcsm-gist-diff-mark">${mark}</span><span class="jcsm-gist-diff-code">${this.escape(line.text) || "&nbsp;"}</span></div>`;
+        }).join("");
+    }
+
+    /** 发布行：弹窗预览片段内容 */
+    private openSnippetPreview(snippet: Snippet) {
+        const body = `<div class="jcsm-gist-preview"><code>${this.escape(snippet.content) || this.plugin.i18n.emptySnippet}</code></div>`;
+        this.openResultDialog(this.plugin.i18n.gistPreviewTitle, snippet.name || snippet.content.slice(0, 50), body);
+    }
+
+    /** 打开只读结果对话框（diff/内容预览共用；data-key 纳入 jcsm- 模态协调） */
+    private openResultDialog(title: string, name: string, body: string) {
+        const dialog = new Dialog({
+            title,
+            content: `
+<div class="b3-dialog__content">
+    <div class="jcsm-gist-dialog-name">${this.escape(name)}</div>
+    ${body}
+</div>
+            `,
+            width: this.plugin.isMobile ? "92vw" : "80vw",
+            height: this.plugin.isMobile ? "92vh" : "80vh",
+        });
+        attachDialogObject(dialog.element, dialog);
+        dialog.element.setAttribute("data-key", "jcsm-gist-result");
+        dialog.element.setAttribute("data-modal", "true");
+        dialog.destroyNative = dialog.destroy;
+        dialog.destroy = () => {
+            this.plugin.snippetsDialog.closeByElement(dialog.element);
+        };
+        setDialogKeyHandler(dialog.element, (key) => {
+            if (key === "Escape") {
+                this.plugin.snippetsDialog.closeByElement(dialog.element);
+            }
+        });
     }
 
     /** HTML 转义（预览行名称拼入 innerHTML） */

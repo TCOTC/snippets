@@ -33,6 +33,12 @@ const i18n: Record<string, string> = {
     gistImportSuccess: "成功新增 ${added} 更新 ${updated}",
     gistImportTruncatedFailed: "超限",
     gistImportConfirm: "导入",
+    gistCompareTitle: "代码差异对比",
+    gistCompareNoLocal: "本地无相同 ID",
+    gistCompareIdentical: "一致",
+    gistCompareLegend: "差异图例",
+    gistDiffSkipped: "省略",
+    gistPreviewTitle: "内容预览",
     gistErrorNotFound: "不存在",
     gistErrorUnauthorized: "未授权",
     gistErrorRateLimit: "限流",
@@ -206,6 +212,51 @@ describe("GistDialog.openImport", () => {
         const checkboxes = Array.from(result.querySelectorAll("input[data-gist-row]")) as HTMLInputElement[];
         expect(checkboxes).toHaveLength(2);
         expect(checkboxes[0].checked).toBe(true);
+    });
+
+    it("能解析出类型的文件显示静态类型文本；解析不出的文件显示类型下拉", async () => {
+        const data: GistImportData = {
+            ...makeImportData(),
+            files: [
+                {fileName: "样式 20250101000000-abc1234.css", name: "样式", id: "20250101000000-abc1234", type: "css", content: "body{}", truncated: false, isConf: false},
+                {fileName: "README.md", name: "README", type: "css", content: "# hi", truncated: false, isConf: false},
+            ],
+        };
+        const {dialog} = setup({importData: data});
+        dialog.openImport();
+        await waitChain();
+        const urlInput = document.querySelector("input[data-action='gistUrl']") as HTMLInputElement;
+        setInputValue(urlInput, GIST_ID);
+        click(document.querySelector("[data-action='gistFetch']") as HTMLElement);
+        await waitChain();
+
+        const result = document.querySelector(".jcsm-gist-result") as HTMLElement;
+        // .css 可解析：静态文本；.md 解析不出：下拉
+        expect(result.querySelectorAll(".jcsm-gist-type-static")).toHaveLength(1);
+        expect((result.querySelector(".jcsm-gist-type-static") as HTMLElement).textContent).toBe("CSS");
+        expect(result.querySelectorAll("select.jcsm-gist-type")).toHaveLength(1);
+        // 副行不再存在
+        expect(result.querySelectorAll(".jcsm-gist-row-sub")).toHaveLength(0);
+    });
+
+    it("点击文件名打开对比对话框（本地无相同 ID 时提示将新增）", async () => {
+        const {dialog} = setup({importData: makeImportData()});
+        dialog.openImport();
+        await waitChain();
+        const urlInput = document.querySelector("input[data-action='gistUrl']") as HTMLInputElement;
+        setInputValue(urlInput, GIST_ID);
+        click(document.querySelector("[data-action='gistFetch']") as HTMLElement);
+        await waitChain();
+
+        // 点击第一个文件（样式，有 ID 但本地不存在）的名称
+        const result = document.querySelector(".jcsm-gist-result") as HTMLElement;
+        const nameSpan = result.querySelector(".jcsm-gist-name[data-gist-row]") as HTMLElement;
+        click(nameSpan);
+        await waitChain();
+
+        const diffDialog = document.querySelector(".b3-dialog--open[data-key='jcsm-gist-result']");
+        expect(diffDialog).not.toBeNull();
+        expect(diffDialog?.textContent).toContain(i18n.gistCompareNoLocal);
     });
 
     it("来源设置对话框自身不计入模态守卫（能从设置面板按钮打开）", async () => {
