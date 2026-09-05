@@ -441,11 +441,19 @@ div[data-key="jcsm-setting-dialog"] {
 // Gist 导入 / 发布对话框（data-key 前缀 jcsm-gist-）
 // 结构复用 .jcsm-dialog（占满 .b3-dialog__body），本段补充滚动列表与行/选项布局。
 .b3-dialog--open[data-key^="jcsm-gist"] {
+  // 父级 .jcsm-dialog 对容器定义为 overflow:hidden，高度链异常时会裁剪内部列表；
+  // 这里改为 auto，保证即使 flex 分配失效，整列内容仍可滚动查看
+  .jcsm-dialog-container {
+    overflow-y: auto;
+  }
+
   .jcsm-gist-publish-list,
   .jcsm-gist-result {
-    flex: 1;              // 占满 .jcsm-dialog-container 剩余高度
-    min-height: 0;        // 允许收缩以触发内部滚动
-    overflow: auto;
+    // flex:1 0 auto 优先占满 .jcsm-dialog-container 剩余高度；
+    // min-height 兜底：外层 .jcsm-dialog 高度链（flex/百分比）任一失效时列表也不致塌陷到不可读
+    flex: 1 0 auto;
+    min-height: 120px;
+    overflow-y: auto;
     margin-top: 8px;
     border: 1px solid var(--b3-border-color);
     border-radius: var(--b3-border-radius);
