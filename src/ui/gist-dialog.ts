@@ -72,7 +72,10 @@ export class GistDialog {
         if (settingDialogElement) {
             this.plugin.snippetsDialog.closeByElement(settingDialogElement);
         }
-        await this.plugin.snippetManager.refreshSnippetsList();
+        // 刷新列表失败时给出提示并中止，避免静默打开空弹窗误导（getSnippetsList 失败已自行弹错）
+        if (!(await this.plugin.snippetManager.refreshSnippetsList())) {
+            return;
+        }
 
         // 默认勾选已启用片段；筛选重置为全部
         this.publishCheckedIds = new Set(this.plugin.snippetsList.filter(snippet => snippet.enabled).map(snippet => snippet.id));
@@ -222,8 +225,16 @@ export class GistDialog {
     /** 按当前筛选渲染片段勾选清单 */
     private renderPublishList(listContainer: HTMLElement, dialogElement: HTMLElement) {
         const snippets = this.filterSnippets(this.plugin.snippetsList);
-        if (snippets.length === 0 && this.plugin.snippetsList.length === 0) {
+        if (this.plugin.snippetsList.length === 0) {
+            // 无任何代码片段：显示空态引导并归零计数/清空摘要
             listContainer.textContent = this.plugin.i18n.emptySnippet;
+            this.renderPublishSummary(dialogElement);
+            return;
+        }
+        if (snippets.length === 0) {
+            // 有片段但当前筛选无命中：提示筛选结果为空
+            listContainer.textContent = this.plugin.i18n.gistPublishFilterEmpty;
+            this.renderPublishSummary(dialogElement);
             return;
         }
         listContainer.innerHTML = snippets.map(snippet => `

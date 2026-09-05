@@ -48,6 +48,7 @@ const i18n: Record<string, string> = {
     gistPublishFilterEnabled: "已启用",
     gistPublishDisabled: "已停用",
     gistPublishSelectedCount: "已勾选 ${count} 个",
+    gistPublishFilterEmpty: "筛选无结果",
     gistPublishFilesPreview: "将写入",
     gistPublishTargetNewSecret: "新建 secret",
     gistPublishTargetNewPublic: "新建公开",

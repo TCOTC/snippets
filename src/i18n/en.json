@@ -51,6 +51,7 @@
   "gistPublishFilterEnabled": "Enabled",
   "gistPublishDisabled": "disabled",
   "gistPublishSelectedCount": "${count} selected",
+  "gistPublishFilterEmpty": "No snippets match the current filter",
   "gistPublishFilesPreview": "Will be written:",
   "gistPublishTargetNewSecret": "Create a new secret Gist (link holders can still view it)",
   "gistPublishTargetNewPublic": "Create a new public Gist",
