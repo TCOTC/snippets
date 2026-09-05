@@ -7,7 +7,6 @@
   "gistTokenSaveButton": "Save Token",
   "gistTokenClearButton": "Clear Token",
   "gistTokenStatusConfigured": "Configured",
-  "gistTokenStatusNotConfigured": "Not configured",
   "gistTokenEmpty": "Please enter a Token",
   "gistTokenSaved": "GitHub Token saved",
   "gistTokenRemoved": "GitHub Token cleared",

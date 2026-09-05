@@ -131,11 +131,32 @@ export class GistTokenService {
 
 /** Token 设置区域容器标记（SettingDialog 点击分发经 closest 定位到本作用域） */
 const GIST_TOKEN_SCOPE_CLASS = "jcsm-gist-token";
+/** 未配置模式区块标记：创建引导 + 输入框 + 保存 */
+const EDITING_ROLE = "editing";
+/** 已配置模式区块标记：已配置文案 + 清除 */
+const CONFIGURED_ROLE = "configured";
+
+/**
+ * 切换 Token 区域的显示模式
+ * @param scope Token 设置区域容器
+ * @param configured 是否已配置（true 仅显示「已配置 + 清除」，false 显示创建引导 + 输入 + 保存）
+ */
+function setGistTokenMode(scope: HTMLElement, configured: boolean): void {
+    const editing = scope.querySelector(`[data-token-role="${EDITING_ROLE}"]`) as HTMLElement | null;
+    const configuredArea = scope.querySelector(`[data-token-role="${CONFIGURED_ROLE}"]`) as HTMLElement | null;
+    if (editing) {
+        editing.style.display = configured ? "none" : "";
+    }
+    if (configuredArea) {
+        configuredArea.style.display = configured ? "" : "none";
+    }
+}
 
 /**
  * 处理 Token 设置区域的点击动作（保存 / 清除 / 切换明文显示）
  * 设置对话框的 click 监听挂在对话框元素上且使用捕获阶段并 stopPropagation，
  * 区域内元素自绑的 click 监听不会触发，因此这里把动作集中成可被对话框分发调用的函数。
+ * 保存成功切到「已配置」模式，清除成功回到输入模式。
  * @param plugin 插件实例
  * @param action data-action 值（gistTokenSave / gistTokenClear / gistTokenTogglePassword）
  * @param element 触发元素（用于向上定位 Token 作用域）
@@ -146,14 +167,6 @@ export function handleGistTokenAction(plugin: PluginSnippets, action: string, el
         return;
     }
     const tokenInput = scope.querySelector("input[data-action='gistTokenInput']") as HTMLInputElement | null;
-    const statusElement = scope.querySelector("span[data-action='gistTokenStatus']") as HTMLElement | null;
-    const refreshStatus = (hasToken: boolean) => {
-        if (statusElement) {
-            statusElement.textContent = hasToken
-                ? plugin.i18n.gistTokenStatusConfigured
-                : plugin.i18n.gistTokenStatusNotConfigured;
-        }
-    };
 
     if (action === "gistTokenTogglePassword" && tokenInput) {
         // 眼睛图标切换明文显示（仅用于输入确认，不落盘明文）
@@ -172,20 +185,20 @@ export function handleGistTokenAction(plugin: PluginSnippets, action: string, el
                 if (tokenInput) {
                     tokenInput.value = "";
                 }
-                refreshStatus(true);
+                setGistTokenMode(scope, true);
                 showMessage(plugin.displayName + ": " + plugin.i18n.gistTokenSaved, 3000, "info");
             }
         });
         return;
     }
     if (action === "gistTokenClear") {
-        // 清除 Token：删除磁盘密文并清空缓存
+        // 清除 Token：删除磁盘密文并清空缓存，回到输入模式以便重新配置
         void plugin.gistTokenService.removeToken().then(success => {
             if (success) {
                 if (tokenInput) {
                     tokenInput.value = "";
                 }
-                refreshStatus(false);
+                setGistTokenMode(scope, false);
                 showMessage(plugin.displayName + ": " + plugin.i18n.gistTokenRemoved, 3000, "info");
             }
         });
@@ -196,47 +209,46 @@ export function handleGistTokenAction(plugin: PluginSnippets, action: string, el
  * 构建设置面板中的 GitHub Token 管理区域元素
  * 区域内按钮/眼睛图标的点击由 SettingDialog 的 data-action 分发调用
  * handleGistTokenAction 处理（见 src/ui/setting-dialog.ts）：
- * - 「保存 Token」：把输入框明文经 GistTokenService 加密落盘；
- * - 「清除 Token」：删除磁盘密文并清空会话缓存；
- * - 输入框留空不回显明文（安全），placeholder 与状态文案提示当前是否已配置。
+ * - 未配置：显示创建引导链接、输入框（含眼睛切换）与「保存 Token」；
+ * - 已配置：仅显示「已配置」与「清除 Token」（按钮置于文案之后）；
+ * - 输入框留空不回显明文（安全），需要更换时先「清除 Token」即可回到输入视图。
  * @param plugin 插件实例
  * @returns Token 设置区域元素
  */
 export function buildGistTokenSettingElement(plugin: PluginSnippets): HTMLElement {
     const container = htmlToElement(`<div class="fn__block ${GIST_TOKEN_SCOPE_CLASS}">
-    <div class="fn__flex fn__flex-center" style="flex-wrap: wrap;">
-        <a class="b3-button b3-button--outline fn__flex-center ariaLabel" href="${FINE_GRAINED_TOKEN_URL}" target="_blank" rel="noopener noreferrer" aria-label="${FINE_GRAINED_TOKEN_URL}" data-position="north">
-            <svg><use xlink:href="#iconGithub"></use></svg>${plugin.i18n.gistTokenCreateFineGrained}
-        </a>
-        <div class="fn__space"></div>
-        <a class="b3-button b3-button--outline fn__flex-center ariaLabel" href="${CLASSIC_TOKEN_URL}" target="_blank" rel="noopener noreferrer" aria-label="${CLASSIC_TOKEN_URL}" data-position="north">
-            <svg><use xlink:href="#iconGithub"></use></svg>${plugin.i18n.gistTokenCreateClassic}
-        </a>
+    <div data-token-role="${EDITING_ROLE}">
+        <div class="fn__flex fn__flex-center" style="flex-wrap: wrap;">
+            <a class="b3-button b3-button--outline fn__flex-center ariaLabel" href="${FINE_GRAINED_TOKEN_URL}" target="_blank" rel="noopener noreferrer" aria-label="${FINE_GRAINED_TOKEN_URL}" data-position="north">
+                <svg><use xlink:href="#iconGithub"></use></svg>${plugin.i18n.gistTokenCreateFineGrained}
+            </a>
+            <div class="fn__space"></div>
+            <a class="b3-button b3-button--outline fn__flex-center ariaLabel" href="${CLASSIC_TOKEN_URL}" target="_blank" rel="noopener noreferrer" aria-label="${CLASSIC_TOKEN_URL}" data-position="north">
+                <svg><use xlink:href="#iconGithub"></use></svg>${plugin.i18n.gistTokenCreateClassic}
+            </a>
+        </div>
+        <div class="b3-label__text fn__block" style="margin-top: 4px;">${plugin.i18n.gistTokenCreateHint}</div>
+        <div class="fn__flex fn__flex-center" style="flex-wrap: wrap; gap: 8px; margin-top: 8px;">
+            <div class="b3-form__icona fn__block" style="flex: 1 1 auto; min-width: 240px;">
+                <input data-action="gistTokenInput" type="password" class="b3-text-field b3-form__icona-input" placeholder="${plugin.i18n.gistTokenPlaceholder}" spellcheck="false" autocomplete="off">
+                <svg data-action="gistTokenTogglePassword" class="b3-form__icona-icon" style="cursor: pointer; user-select: none;"><use xlink:href="#iconEye"></use></svg>
+            </div>
+            <span data-action="gistTokenSave" class="b3-button b3-button--outline fn__flex-center fn__size200">${plugin.i18n.gistTokenSaveButton}</span>
+        </div>
     </div>
-    <div class="b3-label__text fn__block" style="margin-top: 4px;">${plugin.i18n.gistTokenCreateHint}</div>
-    <div class="b3-form__icona fn__block" style="margin-top: 8px;">
-        <input data-action="gistTokenInput" type="password" class="b3-text-field b3-form__icona-input" placeholder="${plugin.i18n.gistTokenPlaceholder}" spellcheck="false" autocomplete="off">
-        <svg data-action="gistTokenTogglePassword" class="b3-form__icona-icon" style="cursor: pointer; user-select: none;"><use xlink:href="#iconEye"></use></svg>
-    </div>
-    <div class="fn__flex fn__flex-center" style="margin-top: 8px;">
-        <span data-action="gistTokenSave" class="b3-button b3-button--outline fn__flex-center fn__size200">${plugin.i18n.gistTokenSaveButton}</span>
-        <div class="fn__space"></div>
-        <span data-action="gistTokenClear" class="b3-button b3-button--outline fn__flex-center fn__size200">${plugin.i18n.gistTokenClearButton}</span>
-        <div class="fn__space"></div>
-        <span data-action="gistTokenStatus" class="b3-label__text fn__flex-1"></span>
+    <div data-token-role="${CONFIGURED_ROLE}" style="display: none;">
+        <div class="fn__flex fn__flex-center" style="gap: 8px; margin-top: 4px;">
+            <span class="b3-label__text fn__flex-1">${plugin.i18n.gistTokenStatusConfigured}</span>
+            <span data-action="gistTokenClear" class="b3-button b3-button--outline fn__flex-center fn__size200">${plugin.i18n.gistTokenClearButton}</span>
+        </div>
     </div>
 </div>`);
 
-    const statusElement = container.querySelector("span[data-action='gistTokenStatus']") as HTMLElement;
-
-    // 初始状态：会话缓存无明文时尝试从磁盘预热（幂等），随后按结果刷新状态文案
-    const refreshStatus = (hasToken: boolean) => {
-        statusElement.textContent = hasToken
-            ? plugin.i18n.gistTokenStatusConfigured
-            : plugin.i18n.gistTokenStatusNotConfigured;
-    };
+    // 初始状态：磁盘已有已保存密文则切到「已配置」视图（无密文时保持输入视图，加载失败静默）
     void plugin.gistTokenService.loadToken().then(hasToken => {
-        refreshStatus(hasToken || plugin.gistTokenService.hasToken);
+        if (hasToken || plugin.gistTokenService.hasToken) {
+            setGistTokenMode(container, true);
+        }
     });
 
     return container;

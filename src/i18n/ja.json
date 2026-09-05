@@ -7,7 +7,6 @@
   "gistTokenSaveButton": "トークンを保存",
   "gistTokenClearButton": "トークンを削除",
   "gistTokenStatusConfigured": "設定済み",
-  "gistTokenStatusNotConfigured": "未設定",
   "gistTokenEmpty": "トークンを入力してください",
   "gistTokenSaved": "GitHub トークンを保存しました",
   "gistTokenRemoved": "GitHub トークンを削除しました",

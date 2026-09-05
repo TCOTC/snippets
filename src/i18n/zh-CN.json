@@ -7,7 +7,6 @@
   "gistTokenSaveButton": "保存 Token",
   "gistTokenClearButton": "清除 Token",
   "gistTokenStatusConfigured": "已配置",
-  "gistTokenStatusNotConfigured": "未配置",
   "gistTokenEmpty": "请输入 Token",
   "gistTokenSaved": "GitHub Token 已保存",
   "gistTokenRemoved": "GitHub Token 已清除",

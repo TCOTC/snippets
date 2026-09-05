@@ -22,7 +22,6 @@ const setup = () => {
             gistTokenSaveButton: "保存 Token",
             gistTokenClearButton: "清除 Token",
             gistTokenStatusConfigured: "已配置",
-            gistTokenStatusNotConfigured: "未配置",
             gistTokenSaved: "Token 已保存",
             gistTokenRemoved: "Token 已清除",
             gistTokenSaveFailed: "保存失败",
@@ -132,41 +131,62 @@ describe("buildGistTokenSettingElement", () => {
         (window as any).siyuan = {config: {system: {workspaceDir: "/test/workspace", id: "test-device", name: "Test", osPlatform: "test"}}};
     });
 
-    it("保存 Token：加密落盘 + 状态更新 + 成功提示", async () => {
-        const {plugin, service, store} = setup();
+    /** 未配置区块（含创建引导 + 输入框 + 保存） */
+    const editingArea = (element: HTMLElement) => element.querySelector("[data-token-role='editing']") as HTMLElement;
+    /** 已配置区块（含已配置文案 + 清除按钮） */
+    const configuredArea = (element: HTMLElement) => element.querySelector("[data-token-role='configured']") as HTMLElement;
+
+    it("未配置态默认只显示输入框与保存按钮，已配置区块隐藏", async () => {
+        const {plugin} = setup();
         const element = buildGistTokenSettingElement(plugin);
-        const input = element.querySelector("input[data-action='gistTokenInput']") as HTMLInputElement;
-        const status = element.querySelector("span[data-action='gistTokenStatus']") as HTMLElement;
+        expect(editingArea(element).style.display).not.toBe("none");
+        expect(configuredArea(element).style.display).toBe("none");
+        expect(element.querySelector("input[data-action='gistTokenInput']")).not.toBeNull();
+        expect(element.querySelector("span[data-action='gistTokenSave']")).not.toBeNull();
         expect(element.querySelector("a[href='https://github.com/settings/personal-access-tokens/new?description=SiYuan+Snippets+Gist&gists=write']")).not.toBeNull();
         expect(element.querySelector("a[href='https://github.com/settings/tokens/new']")).not.toBeNull();
         expect(element.querySelector(".b3-label__text")?.textContent).toContain("fine-grained");
         expect(element.querySelector("svg[data-action='gistTokenTogglePassword']")).not.toBeNull();
+        // 磁盘无密文，加载完成后仍保持未配置视图
+        await waitChain();
+        expect(configuredArea(element).style.display).toBe("none");
+    });
+
+    it("保存 Token：加密落盘 + 切到已配置视图 + 成功提示", async () => {
+        const {plugin, service, store} = setup();
+        const element = buildGistTokenSettingElement(plugin);
+        const input = element.querySelector("input[data-action='gistTokenInput']") as HTMLInputElement;
 
         input.value = "ghp_secret";
         handleGistTokenAction(plugin, "gistTokenSave", element);
         await vi.waitFor(() => expect(store.size).toBe(1));
 
         expect(service.hasToken).toBe(true);
-        await vi.waitFor(() => expect(status.textContent).toBe(plugin.i18n.gistTokenStatusConfigured));
+        await vi.waitFor(() => expect(configuredArea(element).style.display).not.toBe("none"));
+        expect(editingArea(element).style.display).toBe("none");
+        // 已配置区块展示「已配置」文案，清除按钮置于其后
+        expect(configuredArea(element).textContent).toContain(plugin.i18n.gistTokenStatusConfigured);
+        expect(element.querySelector("span[data-action='gistTokenClear']")?.textContent).toBe(plugin.i18n.gistTokenClearButton);
         expect(input.value).toBe("");
         expect(showMessage).toHaveBeenCalledWith(expect.stringContaining(plugin.i18n.gistTokenSaved), 3000, "info");
     });
 
-    it("输入为空点保存：提示且不落盘", async () => {
+    it("输入为空点保存：提示且不落盘，仍停留在未配置视图", async () => {
         const {plugin, store} = setup();
         const element = buildGistTokenSettingElement(plugin);
         handleGistTokenAction(plugin, "gistTokenSave", element);
         await waitChain();
         expect(plugin.showErrorMessage).toHaveBeenCalledWith(plugin.i18n.gistTokenEmpty);
         expect(store.size).toBe(0);
+        expect(editingArea(element).style.display).not.toBe("none");
+        expect(configuredArea(element).style.display).toBe("none");
     });
 
-    it("清除 Token：删除密文 + 状态更新", async () => {
+    it("清除 Token：删除密文 + 回到未配置视图", async () => {
         const {plugin, service, store} = setup();
         const element = buildGistTokenSettingElement(plugin);
         const input = element.querySelector("input[data-action='gistTokenInput']") as HTMLInputElement;
-        const status = element.querySelector("span[data-action='gistTokenStatus']") as HTMLElement;
-        // 先保存再清除
+        // 先保存切到已配置视图，再清除
         input.value = "ghp_secret";
         handleGistTokenAction(plugin, "gistTokenSave", element);
         await vi.waitFor(() => expect(service.hasToken).toBe(true));
@@ -174,16 +194,17 @@ describe("buildGistTokenSettingElement", () => {
         handleGistTokenAction(plugin, "gistTokenClear", element);
         await vi.waitFor(() => expect(store.size).toBe(0));
         expect(service.hasToken).toBe(false);
-        await vi.waitFor(() => expect(status.textContent).toBe(plugin.i18n.gistTokenStatusNotConfigured));
+        await vi.waitFor(() => expect(editingArea(element).style.display).not.toBe("none"));
+        expect(configuredArea(element).style.display).toBe("none");
     });
 
-    it("构建时若磁盘已有密文则状态显示已配置", async () => {
+    it("构建时若磁盘已有密文则直接显示已配置视图", async () => {
         const {plugin, service} = setup();
         await service.saveToken("ghp_secret");
         service.clear();
         const element = buildGistTokenSettingElement(plugin);
-        const status = element.querySelector("span[data-action='gistTokenStatus']") as HTMLElement;
-        await vi.waitFor(() => expect(status.textContent).toBe(plugin.i18n.gistTokenStatusConfigured));
+        await vi.waitFor(() => expect(configuredArea(element).style.display).not.toBe("none"));
+        expect(editingArea(element).style.display).toBe("none");
     });
 
     it("眼睛图标切换密码可见性", async () => {
