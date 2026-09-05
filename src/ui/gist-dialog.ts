@@ -72,6 +72,9 @@ export class GistDialog {
         if (settingDialogElement) {
             this.plugin.snippetsDialog.closeByElement(settingDialogElement);
         }
+        // 关闭插件菜单：菜单容器会拦截弹窗内的滚轮/触摸滚动
+        // （与设置对话框跳转原生设置前 menuView.close() 同理）
+        this.plugin.menuView.close();
         // 刷新列表失败时给出提示并中止，避免静默打开空弹窗误导（getSnippetsList 失败已自行弹错）
         if (!(await this.plugin.snippetManager.refreshSnippetsList())) {
             return;
@@ -376,6 +379,8 @@ export class GistDialog {
         if (settingDialogElement) {
             this.plugin.snippetsDialog.closeByElement(settingDialogElement);
         }
+        // 关闭插件菜单：菜单容器会拦截弹窗内的滚轮/触摸滚动（与 openPublish 同理）
+        this.plugin.menuView.close();
         // 打开前刷新会话列表，供预览「导入动作」列与导入规划使用
         void this.plugin.snippetManager.refreshSnippetsList();
 

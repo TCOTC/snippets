@@ -99,6 +99,7 @@ const setup = (options: {
         showErrorMessage: vi.fn(),
         snippetsList: snippets,
         snippetManager: {refreshSnippetsList: vi.fn(async () => true)},
+        menuView: {close: vi.fn()},
         snippetsDialog,
         gistTokenService: {token: options.token ?? "ghp_xxx", hasToken: !!(options.token ?? "ghp_xxx")},
         gistSyncService,
@@ -212,9 +213,10 @@ describe("GistDialog.openImport", () => {
         (snippetsDialog.getAllModalElements as ReturnType<typeof vi.fn>).mockReturnValue([settingElement]);
         dialog.openImport(settingElement);
         await waitChain();
-        // 对话框已打开（包含 URL 输入框），且来源对话框被关闭
+        // 对话框已打开（包含 URL 输入框），且来源对话框被关闭、菜单被关闭
         expect(document.querySelector("input[data-action='gistUrl']")).not.toBeNull();
         expect(snippetsDialog.closeByElement).toHaveBeenCalledWith(settingElement);
+        expect(plugin.menuView.close).toHaveBeenCalled();
         expect(plugin.showErrorMessage).not.toHaveBeenCalled();
     });
 
@@ -297,13 +299,14 @@ describe("GistDialog.openPublish", () => {
     });
 
     it("来源设置对话框自身不计入模态守卫（能从设置面板按钮打开）", async () => {
-        const {dialog, snippetsDialog} = setup({});
+        const {dialog, plugin, snippetsDialog} = setup({});
         const settingElement = document.createElement("div");
         (snippetsDialog.getAllModalElements as ReturnType<typeof vi.fn>).mockReturnValue([settingElement]);
         await dialog.openPublish(settingElement);
         await waitChain();
         expect(document.querySelector("[data-action='gistPublish']")).not.toBeNull();
         expect(snippetsDialog.closeByElement).toHaveBeenCalledWith(settingElement);
+        expect(plugin.menuView.close).toHaveBeenCalled();
     });
 
     it("存在其它模态对话框（非来源）时仍拒绝打开", async () => {
