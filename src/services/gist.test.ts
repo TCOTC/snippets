@@ -118,10 +118,24 @@ describe("createGist / updateGist", () => {
             seenInit = init;
             return {status: 200, json: {id: "abc123", files: {}}};
         });
-        await updateGist("abc123", {"a.css": "x", "old.js": null}, {token: "ghp_t", fetchImpl});
+        await updateGist("abc123", {"a.css": "x", "old.js": null}, undefined, {token: "ghp_t", fetchImpl});
         expect(seenUrl).toBe("https://api.github.com/gists/abc123");
         expect(seenInit.method).toBe("PATCH");
-        expect(JSON.parse(String(seenInit.body)).files).toEqual({"a.css": {content: "x"}, "old.js": null});
+        const sentBody = JSON.parse(String(seenInit.body));
+        expect(sentBody.files).toEqual({"a.css": {content: "x"}, "old.js": null});
+        // description 为空时不写回（保留 gist 既有描述）
+        expect(sentBody.description).toBeUndefined();
+    });
+
+    it("updateGist 在 description 非空时随 PATCH 写回", async () => {
+        let seenInit: RequestInit = {};
+        const fetchImpl = stubFetch((url, init) => {
+            seenInit = init;
+            return {status: 200, json: {id: "abc123", files: {}}};
+        });
+        await updateGist("abc123", {"a.css": "x"}, "新标题", {token: "ghp_t", fetchImpl});
+        expect(seenInit.method).toBe("PATCH");
+        expect(JSON.parse(String(seenInit.body)).description).toBe("新标题");
     });
 });
 

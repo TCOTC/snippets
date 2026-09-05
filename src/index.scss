@@ -521,6 +521,20 @@ div[data-key="jcsm-setting-dialog"] {
     }
   }
 
+  // 发布描述行的标签：不使用思源 b3-label（默认 16px 内边距 + 下边框会撑高行），
+  // 这里做紧凑的右侧留白以贴合输入框高度
+  .jcsm-gist-desc-label {
+    flex-shrink: 0;
+    color: var(--b3-theme-on-surface);
+    font-size: 14px;
+    white-space: nowrap;
+  }
+
+  // 描述行容器：标签与输入框沿交叉轴垂直居中，使二者文本对齐
+  [data-action="gistPublishDescRow"] {
+    align-items: center;
+  }
+
   // 导入模式（合并更新 / 覆盖镜像 / 仅新增）：竖排，每个标题下方一行小字说明
   .jcsm-gist-mode-item {
     display: block;

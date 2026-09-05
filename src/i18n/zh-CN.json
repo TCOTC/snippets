@@ -75,6 +75,8 @@
   "gistPublishConfirm": "发布确认",
   "gistPublishPublicConfirm": "Gist 将公开，任何人均可查看代码内容，确认发布？",
   "gistPublishDeleteConfirm": "将有 ${count} 个未勾选的旧文件从 Gist 中删除，确认发布？",
+  "gistPublishDescLabel": "Gist 标题",
+  "gistPublishDescPlaceholder": "输入 Gist 标题",
   "gistPublishSuccess": "已发布：${url}",
   "getSnippetsListFailed": "获取代码片段列表失败",
   "getSnippetFailed": "获取代码片段失败",

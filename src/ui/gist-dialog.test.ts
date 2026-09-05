@@ -73,6 +73,8 @@ const i18n: Record<string, string> = {
     gistPublishConfirm: "确认",
     gistPublishPublicConfirm: "公开确认",
     gistPublishDeleteConfirm: "删除 ${count}",
+    gistPublishDescLabel: "描述",
+    gistPublishDescPlaceholder: "描述占位",
     gistPublishSuccess: "已发布 ${url}",
 };
 
@@ -403,7 +405,45 @@ describe("GistDialog.openPublish", () => {
         expect(options.target).toEqual({kind: "create", publicGist: false});
         expect(options.snippets.map((snippet: Snippet) => snippet.id)).toEqual(["a-20250101000000-aaa"]);
         expect(plugin.snippetsDialog.closeByElement).toHaveBeenCalled();
-        expect(showMessage).toHaveBeenCalledWith(expect.stringContaining("gist-new"), 6000, "info");
+        expect(showMessage).toHaveBeenCalledWith(expect.stringContaining("gist-new"), 10000, "info");
+    });
+
+    it("新建 Gist 会带上描述输入框内容作为 description", async () => {
+        const {dialog, gistSyncService} = setup({});
+        await dialog.openPublish();
+        await waitChain();
+
+        const descRow = document.querySelector("[data-action='gistPublishDescRow']") as HTMLElement;
+        const descInput = document.querySelector("input[data-action='gistPublishDesc']") as HTMLInputElement;
+        // 默认新建 secret：描述行可见
+        expect(descRow.classList.contains("fn__none")).toBe(false);
+        descInput.value = "我的发布标题";
+
+        click(document.querySelector("[data-action='gistPublish']") as HTMLElement);
+        await waitChain();
+        const [options] = (gistSyncService.publishToGist as ReturnType<typeof vi.fn>).mock.calls[0];
+        expect(options.description).toBe("我的发布标题");
+    });
+
+    it("描述行对新建与更新目标均可见", async () => {
+        const {dialog} = setup({});
+        await dialog.openPublish();
+        await waitChain();
+
+        const descRow = document.querySelector("[data-action='gistPublishDescRow']") as HTMLElement;
+        expect(descRow.classList.contains("fn__none")).toBe(false);
+
+        // 切到「更新指定 Gist」：描述行保持可见（更新也可写回描述）
+        const updateRadio = document.querySelector("input[value='update']") as HTMLInputElement;
+        updateRadio.click();
+        await waitChain();
+        expect(descRow.classList.contains("fn__none")).toBe(false);
+
+        // 切回新建 secret：描述行仍可见
+        const secretRadio = document.querySelector("input[value='new-secret']") as HTMLInputElement;
+        secretRadio.click();
+        await waitChain();
+        expect(descRow.classList.contains("fn__none")).toBe(false);
     });
 
     it("gist id 输入行仅在选中「更新指定 Gist」时显示", async () => {
@@ -527,21 +567,32 @@ describe("GistDialog.openPublish", () => {
     it("存在发布历史：默认勾选「更新上次发布的 Gist」并在句中给出可点击链接", async () => {
         const {dialog, gistSyncService} = setup({});
         (gistSyncService.loadPublishState as ReturnType<typeof vi.fn>).mockResolvedValue({gistUrl: GIST_URL, public: false, publishedAt: "", fileCount: 1, snippetCount: 1});
-        await dialog.openPublish();
-        await waitChain();
+        // 默认即「更新上次发布的 Gist」，会拉取该 gist 已有标题预填——stub fetch 返回固定 description
+        const realFetch = globalThis.fetch;
+        globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({id: GIST_ID, description: "上次的标题", public: false, files: {}}), {status: 200, headers: {"content-type": "application/json"}})) as unknown as typeof fetch;
+        try {
+            await dialog.openPublish();
+            await waitChain();
 
-        // 有发布历史时默认勾选「更新上次发布的 Gist」
-        const updateLast = document.querySelector("input[name='jcsm-gist-target'][value='update-last']") as HTMLInputElement;
-        expect(updateLast).not.toBeNull();
-        expect(updateLast.checked).toBe(true);
-        // 新建 secret 未勾选，且「更新上次发布的 Gist」句中链接指向该 Gist
-        const secretRadio = document.querySelector("input[name='jcsm-gist-target'][value='new-secret']") as HTMLInputElement;
-        expect(secretRadio.checked).toBe(false);
-        const link = document.querySelector(".jcsm-gist-open-link") as HTMLAnchorElement | null;
-        expect(link).not.toBeNull();
-        expect(link?.getAttribute("href")).toBe(GIST_URL);
-        // gist 输入行保持隐藏
-        expect((document.querySelector("[data-action='gistPublishGistIdRow']") as HTMLElement).classList.contains("fn__none")).toBe(true);
+            // 有发布历史时默认勾选「更新上次发布的 Gist」
+            const updateLast = document.querySelector("input[name='jcsm-gist-target'][value='update-last']") as HTMLInputElement;
+            expect(updateLast).not.toBeNull();
+            expect(updateLast.checked).toBe(true);
+            // 新建 secret 未勾选，且「更新上次发布的 Gist」句中链接指向该 Gist
+            const secretRadio = document.querySelector("input[name='jcsm-gist-target'][value='new-secret']") as HTMLInputElement;
+            expect(secretRadio.checked).toBe(false);
+            const link = document.querySelector(".jcsm-gist-open-link") as HTMLAnchorElement | null;
+            expect(link).not.toBeNull();
+            expect(link?.getAttribute("href")).toBe(GIST_URL);
+            // gist 输入行保持隐藏
+            expect((document.querySelector("[data-action='gistPublishGistIdRow']") as HTMLElement).classList.contains("fn__none")).toBe(true);
+            // 标题输入框预填该 gist 已有标题
+            const descInput = document.querySelector("input[data-action='gistPublishDesc']") as HTMLInputElement;
+            await waitChain();
+            expect(descInput.value).toBe("上次的标题");
+        } finally {
+            globalThis.fetch = realFetch;
+        }
     });
 
     it("存在其它模态对话框（非来源）时仍拒绝打开", async () => {

@@ -205,16 +205,21 @@ export async function createGist(description: string, publicGist: boolean, files
  * 更新 gist（全量镜像：content 写、null 删除；与勾选集一致）
  * @param gistId gist id
  * @param files 文件载荷（null 表示删除该文件）
- * @param options 请求选项（必须带 Token）
+ * @param options 请求选项（必须带 Token）；description 非空时随 PATCH 写回描述
  * @returns 更新后的 gist
  */
-export async function updateGist(gistId: string, files: GistFilesPayload, options: GistRequestOptions = {}): Promise<Gist> {
+export async function updateGist(gistId: string, files: GistFilesPayload, description: string | undefined, options: GistRequestOptions = {}): Promise<Gist> {
+    const body: Record<string, unknown> = {files: toFilesPayload(files)};
+    // 描述仅在非空时写回（更新留空则保留 gist 既有描述，不清空）
+    if (description) {
+        body.description = description;
+    }
     return requestJson(
         `${API_BASE}/gists/${encodeURIComponent(gistId)}`,
         {
             method: "PATCH",
             headers: commonHeaders(options),
-            body: JSON.stringify({files: toFilesPayload(files)}),
+            body: JSON.stringify(body),
         },
         options
     ) as Promise<Gist>;

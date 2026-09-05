@@ -75,6 +75,8 @@
   "gistPublishConfirm": "Publish confirmation",
   "gistPublishPublicConfirm": "The Gist will be public and any one can view the code, are you sure?",
   "gistPublishDeleteConfirm": "${count} old file(s) not in the selection will be removed from the Gist, are you sure?",
+  "gistPublishDescLabel": "Gist title",
+  "gistPublishDescPlaceholder": "Enter a title for the Gist",
   "gistPublishSuccess": "Published: ${url}",
   "getSnippetsListFailed": "Failed to get snippets list",
   "getSnippetFailed": "Failed to get snippet",

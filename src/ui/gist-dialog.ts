@@ -133,6 +133,11 @@ export class GistDialog {
         <div class="fn__flex fn__flex-center fn__none" data-action="gistPublishGistIdRow">
             <input class="b3-text-field fn__flex-1" data-action="gistPublishGistId" type="text" spellcheck="false" placeholder="${this.plugin.i18n.gistPublishGistIdPlaceholder}">
         </div>
+        <div class="fn__flex fn__flex-center" data-action="gistPublishDescRow">
+            <label class="jcsm-gist-desc-label">${this.plugin.i18n.gistPublishDescLabel}</label>
+            <div class="fn__space"></div>
+            <input class="b3-text-field fn__flex-1" data-action="gistPublishDesc" type="text" spellcheck="false" placeholder="${this.plugin.i18n.gistPublishDescPlaceholder}">
+        </div>
     </div>
     <div class="fn__hr"></div>
     <div class="fn__flex fn__flex-center fn__flex-wrap">
@@ -172,14 +177,18 @@ export class GistDialog {
         // gist 输入框仅在选择「更新指定 Gist」时显示（「更新上次发布的 Gist」使用记忆的 gist 链接）
         const gistIdRow = dialog.element.querySelector("[data-action='gistPublishGistIdRow']") as HTMLElement;
         const gistIdInput = dialog.element.querySelector("input[data-action='gistPublishGistId']") as HTMLInputElement;
+        // 标题对新建与更新都可用：更新时拉取该 gist 原描述预填，新建时清空
+        const descInput = dialog.element.querySelector("input[data-action='gistPublishDesc']") as HTMLInputElement;
         // 输入框预填上次发布 gist 链接，便于在「更新指定 Gist」下直接沿用或修改
         if (publishState) {
             gistIdInput.value = publishState.gistUrl;
         }
-        const syncGistIdRow = () => {
-            gistIdRow.classList.toggle("fn__none", this.publishTarget(dialog.element) !== "update");
+        const syncTargetRows = () => {
+            const target = this.publishTarget(dialog.element);
+            gistIdRow.classList.toggle("fn__none", target !== "update");
+            return target;
         };
-        syncGistIdRow();
+        syncTargetRows();
 
         // 键盘：Esc 关闭
         setDialogKeyHandler(dialog.element, (key) => {
@@ -194,6 +203,10 @@ export class GistDialog {
         (dialog.element.querySelector("select[data-action='gistPublishFilter']") as HTMLSelectElement).value = this.publishFilter;
         const renderList = () => this.renderPublishList(listContainer, dialog.element);
         renderList();
+        // 初始默认目标若是「更新上次发布的 Gist」，预填该 gist 已有的标题
+        if (this.publishTarget(dialog.element) === "update-last") {
+            void this.fillDescFromExisting(dialog.element);
+        }
 
         // 点击分发（全选切换/发布）
         const clickHandler = (event: MouseEvent) => {
@@ -243,8 +256,14 @@ export class GistDialog {
                 const input = target as HTMLInputElement;
                 if (input.type === "radio") {
                     // 切换发布目标：新建 secret/公开 / 更新上次 / 更新指定
-                    // 「更新指定 Gist」时显示 gist id 输入行，其余隐藏
-                    syncGistIdRow();
+                    // 「更新指定 Gist」时显示 gist id 输入行；新建时标题清空（避免残留上个 gist 标题），
+                    // 更新目标则拉取该 gist 已有标题预填
+                    const target = syncTargetRows();
+                    if (target === "new-secret" || target === "new-public") {
+                        descInput.value = "";
+                    } else {
+                        void this.fillDescFromExisting(dialog.element);
+                    }
                 } else if (input.type === "checkbox") {
                     this.syncPublishChecked(input);
                 }
@@ -252,6 +271,12 @@ export class GistDialog {
             this.renderPublishSummary(dialog.element);
         };
         this.plugin.addListener(dialog.element, "change", changeHandler);
+        // 「更新指定 Gist」下用户粘贴/修改 gist 链接时，拉取该 gist 已有标题预填
+        this.plugin.addListener(dialog.element, "input", (event: Event) => {
+            if (event.target === gistIdInput && this.publishTarget(dialog.element) === "update") {
+                void this.fillDescFromExisting(dialog.element);
+            }
+        });
         this.plugin.console.log("gist publish dialog opened");
     }
 
@@ -259,6 +284,32 @@ export class GistDialog {
     private publishTarget(dialogElement: HTMLElement): "new-secret" | "new-public" | "update-last" | "update" {
         const checked = dialogElement.querySelector("input[name='jcsm-gist-target']:checked") as HTMLInputElement | null;
         return (checked?.value as "new-secret" | "new-public" | "update-last" | "update") ?? "new-secret";
+    }
+
+    /**
+     * 拉取当前选中更新目标的 gist 已有标题并预填到标题输入框
+     * （新建目标 / 链接不可解析 / 拉取失败时静默，不覆盖用户输入）
+     */
+    private async fillDescFromExisting(dialogElement: HTMLElement): Promise<void> {
+        const target = this.publishTarget(dialogElement);
+        const gistId = target === "update"
+            ? parseGistUrl((dialogElement.querySelector("input[data-action='gistPublishGistId']") as HTMLInputElement).value)
+            : target === "update-last"
+                ? parseGistUrl(this.lastPublishGistUrl)
+                : null;
+        if (!gistId) {
+            return;
+        }
+        try {
+            const existing = await getGist(gistId, {token: this.plugin.gistTokenService.token});
+            const descInput = dialogElement.querySelector("input[data-action='gistPublishDesc']") as HTMLInputElement | null;
+            // 仅在输入框仍为空时预填，避免异步返回晚于用户输入而覆盖掉用户填写的标题
+            if (descInput && descInput.value === "") {
+                descInput.value = existing.description ?? "";
+            }
+        } catch {
+            // 拉取失败不预填（发布时 handlePublish 会再次校验并给出提示）
+        }
     }
 
     /** checkbox 变更同步勾选集合 */
@@ -413,9 +464,12 @@ export class GistDialog {
             confirmText = this.plugin.i18n.gistPublishPublicConfirm;
         }
 
+        const descInput = dialogElement.querySelector("input[data-action='gistPublishDesc']") as HTMLInputElement | null;
         const doPublish = () => {
             void this.plugin.gistSyncService.publishToGist({
                 target: publishTarget,
+                // 描述留空时更新不清空既有描述（见 publishToGist）；新建则落库空串
+                description: (descInput?.value ?? "").trim(),
                 snippets: selected,
             }).then(gist => {
                 // 成功：关闭对话框并弹出含链接的消息

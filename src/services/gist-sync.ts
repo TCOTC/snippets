@@ -233,10 +233,11 @@ export class GistSyncService {
         if (options.target.kind === "create") {
             gist = await createGist(options.description ?? "", options.target.publicGist, files, {token, fetchImpl});
         } else {
-            // 更新：先拉取现有 gist 计算文件载荷（保留同 ID 片段重命名；未勾选的旧文件删除）
+            // 更新：先拉取现有 gist 计算文件载荷（保留同 ID 片段重命名；未勾选的旧文件删除），
+            // 描述非空时一并写回（留空保留既有描述，避免误清空）
             const existing = await getGist(options.target.gistId, {token, fetchImpl});
             const payload = planUpdateFiles(existing, rows);
-            gist = await updateGist(options.target.gistId, payload, {token, fetchImpl});
+            gist = await updateGist(options.target.gistId, payload, options.description, {token, fetchImpl});
         }
 
         // 记录发布目标（仅用于下次发布默认更新对象与「上次发布的 Gist」链接；以完整链接标识）
