@@ -63,6 +63,9 @@ export class SnippetsConfig {
     /** 顶栏按钮位置 */
     topBarPosition: "left" | "right" = "right";
 
+    /** 是否启用代码片段分组（默认关闭；开启后菜单按分组渲染，分组数据独立持久化于 plugin-groups.json） */
+    enableSnippetGroups = false;
+
     /** “修改 JS 后重新加载界面”通知开关（feedback.ts 按 i18n 键动态读取 *Notice 字段） */
     reloadUIAfterModifyJSNotice = true;
 }
