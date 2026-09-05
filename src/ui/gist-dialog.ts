@@ -107,7 +107,7 @@ export class GistDialog {
         <span class="b3-label__text fn__flex-1" data-action="gistPublishCount"></span>
     </div>
     <div class="fn__hr"></div>
-    <div class="fn__flex fn__flex-column" data-action="gistPublishTarget">
+    <div data-action="gistPublishTarget">
         <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-secret"${publishState ? "" : " checked"}>${this.plugin.i18n.gistPublishTargetNewSecret}</label>
         <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-public">${this.plugin.i18n.gistPublishTargetNewPublic}</label>
         ${publishState ? `<label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="update-last" checked>${this.plugin.i18n.gistPublishTargetUpdateLast}</label>` : ""}
