@@ -177,7 +177,7 @@ export class GistDialog {
         // gist 输入框仅在选择「更新指定 Gist」时显示（「更新上次发布的 Gist」使用记忆的 gist 链接）
         const gistIdRow = dialog.element.querySelector("[data-action='gistPublishGistIdRow']") as HTMLElement;
         const gistIdInput = dialog.element.querySelector("input[data-action='gistPublishGistId']") as HTMLInputElement;
-        // 标题对新建与更新都可用：更新时拉取该 gist 原描述预填，新建时清空
+        // 描述对新建与更新都可用：更新时拉取该 gist 原描述预填，新建时清空
         const descInput = dialog.element.querySelector("input[data-action='gistPublishDesc']") as HTMLInputElement;
         // 输入框预填上次发布 gist 链接，便于在「更新指定 Gist」下直接沿用或修改
         if (publishState) {
@@ -203,7 +203,7 @@ export class GistDialog {
         (dialog.element.querySelector("select[data-action='gistPublishFilter']") as HTMLSelectElement).value = this.publishFilter;
         const renderList = () => this.renderPublishList(listContainer, dialog.element);
         renderList();
-        // 初始默认目标若是「更新上次发布的 Gist」，预填该 gist 已有的标题
+        // 初始默认目标若是「更新上次发布的 Gist」，预填该 gist 已有的描述
         if (this.publishTarget(dialog.element) === "update-last") {
             void this.fillDescFromExisting(dialog.element);
         }
@@ -256,8 +256,8 @@ export class GistDialog {
                 const input = target as HTMLInputElement;
                 if (input.type === "radio") {
                     // 切换发布目标：新建 secret/公开 / 更新上次 / 更新指定
-                    // 「更新指定 Gist」时显示 gist id 输入行；新建时标题清空（避免残留上个 gist 标题），
-                    // 更新目标则拉取该 gist 已有标题预填
+                    // 「更新指定 Gist」时显示 gist id 输入行；新建时描述清空（避免残留上个 gist 描述），
+                    // 更新目标则拉取该 gist 已有描述预填
                     const target = syncTargetRows();
                     if (target === "new-secret" || target === "new-public") {
                         descInput.value = "";
@@ -271,7 +271,7 @@ export class GistDialog {
             this.renderPublishSummary(dialog.element);
         };
         this.plugin.addListener(dialog.element, "change", changeHandler);
-        // 「更新指定 Gist」下用户粘贴/修改 gist 链接时，拉取该 gist 已有标题预填
+        // 「更新指定 Gist」下用户粘贴/修改 gist 链接时，拉取该 gist 已有描述预填
         this.plugin.addListener(dialog.element, "input", (event: Event) => {
             if (event.target === gistIdInput && this.publishTarget(dialog.element) === "update") {
                 void this.fillDescFromExisting(dialog.element);
@@ -287,7 +287,7 @@ export class GistDialog {
     }
 
     /**
-     * 拉取当前选中更新目标的 gist 已有标题并预填到标题输入框
+     * 拉取当前选中更新目标的 gist 已有描述并预填到描述输入框
      * （新建目标 / 链接不可解析 / 拉取失败时静默，不覆盖用户输入）
      */
     private async fillDescFromExisting(dialogElement: HTMLElement): Promise<void> {
@@ -303,7 +303,7 @@ export class GistDialog {
         try {
             const existing = await getGist(gistId, {token: this.plugin.gistTokenService.token});
             const descInput = dialogElement.querySelector("input[data-action='gistPublishDesc']") as HTMLInputElement | null;
-            // 仅在输入框仍为空时预填，避免异步返回晚于用户输入而覆盖掉用户填写的标题
+            // 仅在输入框仍为空时预填，避免异步返回晚于用户输入而覆盖掉用户填写的描述
             if (descInput && descInput.value === "") {
                 descInput.value = existing.description ?? "";
             }

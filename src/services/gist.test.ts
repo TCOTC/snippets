@@ -133,9 +133,9 @@ describe("createGist / updateGist", () => {
             seenInit = init;
             return {status: 200, json: {id: "abc123", files: {}}};
         });
-        await updateGist("abc123", {"a.css": "x"}, "新标题", {token: "ghp_t", fetchImpl});
+        await updateGist("abc123", {"a.css": "x"}, "新描述", {token: "ghp_t", fetchImpl});
         expect(seenInit.method).toBe("PATCH");
-        expect(JSON.parse(String(seenInit.body)).description).toBe("新标题");
+        expect(JSON.parse(String(seenInit.body)).description).toBe("新描述");
     });
 });
 

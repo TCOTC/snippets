@@ -417,12 +417,12 @@ describe("GistDialog.openPublish", () => {
         const descInput = document.querySelector("input[data-action='gistPublishDesc']") as HTMLInputElement;
         // 默认新建 secret：描述行可见
         expect(descRow.classList.contains("fn__none")).toBe(false);
-        descInput.value = "我的发布标题";
+        descInput.value = "我的发布描述";
 
         click(document.querySelector("[data-action='gistPublish']") as HTMLElement);
         await waitChain();
         const [options] = (gistSyncService.publishToGist as ReturnType<typeof vi.fn>).mock.calls[0];
-        expect(options.description).toBe("我的发布标题");
+        expect(options.description).toBe("我的发布描述");
     });
 
     it("描述行对新建与更新目标均可见", async () => {
@@ -567,9 +567,9 @@ describe("GistDialog.openPublish", () => {
     it("存在发布历史：默认勾选「更新上次发布的 Gist」并在句中给出可点击链接", async () => {
         const {dialog, gistSyncService} = setup({});
         (gistSyncService.loadPublishState as ReturnType<typeof vi.fn>).mockResolvedValue({gistUrl: GIST_URL, public: false, publishedAt: "", fileCount: 1, snippetCount: 1});
-        // 默认即「更新上次发布的 Gist」，会拉取该 gist 已有标题预填——stub fetch 返回固定 description
+        // 默认即「更新上次发布的 Gist」，会拉取该 gist 已有描述预填——stub fetch 返回固定 description
         const realFetch = globalThis.fetch;
-        globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({id: GIST_ID, description: "上次的标题", public: false, files: {}}), {status: 200, headers: {"content-type": "application/json"}})) as unknown as typeof fetch;
+        globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({id: GIST_ID, description: "上次的描述", public: false, files: {}}), {status: 200, headers: {"content-type": "application/json"}})) as unknown as typeof fetch;
         try {
             await dialog.openPublish();
             await waitChain();
@@ -586,10 +586,10 @@ describe("GistDialog.openPublish", () => {
             expect(link?.getAttribute("href")).toBe(GIST_URL);
             // gist 输入行保持隐藏
             expect((document.querySelector("[data-action='gistPublishGistIdRow']") as HTMLElement).classList.contains("fn__none")).toBe(true);
-            // 标题输入框预填该 gist 已有标题
+            // 描述输入框预填该 gist 已有描述
             const descInput = document.querySelector("input[data-action='gistPublishDesc']") as HTMLInputElement;
             await waitChain();
-            expect(descInput.value).toBe("上次的标题");
+            expect(descInput.value).toBe("上次的描述");
         } finally {
             globalThis.fetch = realFetch;
         }
