@@ -3,7 +3,7 @@
   "gistTokenCreateFineGrained": "トークンを作成（Gist 権限を事前選択）",
   "gistTokenCreateClassic": "クラシックトークンを作成（Gist を手動選択）",
   "gistTokenCreateHint": "どちらのトークンも使用できます：fine-grained は github_pat_ で始まります（Gists 権限は事前選択済み）、クラシックは ghp_ で始まります（gist 権限を手動で選択）。生成後、下に貼り付けて保存してください。",
-  "gistTokenPlaceholder": "github_pat_ または ghp_…",
+  "gistTokenPlaceholder": "github_pat_... または ghp_...",
   "gistTokenSaveButton": "トークンを保存",
   "gistTokenClearButton": "トークンを削除",
   "gistTokenStatusConfigured": "設定済み",
