@@ -94,6 +94,9 @@ export class SnippetsDialog {
         // 如果已经有打开的对应 snippetId 的 Dialog，则仅激活它，不重复创建
         const existedDialog = document.querySelector(`${SNIPPET_DIALOG_SELECTOR}[data-snippet-id="${snippet.id}"]`) as HTMLDivElement;
         if (existedDialog) {
+            // 代码片段编辑器打开后关闭插件菜单（菜单已无用途，保持打开会遮挡编辑器区域干扰编辑）。
+            // 该编辑对话框已在打开状态（带 b3-dialog--open），可直接同步关闭菜单，不会触发待定 JS 自动重载（见本方法末尾注释）
+            this.plugin.menuView.close();
             moveElementToTop(existedDialog);
             return true;
         }
@@ -506,6 +509,14 @@ export class SnippetsDialog {
         if (snippet.type === "css" && this.plugin.config.realTimePreview) {
             previewHandler();
         }
+
+        // 代码片段编辑器打开后关闭插件菜单（菜单已无用途，保持打开会遮挡编辑器区域干扰编辑）。
+        // 不能像设置对话框/Gist 弹窗那样在打开前同步关闭菜单：菜单关闭回调会经 EditorManager.maybeAutoReloadUI
+        // 在“无打开的编辑对话框”时触发待定 JS 自动重载（整页刷新），而该判定依赖对话框的 b3-dialog--open 类
+        // （原生 Dialog 构造后延时 Constants.TIMEOUT_OPENDIALOG 才加上），须等其生效后再关菜单，避免误刷新打断刚打开的编辑器
+        setTimeout(() => {
+            this.plugin.menuView.close();
+        }, Constants.TIMEOUT_OPENDIALOG);
 
         return true;
 

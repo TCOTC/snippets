@@ -50,6 +50,7 @@ export const getBackend = vi.fn(() => "windows");
 // 新增用例需要其他常量时在此补充）
 export const Constants = {
     SIYUAN_APPID: "siyuan",
+    TIMEOUT_OPENDIALOG: 50,
     TIMEOUT_DBLCLICK: 200,
     SIZE_SCROLL_TB: 40,
     SIZE_SCROLL_STEP: 30,

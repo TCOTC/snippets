@@ -34,6 +34,7 @@ const createPlugin = () => {
         },
         removeListener: vi.fn(),
         menuView: {
+            close: vi.fn(),
             removeSnippetEditButtonActive: vi.fn(),
             destroyGlobalKeyDownHandler: vi.fn(),
         },
@@ -248,6 +249,7 @@ describe("openEditDialog 取消关闭与待定 JS 重载（issue #40）", () => 
             },
             removeListener: vi.fn(),
             menuView: {
+                close: vi.fn(),
                 isShowPublishCheckbox: () => false,
                 setSnippetEditButtonActive: vi.fn(),
                 removeSnippetEditButtonActive: vi.fn(),
@@ -381,6 +383,16 @@ describe("openEditDialog 取消关闭与待定 JS 重载（issue #40）", () => 
         confirmButton.dispatchEvent(new MouseEvent("click", {bubbles: true}));
         expect(closeSpy).toHaveBeenCalledTimes(2);
         expect(dialogElement.classList.contains("b3-dialog--open")).toBe(false);
+    });
+
+    it("打开代码片段编辑器成功后关闭插件菜单", async () => {
+        (plugin as unknown as {isReloadUIRequired: boolean}).isReloadUIRequired = false;
+        (plugin as unknown as {snippetsList: Snippet[]}).snippetsList = [jsSnippet("1", "片段", true)];
+        await openAndArmDestroy(jsSnippet("1", "片段", true));
+        // 关闭动作延时至对话框 b3-dialog--open 生效后执行（防止菜单关闭回调误触发待定 JS 自动重载）
+        await vi.waitFor(() => {
+            expect(plugin.menuView.close).toHaveBeenCalled();
+        });
     });
 });
 
