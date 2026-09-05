@@ -258,12 +258,17 @@ describe("GistDialog.openPublish", () => {
         const list = document.querySelector(".jcsm-gist-publish-list") as HTMLElement;
         const checkboxes = Array.from(list.querySelectorAll("input[data-pub-id]")) as HTMLInputElement[];
         expect(checkboxes).toHaveLength(2);
-        // 列表位于弹窗正文末尾（目标选项/摘要之前的内容在其上方）
+        // 列表位于弹窗正文末尾（目标选项/筛选/摘要在其上方）
         const content = document.querySelector(".b3-dialog__content") as HTMLElement;
         const listIndex = Array.from(content.children).indexOf(list);
         const targetGroup = content.querySelector("[data-action='gistPublishTarget']");
+        const filterSelect = content.querySelector("select[data-action='gistPublishFilter']");
         const summary = content.querySelector("[data-action='gistPublishSummary']");
+        // 目标组排在最顶部（index 0）
+        expect(Array.from(content.children).indexOf(targetGroup as HTMLElement)).toBe(0);
+        // 列表排在最后
         expect(listIndex).toBeGreaterThan(Array.from(content.children).indexOf(targetGroup as HTMLElement));
+        expect(listIndex).toBeGreaterThan(Array.from(content.children).indexOf(filterSelect as HTMLElement));
         expect(listIndex).toBeGreaterThan(Array.from(content.children).indexOf(summary as HTMLElement));
         // gist id 输入框默认隐藏（仅「更新指定 Gist」时显示）
         const gistIdRow = document.querySelector("[data-action='gistPublishGistIdRow']") as HTMLElement;

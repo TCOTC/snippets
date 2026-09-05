@@ -94,6 +94,16 @@ export class GistDialog {
             title: this.plugin.i18n.gistPublish,
             content: `
 <div class="b3-dialog__content">
+    <div data-action="gistPublishTarget">
+        <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-secret"${publishState ? "" : " checked"}>${this.plugin.i18n.gistPublishTargetNewSecret}</label>
+        <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-public">${this.plugin.i18n.gistPublishTargetNewPublic}</label>
+        ${publishState ? `<label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="update-last" checked>${this.plugin.i18n.gistPublishTargetUpdateLast}</label>` : ""}
+        <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="update">${this.plugin.i18n.gistPublishTargetUpdate}</label>
+        <div class="fn__flex fn__flex-center fn__none" data-action="gistPublishGistIdRow">
+            <input class="b3-text-field fn__flex-1" data-action="gistPublishGistId" type="text" spellcheck="false" placeholder="${this.plugin.i18n.gistPublishGistIdPlaceholder}">
+        </div>
+    </div>
+    <div class="fn__hr"></div>
     <div class="fn__flex fn__flex-center fn__flex-wrap">
         <select class="b3-select" data-action="gistPublishFilter">
             <option value="all">${this.plugin.i18n.gistPublishFilterAll}</option>
@@ -105,16 +115,6 @@ export class GistDialog {
         <span class="b3-button b3-button--outline fn__flex-center" data-action="gistPublishToggleAll"></span>
         <div class="fn__space"></div>
         <span class="b3-label__text fn__flex-1" data-action="gistPublishCount"></span>
-    </div>
-    <div class="fn__hr"></div>
-    <div data-action="gistPublishTarget">
-        <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-secret"${publishState ? "" : " checked"}>${this.plugin.i18n.gistPublishTargetNewSecret}</label>
-        <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="new-public">${this.plugin.i18n.gistPublishTargetNewPublic}</label>
-        ${publishState ? `<label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="update-last" checked>${this.plugin.i18n.gistPublishTargetUpdateLast}</label>` : ""}
-        <label class="fn__flex b3-label jcsm-gist-option"><input type="radio" name="jcsm-gist-target" value="update">${this.plugin.i18n.gistPublishTargetUpdate}</label>
-        <div class="fn__flex fn__flex-center fn__none" data-action="gistPublishGistIdRow">
-            <input class="b3-text-field fn__flex-1" data-action="gistPublishGistId" type="text" spellcheck="false" placeholder="${this.plugin.i18n.gistPublishGistIdPlaceholder}">
-        </div>
     </div>
     <div class="jcsm-gist-publish-summary b3-label__text" data-action="gistPublishSummary"></div>
     <div class="jcsm-gist-publish-list"></div>
