@@ -64,7 +64,9 @@ export class GistDialog {
             this.plugin.showErrorMessage(this.plugin.i18n.gistPublishTokenRequired);
             return;
         }
-        if (this.plugin.snippetsDialog.getAllModalElements().length > 0) {
+        // 来源设置对话框自身（data-key 以 jcsm- 开头、data-modal=true）会被计入模态守卫，
+        // 需先将其排除（随后下方关闭它），否则按钮点击会被守卫直接吞掉
+        if (this.blockedByOtherModals(settingDialogElement)) {
             return;
         }
         if (settingDialogElement) {
@@ -325,11 +327,24 @@ export class GistDialog {
     }
 
     /**
+     * 是否存在除来源设置对话框之外的其它已打开模态对话框（模态守卫）
+     * 从设置面板按钮打开 Gist 对话框时，来源设置对话框（data-key 以 jcsm- 开头）自身
+     * 会被 getAllModalElements 计入，因此先排除它；其余模态（代码片段编辑/其它确认等）
+     * 存在时仍拒绝打开，避免全局键盘协调（Esc/Enter 路由）错乱。
+     * @param settingDialogElement 来源设置对话框元素（可为空）
+     * @returns 是否被其它模态对话框阻塞
+     */
+    private blockedByOtherModals(settingDialogElement?: HTMLElement): boolean {
+        return this.plugin.snippetsDialog.getAllModalElements().some(element => element !== settingDialogElement);
+    }
+
+    /**
      * 打开「从 Gist 导入」对话框
      * @param settingDialogElement 来源设置对话框元素（关闭它以避免模态叠加）
      */
     openImport(settingDialogElement?: HTMLElement) {
-        if (this.plugin.snippetsDialog.getAllModalElements().length > 0) {
+        // 来源设置对话框自身会被计入模态守卫，需先排除（随后下方关闭它）
+        if (this.blockedByOtherModals(settingDialogElement)) {
             return;
         }
         if (settingDialogElement) {

@@ -69,6 +69,7 @@ const setup = (options: {
     snippets?: Snippet[];
     token?: string;
     importData?: GistImportData;
+    modals?: HTMLElement[];
     publishResult?: {gistId: string; html_url: string; public: boolean; files: Record<string, unknown>};
 } = {}) => {
     const snippets = options.snippets ?? [makeSnippet("a-20250101000000-aaa", "片段A", true), makeSnippet("b-20250101000001-bbb", "片段B", false)];
@@ -83,7 +84,7 @@ const setup = (options: {
         publishToGist: vi.fn(async () => options.publishResult ?? {gistId: "gist-new", html_url: "https://gist.github.com/x/gist-new", public: false, files: {}}),
     };
     const snippetsDialog = {
-        getAllModalElements: vi.fn(() => []),
+        getAllModalElements: vi.fn(() => options.modals ?? []),
         closeByElement: vi.fn(),
         openConfirm: vi.fn(),
     };
@@ -202,6 +203,30 @@ describe("GistDialog.openImport", () => {
         expect(checkboxes).toHaveLength(2);
         expect(checkboxes[0].checked).toBe(true);
     });
+
+    it("来源设置对话框自身不计入模态守卫（能从设置面板按钮打开）", async () => {
+        const {dialog, plugin, snippetsDialog} = setup({importData: makeImportData()});
+        const settingElement = document.createElement("div");
+        // 模拟 getAllModalElements 会把来源设置对话框自身也返回
+        (snippetsDialog.getAllModalElements as ReturnType<typeof vi.fn>).mockReturnValue([settingElement]);
+        dialog.openImport(settingElement);
+        await waitChain();
+        // 对话框已打开（包含 URL 输入框），且来源对话框被关闭
+        expect(document.querySelector("input[data-action='gistUrl']")).not.toBeNull();
+        expect(snippetsDialog.closeByElement).toHaveBeenCalledWith(settingElement);
+        expect(plugin.showErrorMessage).not.toHaveBeenCalled();
+    });
+
+    it("存在其它模态对话框（非来源）时仍拒绝打开", async () => {
+        const {dialog, plugin, snippetsDialog} = setup({importData: makeImportData()});
+        const otherModal = document.createElement("div");
+        (snippetsDialog.getAllModalElements as ReturnType<typeof vi.fn>).mockReturnValue([otherModal]);
+        dialog.openImport();
+        await waitChain();
+        expect(document.querySelector("input[data-action='gistUrl']")).toBeNull();
+        expect(snippetsDialog.closeByElement).not.toHaveBeenCalled();
+        expect(plugin.showErrorMessage).not.toHaveBeenCalled();
+    });
 });
 
 describe("GistDialog.openPublish", () => {
@@ -268,5 +293,25 @@ describe("GistDialog.openPublish", () => {
         await waitChain();
         const [options] = (gistSyncService.publishToGist as ReturnType<typeof vi.fn>).mock.calls[0];
         expect(options.target).toEqual({kind: "create", publicGist: true});
+    });
+
+    it("来源设置对话框自身不计入模态守卫（能从设置面板按钮打开）", async () => {
+        const {dialog, snippetsDialog} = setup({});
+        const settingElement = document.createElement("div");
+        (snippetsDialog.getAllModalElements as ReturnType<typeof vi.fn>).mockReturnValue([settingElement]);
+        await dialog.openPublish(settingElement);
+        await waitChain();
+        expect(document.querySelector("[data-action='gistPublish']")).not.toBeNull();
+        expect(snippetsDialog.closeByElement).toHaveBeenCalledWith(settingElement);
+    });
+
+    it("存在其它模态对话框（非来源）时仍拒绝打开", async () => {
+        const {dialog, snippetsDialog} = setup({});
+        const otherModal = document.createElement("div");
+        (snippetsDialog.getAllModalElements as ReturnType<typeof vi.fn>).mockReturnValue([otherModal]);
+        await dialog.openPublish();
+        await waitChain();
+        expect(document.querySelector("[data-action='gistPublish']")).toBeNull();
+        expect(snippetsDialog.closeByElement).not.toHaveBeenCalled();
     });
 });
