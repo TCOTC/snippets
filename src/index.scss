@@ -506,7 +506,11 @@ div[data-key="jcsm-setting-dialog"] {
   }
 
   .jcsm-gist-publish-summary {
+    // 文件名预览仅作提示：单行显示，超出省略（完整内容经 title 悬停查看）。
+    // 若允许多行 break-all，勾选片段多时该行可达数千像素高，把片段清单顶到远处
     margin-top: 4px;
-    word-break: break-all;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }

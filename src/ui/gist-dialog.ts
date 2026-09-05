@@ -313,6 +313,8 @@ export class GistDialog {
             ? ""
             : this.plugin.i18n.gistPublishFilesPreview + " " + files.map(file => file.fileName).join(", ");
         summaryElement.textContent = fileNamePreview;
+        // 单行省略时完整文件名列表经 title 悬停查看
+        summaryElement.title = fileNamePreview;
     }
 
     /** 当前勾选的片段（按当前列表顺序） */
