@@ -147,7 +147,9 @@ export function buildGistTokenSettingElement(plugin: PluginSnippets): HTMLElemen
     </div>
     <div class="fn__flex fn__flex-center" style="margin-top: 8px;">
         <span data-action="gistTokenSave" class="b3-button b3-button--outline fn__flex-center fn__size200">${plugin.i18n.gistTokenSaveButton}</span>
+        <div class="fn__space"></div>
         <span data-action="gistTokenClear" class="b3-button b3-button--outline fn__flex-center fn__size200">${plugin.i18n.gistTokenClearButton}</span>
+        <div class="fn__space"></div>
         <span data-action="gistTokenStatus" class="b3-label__text fn__flex-1"></span>
     </div>
 </div>`);
