@@ -570,6 +570,8 @@ export class SnippetsDialog {
 
     /**
      * 打开确认对话框（参考原生代码 app/src/dialog/confirmDialog.ts ）
+     * 公开供 Gist 对话框（发布公开二次确认等）与内部删除/放弃编辑确认共用；
+     * 该对话框以 data-key 前缀 jcsm- 自动纳入模态协调。
      * @param title 对话框标题
      * @param text 对话框内容
      * @param dataKey 对话框元素的 data-key 属性值
@@ -578,7 +580,7 @@ export class SnippetsDialog {
      * @param confirm 确认回调
      * @param cancel 取消回调
      */
-    private openConfirm(title: string, text: string, dataKey?: string, cancelText?: string, confirmText?: string, confirm?: () => void, cancel?: () => void) {
+    openConfirm(title: string, text: string, dataKey?: string, cancelText?: string, confirmText?: string, confirm?: () => void, cancel?: () => void) {
         if (!text && !title) {
             confirm?.();
             return;
