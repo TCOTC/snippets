@@ -438,3 +438,71 @@ div[data-key="jcsm-setting-dialog"] {
   padding: 1px 6px;
   font-size: 12px;
 }
+// Gist 导入 / 发布对话框（data-key 前缀 jcsm-gist-）
+// 结构复用 .jcsm-dialog（占满 .b3-dialog__body），本段补充滚动列表与行/选项布局。
+.b3-dialog--open[data-key^="jcsm-gist"] {
+  .jcsm-gist-publish-list,
+  .jcsm-gist-result {
+    flex: 1;              // 占满 .jcsm-dialog-container 剩余高度
+    min-height: 0;        // 允许收缩以触发内部滚动
+    overflow: auto;
+    margin-top: 8px;
+    border: 1px solid var(--b3-border-color);
+    border-radius: var(--b3-border-radius);
+    padding: 4px 8px;
+  }
+
+  // 单行（发布勾选 / 导入预览）：checkbox 与文字垂直居中
+  .jcsm-gist-row {
+    align-items: center;
+    padding: 4px 2px;
+    cursor: pointer;
+    border-bottom: 1px dashed var(--b3-border-color);
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    > input[type="checkbox"] {
+      flex-shrink: 0;
+      margin-right: 8px;
+    }
+
+    .jcsm-gist-row-sub {
+      flex-shrink: 0;
+      font-size: 12px;
+      color: var(--b3-theme-on-surface-light);
+      margin-left: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 45%;
+    }
+
+    .jcsm-gist-type {
+      margin-left: 12px;
+      flex-shrink: 0;
+      height: 28px;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
+  }
+
+  // 单选选项（导入模式 / 发布目标）
+  .jcsm-gist-option {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 16px;
+    cursor: pointer;
+    line-height: 24px;
+
+    input[type="radio"] {
+      margin-right: 6px;
+    }
+  }
+
+  .jcsm-gist-publish-summary {
+    margin-top: 4px;
+    word-break: break-all;
+  }
+}
