@@ -605,8 +605,11 @@ const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfigItem[]
     {
         key: "githubToken",
         type: "createActionElement",
-        // GitHub Token 管理区域：事件在元素内部直接绑定（gist-token.ts buildGistTokenSettingElement），
+        // GitHub Token 管理区域整行铺满（direction row → 设置对话框以 100% 宽插入并保留 fn__block；
+        // 若用 column 会被压成 fn__size200 的 200px 宽导致内部按钮/状态横向溢出）
+        // 事件在元素内部直接绑定（gist-token.ts buildGistTokenSettingElement），
         // 不经 saveFromDialog 收集（Token 绝不写入 plugin-config.json，见 gist-token.ts 顶部约束）
+        direction: "row",
         createActionElement: () => buildGistTokenSettingElement(plugin),
     },
     {
