@@ -518,5 +518,11 @@ div[data-key="jcsm-setting-dialog"] {
   .jcsm-gist-publish-summary {
     margin-top: 4px;
     word-break: break-all;
+    // 文件名预览是辅助信息：几十个文件名拼接并强制换行时自然高度可达数千像素，
+    // 若任其无限撑高会挤占列表（flex 剩余空间变负）导致列表塌陷到 0；
+    // 这里限制在几行内滚动，保证列表始终获得剩余高度
+    max-height: 64px;
+    overflow-y: auto;
+    flex-shrink: 0;
   }
 }
