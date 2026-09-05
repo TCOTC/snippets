@@ -504,9 +504,9 @@ div[data-key="jcsm-setting-dialog"] {
     }
   }
 
-  // 单选选项（导入模式 / 发布目标）
+  // 单选选项（发布目标 / 导入源）
   // 结构沿用思源 b3-label（radio 与文字），这里覆盖 b3-label 默认的粗内边距/分隔线，
-  // 使多个选项在弹窗内紧凑排列（发布目标纵向、导入模式横向）
+  // 使多个选项在弹窗内紧凑排列（发布目标/导入源均为纵向）
   .jcsm-gist-option.b3-label {
     display: flex;
     align-items: center;
@@ -521,13 +521,46 @@ div[data-key="jcsm-setting-dialog"] {
     }
   }
 
-  .jcsm-gist-publish-summary {
-    // 文件名预览仅作提示：单行显示，超出省略（完整内容经 title 悬停查看）。
-    // 若允许多行 break-all，勾选片段多时该行可达数千像素高，把片段清单顶到远处
-    margin-top: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  // 导入模式（合并更新 / 覆盖镜像 / 仅新增）：竖排，每个标题下方一行小字说明
+  .jcsm-gist-mode-item {
+    display: block;
+    cursor: pointer;
+    padding: 4px;
+
+    &:last-child {
+      padding-bottom: 0;
+    }
+  }
+
+  .jcsm-gist-mode-title {
+    display: flex;
+    align-items: center;
+    line-height: 22px;
+
+    input[type="radio"] {
+      margin-right: 8px;
+    }
+  }
+
+  // 说明行缩进与标题文字对齐（radio 宽度 + 间距的近似值），字号略小以区分主选项
+  .jcsm-gist-mode-desc {
+    display: block;
+    margin-top: 2px;
+    margin-left: 24px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--b3-theme-on-surface-light);
+  }
+
+  // 「上次发布的 Gist」句中的可点击链接（点它在新窗口打开该 Gist；点击不触发选中选项）
+  .jcsm-gist-open-link {
+    color: var(--b3-theme-primary);
+    cursor: pointer;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
   }
 }
 

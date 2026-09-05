@@ -643,6 +643,13 @@ const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfigItem[]
         createActionElement: () => createOutlineActionElement("importSnippetsWithOverwrite", "iconDownload", plugin.i18n.importWithOverwrite),
     },
     {
+        key: "openBackupsFolder",
+        description: "openBackupsFolderDescription",
+        type: "createActionElement",
+        ignore: plugin.isMobile,
+        createActionElement: () => createOutlineActionElement("openBackupsFolder", "iconFolder", plugin.i18n.openBackupsFolder),
+    },
+    {
         key: "feedbackIssue",
         description: "feedbackIssueDescription",
         type: "createActionElement",

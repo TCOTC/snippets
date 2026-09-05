@@ -2,16 +2,24 @@
 // 职责：导出全部代码片段为 JSON（经 /api/export/exportResources 导出 zip 并去随机前缀后 saveExportFile 下载）；
 // 从本地文件（json/zip）导入——zip 上传解压后递归定位 json；校验、ID 去重、覆盖前备份、整表替换写库，
 // 落库成功后经 SnippetManager.applyImportedSnippets 立即应用并广播到其他窗口（见 snippet-manager.ts）。
-import {saveExportFile, showMessage} from "siyuan";
+import {Constants, saveExportFile, showMessage} from "siyuan";
 import {isValidCssSnippetContent, snippetTitle} from "../domain/snippet";
 import {planImport} from "../domain/import-plan";
 import type {ImportMode} from "../domain/import-plan";
-import {escapeHtml, fetchPostPromise, genNewSnippetId, getFile, putFile, renameFile} from "../utils";
+import {escapeHtml, fetchPostPromise, genNewSnippetId, getFile, PLUGIN_NAME, putFile, renameFile} from "../utils";
 import type PluginSnippets from "../index";
 import type {Snippet} from "../types";
 
-const TEMP_PLUGIN_PATH = "/temp/plugin-snippets/"; // 插件临时文件路径
-const TEMP_EXPORT_PATH = "/temp/export/";          // 导入导出临时文件路径
+const TEMP_EXPORT_PATH = "/temp/export/"; // 导入导出临时文件路径
+
+/** 备份目录在插件存储区（data/storage/petal/snippets）下的子目录名 */
+const BACKUP_DIR_NAME = "backups";
+
+/** 打开备份目录所需的桌面 electron 壳子最小接口 */
+interface DesktopShell {
+    ipcRenderer?: { send: (channel: string, message: unknown) => void };
+    shell?: { openPath: (fullPath: string) => Promise<string> };
+}
 
 /**
  * 导入导出服务
@@ -385,7 +393,7 @@ export class ImportExportService {
     }
 
     /**
-     * 创建备份文件
+     * 创建备份文件（写入插件存储区 data/storage/petal/snippets/backups）
      * @param snippets 要备份的代码片段列表
      */
     private async createBackup(snippets: Snippet[]): Promise<void> {
@@ -402,26 +410,74 @@ export class ImportExportService {
             const timestamp = `${year}-${month}-${day}_${hour}-${minute}-${second}`;
             const backupFileName = `snippets_backup_${timestamp}.json`;
 
-            // 备份文件路径
-            const backupPath = `${TEMP_PLUGIN_PATH}${backupFileName}`;
-
-            // 转换为 JSON 字符串
+            // 转换为 JSON 字符串并写入插件存储区（saveData 会把插件名后的子路径当存储路径写文件）
             const backupContent = JSON.stringify(snippets, null, 2);
+            const storagePath = `${BACKUP_DIR_NAME}/${backupFileName}`;
+            const response = await this.plugin.saveData(storagePath, backupContent);
 
-            // 写入备份文件
-            const response = await putFile(backupPath, backupContent);
-
-            if (response.code !== 0) {
+            if (response?.code !== 0) {
                 this.plugin.console.error("createBackup: Failed to create backup file", response);
-                this.plugin.showErrorMessage(`${this.plugin.i18n.backupCreateFailed}: ${response.msg}`);
+                this.plugin.showErrorMessage(`${this.plugin.i18n.backupCreateFailed}: ${response?.msg ?? response?.code}`);
                 return;
             }
 
-            this.plugin.console.log("createBackup: Backup created successfully", backupPath);
+            this.plugin.console.log("createBackup: Backup created successfully", storagePath);
 
         } catch (error) {
             this.plugin.console.error("createBackup: Failed to create backup", error);
-            this.plugin.showErrorMessage(this.plugin.i18n.backupCreateFailed + ": " + error.message);
+            this.plugin.showErrorMessage(this.plugin.i18n.backupCreateFailed + ": " + (error instanceof Error ? error.message : String(error)));
+        }
+    }
+
+    /** 备份目录在工作空间内的相对路径（与文件 API/data 目录语义一致） */
+    private backupDirPath(): string {
+        return `data/storage/petal/${PLUGIN_NAME}/${BACKUP_DIR_NAME}`;
+    }
+
+    /** 经内核在工作空间内创建目录（isDir 方式调用 putFile，不触发同步/插件存储广播） */
+    private async makeDirInWorkspace(dir: string): Promise<any> {
+        const formData = new FormData();
+        formData.append("path", dir);
+        formData.append("isDir", "true");
+        return fetchPostPromise("/api/file/putFile", formData);
+    }
+
+    /**
+     * 在系统文件管理器中打开备份文件夹（仅桌面端可用，依赖 electron 壳子）
+     * 目录不存在时先创建（仅在导入覆盖/合并前才自动生成备份，打开时可能还是空目录）
+     */
+    async openBackupsFolder() {
+        const electron = (window as { require?: (module: "electron") => DesktopShell | undefined }).require?.("electron");
+        if (!electron?.ipcRenderer && !electron?.shell) {
+            this.plugin.showErrorMessage(this.plugin.i18n.openBackupsFolderDesktopOnly);
+            return;
+        }
+        const workspaceDir = (window.siyuan.config?.system.workspaceDir ?? "").trim();
+        if (!workspaceDir) {
+            this.plugin.showErrorMessage(this.plugin.i18n.openBackupsFolderFailed + ": " + this.plugin.i18n.openBackupsFolderNoWorkspace);
+            return;
+        }
+        const relDir = this.backupDirPath();
+        try {
+            // 目录不存在时先创建，避免 openPath 打开不存在的路径
+            const mkdirResp = await this.makeDirInWorkspace(relDir);
+            if (!mkdirResp || mkdirResp.code !== 0) {
+                this.plugin.console.error("openBackupsFolder: Failed to ensure backup dir", mkdirResp);
+                this.plugin.showErrorMessage(this.plugin.i18n.openBackupsFolderFailed);
+                return;
+            }
+            const fullPath = `${workspaceDir}/${relDir}`;
+            if (electron.ipcRenderer) {
+                electron.ipcRenderer.send(Constants.SIYUAN_CMD, {cmd: "openPath", filePath: fullPath});
+            } else {
+                const openErr = await electron.shell!.openPath(fullPath);
+                if (openErr) {
+                    throw new Error(openErr);
+                }
+            }
+        } catch (error) {
+            this.plugin.console.error("openBackupsFolder: Failed to open backup folder", error);
+            this.plugin.showErrorMessage(this.plugin.i18n.openBackupsFolderFailed + ": " + (error instanceof Error ? error.message : String(error)));
         }
     }
 

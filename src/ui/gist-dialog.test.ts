@@ -17,12 +17,20 @@ const i18n: Record<string, string> = {
     gistImportButton: "从 Gist 导入",
     gistImportUrlPlaceholder: "粘贴链接",
     gistImportFetch: "获取",
+    gistLastGist: "上次发布的 Gist",
+    gistLastImportedGist: "上次导入的 Gist",
+    gistImportSourceLastImport: "导入 ${gistLastImportedGist}",
+    gistImportSourceLast: "导入 ${gistLastGist}",
+    gistImportSourceCustom: "导入指定",
     gistImportFetching: "获取中",
     gistImportTokenHint: "提示",
     gistImportInvalidUrl: "无效",
     gistImportModeMerge: "合并",
     gistImportModeOverwrite: "覆盖",
     gistImportModeFork: "新增",
+    gistImportModeMergeDescription: "合并说明",
+    gistImportModeOverwriteDescription: "覆盖说明",
+    gistImportModeForkDescription: "仅新增说明",
     gistImportEmpty: "空",
     gistImportNoId: "无 ID",
     gistImportNoCheck: "未勾选",
@@ -57,10 +65,9 @@ const i18n: Record<string, string> = {
     gistPublishSelectAll: "全选",
     gistPublishSelectNone: "取消全选",
     gistPublishFilterEmpty: "筛选无结果",
-    gistPublishFilesPreview: "将写入",
     gistPublishTargetNewSecret: "新建 secret",
     gistPublishTargetNewPublic: "新建公开",
-    gistPublishTargetUpdateLast: "更新上次",
+    gistPublishTargetUpdateLast: "更新 ${gistLastGist}",
     gistPublishTargetUpdate: "更新指定",
     gistPublishGistIdPlaceholder: "gist id",
     gistPublishConfirm: "确认",
@@ -87,6 +94,8 @@ const setup = (options: {
         token: options.token ?? "ghp_xxx",
         loadPublishState: vi.fn(async () => undefined),
         savePublishState: vi.fn(async () => undefined),
+        loadImportState: vi.fn(async () => undefined),
+        saveImportState: vi.fn(async () => undefined),
         fetchImportData: importData ? vi.fn(async () => importData) : vi.fn(async () => {
             throw new Error("no data");
         }),
@@ -204,7 +213,7 @@ describe("GistDialog.openImport", () => {
         await waitChain();
         const urlInput = document.querySelector("input[data-action='gistUrl']") as HTMLInputElement;
         const fetchButton = document.querySelector("[data-action='gistFetch']") as HTMLElement;
-        setInputValue(urlInput, GIST_ID);
+        setInputValue(urlInput, GIST_URL);
         click(fetchButton);
         await waitChain();
 
@@ -226,7 +235,7 @@ describe("GistDialog.openImport", () => {
         dialog.openImport();
         await waitChain();
         const urlInput = document.querySelector("input[data-action='gistUrl']") as HTMLInputElement;
-        setInputValue(urlInput, GIST_ID);
+        setInputValue(urlInput, GIST_URL);
         click(document.querySelector("[data-action='gistFetch']") as HTMLElement);
         await waitChain();
 
@@ -244,7 +253,7 @@ describe("GistDialog.openImport", () => {
         dialog.openImport();
         await waitChain();
         const urlInput = document.querySelector("input[data-action='gistUrl']") as HTMLInputElement;
-        setInputValue(urlInput, GIST_ID);
+        setInputValue(urlInput, GIST_URL);
         click(document.querySelector("[data-action='gistFetch']") as HTMLElement);
         await waitChain();
 
@@ -271,6 +280,59 @@ describe("GistDialog.openImport", () => {
         expect(snippetsDialog.closeByElement).toHaveBeenCalledWith(settingElement);
         expect(plugin.menuView.close).toHaveBeenCalled();
         expect(plugin.showErrorMessage).not.toHaveBeenCalled();
+    });
+
+    it("存在发布历史（无导入历史）：默认源为「导入上次发布的 Gist」并隐藏 URL 行，切到「指定 Gist」恢复", async () => {
+        const {dialog, gistSyncService} = setup({importData: makeImportData()});
+        (gistSyncService.loadPublishState as ReturnType<typeof vi.fn>).mockResolvedValue({gistUrl: GIST_URL, public: false, publishedAt: "", fileCount: 1, snippetCount: 1});
+        dialog.openImport();
+        await waitChain();
+
+        const lastRadio = document.querySelector("input[name='jcsm-gist-source'][value='last-publish']") as HTMLInputElement;
+        const customRadio = document.querySelector("input[name='jcsm-gist-source'][value='custom']") as HTMLInputElement;
+        const urlRow = document.querySelector("[data-action='gistUrlRow']") as HTMLElement;
+        expect(lastRadio.checked).toBe(true);
+        expect(urlRow.classList.contains("fn__none")).toBe(true);
+
+        // 默认源即自动拉取：走记忆的 gist 链接，结果区填充勾选清单
+        expect(gistSyncService.fetchImportData).toHaveBeenCalledTimes(1);
+        const result = document.querySelector(".jcsm-gist-result") as HTMLElement;
+        expect(result.querySelectorAll("input[data-gist-row]")).toHaveLength(2);
+
+        // 切到「指定 Gist」：URL 行显示
+        click(customRadio);
+        await waitChain();
+        expect(urlRow.classList.contains("fn__none")).toBe(false);
+
+        // 切回「导入上次发布的 Gist」后手动拉取再走记忆的 gist 链接
+        click(lastRadio);
+        await waitChain();
+        expect(urlRow.classList.contains("fn__none")).toBe(true);
+        click(document.querySelector("[data-action='gistFetch']") as HTMLElement);
+        await waitChain();
+        expect(gistSyncService.fetchImportData).toHaveBeenCalledTimes(2);
+    });
+
+    it("存在上次导入历史：默认源为「导入上次导入的 Gist」（排第一），并给出可点击链接", async () => {
+        const {dialog, gistSyncService} = setup({importData: makeImportData()});
+        (gistSyncService.loadImportState as ReturnType<typeof vi.fn>).mockResolvedValue({gistUrl: GIST_URL, importedAt: "2026-01-01T00:00:00Z"});
+        dialog.openImport();
+        await waitChain();
+
+        const lastImportRadio = document.querySelector("input[name='jcsm-gist-source'][value='last-import']") as HTMLInputElement;
+        const customRadio = document.querySelector("input[name='jcsm-gist-source'][value='custom']") as HTMLInputElement;
+        const urlRow = document.querySelector("[data-action='gistUrlRow']") as HTMLElement;
+        expect(lastImportRadio).not.toBeNull();
+        expect(lastImportRadio.checked).toBe(true);
+        expect(customRadio).not.toBeNull();
+        expect(urlRow.classList.contains("fn__none")).toBe(true);
+        // 默认源自动拉取 + 来源短语为可点击链接（指向上次导入的 Gist）
+        expect(gistSyncService.fetchImportData).toHaveBeenCalledTimes(1);
+        const result = document.querySelector(".jcsm-gist-result") as HTMLElement;
+        expect(result.querySelectorAll("input[data-gist-row]")).toHaveLength(2);
+        const link = document.querySelector(".jcsm-gist-open-link") as HTMLAnchorElement | null;
+        expect(link).not.toBeNull();
+        expect(link?.getAttribute("href")).toBe(GIST_URL);
     });
 
     it("存在其它模态对话框（非来源）时仍拒绝打开", async () => {
@@ -309,18 +371,16 @@ describe("GistDialog.openPublish", () => {
         const list = document.querySelector(".jcsm-gist-publish-list") as HTMLElement;
         const checkboxes = Array.from(list.querySelectorAll("input[data-pub-id]")) as HTMLInputElement[];
         expect(checkboxes).toHaveLength(2);
-        // 列表位于弹窗正文末尾（目标选项/筛选/摘要在其上方）
+        // 列表位于弹窗正文末尾（目标选项/筛选在其上方）
         const content = document.querySelector(".b3-dialog__content") as HTMLElement;
         const listIndex = Array.from(content.children).indexOf(list);
         const targetGroup = content.querySelector("[data-action='gistPublishTarget']");
         const filterSelect = content.querySelector("select[data-action='gistPublishFilter']");
-        const summary = content.querySelector("[data-action='gistPublishSummary']");
         // 目标组排在最顶部（index 0）
         expect(Array.from(content.children).indexOf(targetGroup as HTMLElement)).toBe(0);
         // 列表排在最后
         expect(listIndex).toBeGreaterThan(Array.from(content.children).indexOf(targetGroup as HTMLElement));
         expect(listIndex).toBeGreaterThan(Array.from(content.children).indexOf(filterSelect as HTMLElement));
-        expect(listIndex).toBeGreaterThan(Array.from(content.children).indexOf(summary as HTMLElement));
         // gist id 输入框默认隐藏（仅「更新指定 Gist」时显示）
         const gistIdRow = document.querySelector("[data-action='gistPublishGistIdRow']") as HTMLElement;
         const gistIdInput = document.querySelector("input[data-action='gistPublishGistId']") as HTMLInputElement;
@@ -462,6 +522,26 @@ describe("GistDialog.openPublish", () => {
         expect(document.querySelector("[data-action='gistPublish']")).not.toBeNull();
         expect(snippetsDialog.closeByElement).toHaveBeenCalledWith(settingElement);
         expect(plugin.menuView.close).toHaveBeenCalled();
+    });
+
+    it("存在发布历史：默认勾选「更新上次发布的 Gist」并在句中给出可点击链接", async () => {
+        const {dialog, gistSyncService} = setup({});
+        (gistSyncService.loadPublishState as ReturnType<typeof vi.fn>).mockResolvedValue({gistUrl: GIST_URL, public: false, publishedAt: "", fileCount: 1, snippetCount: 1});
+        await dialog.openPublish();
+        await waitChain();
+
+        // 有发布历史时默认勾选「更新上次发布的 Gist」
+        const updateLast = document.querySelector("input[name='jcsm-gist-target'][value='update-last']") as HTMLInputElement;
+        expect(updateLast).not.toBeNull();
+        expect(updateLast.checked).toBe(true);
+        // 新建 secret 未勾选，且「更新上次发布的 Gist」句中链接指向该 Gist
+        const secretRadio = document.querySelector("input[name='jcsm-gist-target'][value='new-secret']") as HTMLInputElement;
+        expect(secretRadio.checked).toBe(false);
+        const link = document.querySelector(".jcsm-gist-open-link") as HTMLAnchorElement | null;
+        expect(link).not.toBeNull();
+        expect(link?.getAttribute("href")).toBe(GIST_URL);
+        // gist 输入行保持隐藏
+        expect((document.querySelector("[data-action='gistPublishGistIdRow']") as HTMLElement).classList.contains("fn__none")).toBe(true);
     });
 
     it("存在其它模态对话框（非来源）时仍拒绝打开", async () => {

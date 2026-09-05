@@ -42,6 +42,7 @@ const setup = (serverSnippets: Snippet[] = []) => {
             saveSnippetsList: vi.fn(async () => undefined),
             applyImportedSnippets: vi.fn(async () => undefined),
         },
+        saveData: vi.fn(async () => ({code: 0})),
         snippetStore: {replaceAll: vi.fn()},
         menuView: {menu: undefined, setMenuSnippetsType: vi.fn()},
     } as unknown as PluginSnippets;
@@ -190,11 +191,12 @@ describe("ImportExportService", () => {
 
             const newList = vi.mocked(plugin.snippetManager.applyImportedSnippets).mock.calls[0][0] as Snippet[];
             expect(newList.map(s => s.id)).toEqual(["imp-1"]);
-            // 备份写入 /temp/plugin-snippets/
-            const putCalls = fetchPostMock.mock.calls.filter(([u]) => u === "/api/file/putFile");
-            expect(putCalls).toHaveLength(1);
-            const backupForm = putCalls[0][1] as FormData;
-            expect((backupForm.get("path") as string)).toMatch(/^\/temp\/plugin-snippets\/snippets_backup_.*\.json$/);
+            // 覆盖前把现有片段备份到插件存储区 backups 目录（经 plugin.saveData）
+            const saveData = plugin.saveData as ReturnType<typeof vi.fn>;
+            expect(saveData).toHaveBeenCalledTimes(1);
+            const [storageName, content] = saveData.mock.calls[0];
+            expect(storageName as string).toMatch(/^backups\/snippets_backup_.*\.json$/);
+            expect(JSON.parse(content as string)).toEqual(server);
             expect(showMessage).toHaveBeenCalledWith("Snippets: 覆盖成功", 3000, "info");
         });
 

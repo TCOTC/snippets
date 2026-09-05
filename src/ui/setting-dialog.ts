@@ -231,6 +231,11 @@ export class SettingDialog {
                     event.preventDefault();
                     event.stopPropagation();
                     void this.plugin.importExportService.importSnippets(action === "importSnippetsWithOverwrite");
+                } else if (action === "openBackupsFolder") {
+                    // 在系统文件管理器中打开备份文件夹
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void this.plugin.importExportService.openBackupsFolder();
                 } else if (action === "gistTokenSave" || action === "gistTokenClear" || action === "gistTokenTogglePassword") {
                     // GitHub Token 区域按钮：设置对话框的捕获阶段监听会截断目标元素自绑事件，
                     // 因此保存/清除/切换明文统一经 handleGistTokenAction 处理（见 src/services/gist-token.ts）

@@ -16,11 +16,12 @@ const stubFetch = (handler: (url: string, init: RequestInit) => {status: number;
 };
 
 describe("parseGistUrl", () => {
-    it("接受裸 id / 完整链接 / 短链接并去除多余路径", () => {
-        expect(parseGistUrl("6cad326836d38bd3a7ae")).toBe("6cad326836d38bd3a7ae");
+    it("接受完整 gist 链接并去除多余路径与裸 id（不支持裸 id）", () => {
         expect(parseGistUrl("https://gist.github.com/octocat/6cad326836d38bd3a7ae")).toBe("6cad326836d38bd3a7ae");
         expect(parseGistUrl("https://gist.github.com/6cad326836d38bd3a7ae")).toBe("6cad326836d38bd3a7ae");
         expect(parseGistUrl("https://gist.github.com/octocat/6cad326836d38bd3a7ae#file-xxx")).toBe("6cad326836d38bd3a7ae");
+        // 仅粘贴裸 id 不识别（统一只收链接）
+        expect(parseGistUrl("6cad326836d38bd3a7ae")).toBeNull();
     });
 
     it("空白与非法输入返回 null", () => {
@@ -28,6 +29,7 @@ describe("parseGistUrl", () => {
         expect(parseGistUrl("   ")).toBeNull();
         expect(parseGistUrl("not-a-gist")).toBeNull();
         expect(parseGistUrl("https://github.com/other/repo")).toBeNull();
+        expect(parseGistUrl("https://gist.example.com/6cad326836d38bd3a7ae")).toBeNull();
     });
 });
 

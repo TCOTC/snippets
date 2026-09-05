@@ -175,7 +175,7 @@ export class GistSyncService {
         try {
             await this.plugin.loadData(PUBLISH_STATE_FILE);
             const state = this.plugin.data[PUBLISH_STATE_FILE];
-            return state && typeof state === "object" && typeof state.gistId === "string"
+            return state && typeof state === "object" && typeof state.gistUrl === "string"
                 ? state as GistPublishState
                 : undefined;
         } catch {
@@ -188,6 +188,28 @@ export class GistSyncService {
      */
     async savePublishState(state: GistPublishState): Promise<void> {
         await this.plugin.saveData(PUBLISH_STATE_FILE, state);
+    }
+
+    /**
+     * 读取上次导入的 gist 状态（导入来源记忆；不随 plugin-config.json 同步）
+     */
+    async loadImportState(): Promise<GistImportState | undefined> {
+        try {
+            await this.plugin.loadData(IMPORT_STATE_FILE);
+            const state = this.plugin.data[IMPORT_STATE_FILE];
+            return state && typeof state === "object" && typeof state.gistUrl === "string"
+                ? state as GistImportState
+                : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * 写入上次导入的 gist 状态
+     */
+    async saveImportState(state: GistImportState): Promise<void> {
+        await this.plugin.saveData(IMPORT_STATE_FILE, state);
     }
 
     /**
@@ -217,9 +239,9 @@ export class GistSyncService {
             gist = await updateGist(options.target.gistId, payload, {token, fetchImpl});
         }
 
-        // 记录发布目标（仅用于下次发布默认更新对象）
+        // 记录发布目标（仅用于下次发布默认更新对象与「上次发布的 Gist」链接；以完整链接标识）
         await this.savePublishState({
-            gistId: gist.id,
+            gistUrl: gist.html_url,
             public: gist.public,
             publishedAt: new Date().toISOString(),
             fileCount: Object.keys(gist.files).length,
@@ -232,13 +254,24 @@ export class GistSyncService {
 /** 上次发布的 gist 状态文件键（独立存储，不进入 plugin-config.json） */
 export const PUBLISH_STATE_FILE = "gist-publish-state.json";
 
-/** 上次发布的 gist 状态（发布目标记忆） */
+/** 上次导入的 gist 状态文件键（独立存储，不进入 plugin-config.json） */
+export const IMPORT_STATE_FILE = "gist-import-state.json";
+
+/** 上次发布的 gist 状态（发布目标记忆，仅以完整链接标识） */
 export interface GistPublishState {
-    gistId: string;
+    /** 上次发布的 gist 完整链接（https://gist.github.com/<user>/<id>） */
+    gistUrl: string;
     public: boolean;
     publishedAt: string;
     fileCount: number;
     snippetCount: number;
+}
+
+/** 上次导入的 gist 状态（导入来源记忆，仅以完整链接标识） */
+export interface GistImportState {
+    /** 上次导入的 gist 完整链接（https://gist.github.com/<user>/<id>） */
+    gistUrl: string;
+    importedAt: string;
 }
 
 /** 发布目标：新建（含可见性）或更新既有 gist */

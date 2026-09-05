@@ -73,12 +73,12 @@ function toFilesPayload(files: GistFilesPayload): Record<string, {content: strin
 
 const API_BASE = "https://api.github.com";
 const REQUEST_TIMEOUT_MS = 15000;
-const GIST_URL_PATTERN = /^(?:https?:\/\/)?(?:gist\.github\.com\/)?(?:(?:[a-zA-Z0-9-]+\/)?)([0-9a-f]{32}|[a-zA-Z0-9]{8,32})(?:[\/?#].*)?$/;
+const GIST_URL_PATTERN = /^(?:https?:\/\/)?gist\.github\.com\/(?:[a-zA-Z0-9-]+\/)?([0-9a-f]{32}|[a-zA-Z0-9]{8,32})(?:[\/?#].*)?$/;
 
 /**
- * 从用户输入解析 gist id
- * 接受：裸 id、https://gist.github.com/<user>/<id>、https://gist.github.com/<id>
- * @param input 链接或 id
+ * 从 gist 链接解析 gist id
+ * 仅接受 https://gist.github.com/<user>/<id> 或 https://gist.github.com/<id> 形式链接（裸 id 不接受）
+ * @param input 链接
  * @returns gist id；无法解析时返回 null
  */
 export function parseGistUrl(input: string): string | null {
