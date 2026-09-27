@@ -287,4 +287,100 @@ describe("MenuDragSort", () => {
             expect(plugin.menuView.initSnippetsContainer).toHaveBeenCalled();
         });
     });
+
+    describe("移动端菜单抽屉下拉手势", () => {
+        /** 构造触摸事件（实现内以 instanceof MouseEvent 区分鼠标与触摸，故不能用 MouseEvent） */
+        const touchEvent = (type: string, touch: {clientX: number, clientY: number}) => {
+            const event = new Event(type, {bubbles: true, cancelable: true});
+            Object.defineProperties(event, {
+                touches: {value: [touch]},
+                changedTouches: {value: [touch]},
+            });
+            return event;
+        };
+
+        /**
+         * 在 menuItems 外包一层菜单根节点：移动端菜单的下拉关闭手势位于该层，拖拽期间不应收到触摸事件；
+         * 拦截只依赖事件所在的层级，不依赖具体类名与内联样式
+         */
+        const wrapInMenuRoot = (plugin: PluginSnippets) => {
+            const menuRoot = document.createElement("div");
+            menuRoot.className = "b3-menu";
+            menuRoot.appendChild(plugin.menuView.menuItems);
+            return menuRoot;
+        };
+
+        const startTouch = (dragSort: MenuDragSort, item: HTMLElement) => {
+            const event = touchEvent("touchstart", {clientX: 10, clientY: 10});
+            Object.defineProperty(event, "target", {value: item});
+            dragSort.handleMenuTouchstart(event as unknown as TouchEvent);
+        };
+
+        const originalElementFromPoint = document.elementFromPoint;
+
+        afterEach(() => {
+            document.elementFromPoint = originalElementFromPoint;
+        });
+
+        it("长按进入拖拽后触摸事件不再上传到菜单根节点，菜单不被抽屉手势关闭", async () => {
+            const {dragSort, plugin, item, selectItem, broadcast} = setup();
+            const menuRoot = wrapInMenuRoot(plugin);
+            const rootMove = vi.fn();
+            const rootEnd = vi.fn();
+            menuRoot.addEventListener("touchmove", rootMove);
+            menuRoot.addEventListener("touchend", rootEnd);
+            // 触摸移动经 elementFromPoint 查找落点，jsdom 无布局需以桩替代
+            document.elementFromPoint = vi.fn(() => selectItem);
+
+            startTouch(dragSort, item);
+            await wait(550);
+            expect(dragSort.isDragging).toBe(true);
+
+            item.dispatchEvent(touchEvent("touchmove", {clientX: 10, clientY: 60}));
+            item.dispatchEvent(touchEvent("touchend", {clientX: 10, clientY: 60}));
+
+            expect(rootMove).not.toHaveBeenCalled();
+            expect(rootEnd).not.toHaveBeenCalled();
+            // 不改写菜单根节点的内联样式（抽屉位移由思源自行管理）
+            expect(menuRoot.getAttribute("style")).toBeNull();
+
+            // 排序照常执行（自拉列表 → Store 移动 → 落库 → 广播）
+            await wait(0);
+            expect(plugin.snippetStore.move).toHaveBeenCalledWith("js-1", "css-1", false);
+            expect(broadcast).toHaveBeenCalledWith({type: "snippets_sort"});
+        });
+
+        it("长按等待期的微小位移不上传，祖先手势不再先于拖拽启动", () => {
+            const {dragSort, plugin, item} = setup();
+            const menuRoot = wrapInMenuRoot(plugin);
+            const rootMove = vi.fn();
+            menuRoot.addEventListener("touchmove", rootMove);
+
+            startTouch(dragSort, item);
+            // 2px 位移未超拖拽阈值：长按仍在计时，此时上传会让祖先手势先动起来并写入内联位移
+            item.dispatchEvent(touchEvent("touchmove", {clientX: 10, clientY: 12}));
+
+            expect(rootMove).not.toHaveBeenCalled();
+            expect(dragSort.isDragging).toBe(false);
+            item.dispatchEvent(touchEvent("touchend", {clientX: 10, clientY: 12}));
+        });
+
+        it("位移超阈值即取消长按：不拦截后续事件，菜单下拉关闭手势保持可用", () => {
+            const {dragSort, plugin, item} = setup();
+            const menuRoot = wrapInMenuRoot(plugin);
+            const rootMove = vi.fn();
+            const rootEnd = vi.fn();
+            menuRoot.addEventListener("touchmove", rootMove);
+            menuRoot.addEventListener("touchend", rootEnd);
+
+            startTouch(dragSort, item);
+            // 位移超阈值 → 长按取消，不进入拖拽
+            item.dispatchEvent(touchEvent("touchmove", {clientX: 10, clientY: 60}));
+            expect(dragSort.isDragging).toBe(false);
+            item.dispatchEvent(touchEvent("touchend", {clientX: 10, clientY: 60}));
+
+            expect(rootMove).toHaveBeenCalledTimes(1);
+            expect(rootEnd).toHaveBeenCalledTimes(1);
+        });
+    });
 });

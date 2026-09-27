@@ -4,6 +4,7 @@
 // 分组视图下既支持片段项拖拽（组内/跨组/移入移出未分组），也支持分组头拖拽（组间排序，
 // “未分组”作为 id 固定为 default 的占位分组一起参与组序，见 domain/snippet-groups.ts）。
 // 菜单列表容器经 plugin.menuView.menuItems 访问（拖拽只在菜单打开期间发生，menuItems 必然已就位）。
+// 拖拽期间会拦住触摸事件继续上传，避免菜单祖先上的手势（移动端底部菜单的下拉关闭、全局滑动）同时响应。
 import {Constants} from "siyuan";
 import type PluginSnippets from "../index";
 import {
@@ -522,7 +523,12 @@ export class MenuDragSort {
 
         // 触摸开始时不阻止默认行为，只有在开始拖拽时才阻止
 
-        const documentSelf = document;
+        // 移动端菜单是带下拉关闭手势的底部抽屉：思源在菜单根节点上监听 touchmove/touchend，手指下移会
+        // 让整个菜单跟随位移，松手按位移与速度判定是否关闭；类似的全局滑动监听也位于菜单之上的层级。
+        // 这些手势在触摸起点命中 [draggable="true"] 或已滚动的可滚动容器时会让位，代码片段行不属其中，
+        // 因此需要自行控制事件上传（见下方 stopPropagation），但不写入其内联样式
+        const touchHost = this.plugin.menuView.menuItems;
+
         let ghostElement: HTMLElement;
         let selectItem: HTMLElement | null = null;
         let startTouch: Touch;
@@ -573,30 +579,39 @@ export class MenuDragSort {
                     clearTimeout(longPressTimer);
                     longPressTimer = 0;
                 }
-                // 如果还没开始拖拽，允许正常滚动
-                if (!this.isDragging) {
-                    return;
-                }
             }
 
-            // 只有在拖拽状态下才阻止默认行为
-            if (this.isDragging) {
-                moveEvent.preventDefault();
-
-                // 更新幽灵元素位置
-                ghostElement.style.top = currentTouch.clientY + "px";
-                ghostElement.style.left = currentTouch.clientX + "px";
-
-                // 处理拖拽滚动
-                this.handleDragScroll(currentTouch.clientY, contentRect, dragContainer);
-
-                // 更新拖拽样式并获取目标项
-                selectItem = this.updateDragStyles(moveEvent, dragContainer, item, contentRect);
+            if (this.isDragging || !hasMoved) {
+                // 长按判定期间不上传微小位移、进入拖拽后不上传任何移动：祖先手势因此不会先于本插件启动，
+                // 也就不存在它写入内联位移样式后无人收尾的残留（事件挂载点在菜单项容器，捕获阶段拦截）
+                moveEvent.stopPropagation();
             }
+
+            // 如果还没开始拖拽，允许正常滚动
+            if (!this.isDragging) {
+                return;
+            }
+
+            moveEvent.preventDefault();
+
+            // 更新幽灵元素位置
+            ghostElement.style.top = currentTouch.clientY + "px";
+            ghostElement.style.left = currentTouch.clientX + "px";
+
+            // 处理拖拽滚动
+            this.handleDragScroll(currentTouch.clientY, contentRect, dragContainer);
+
+            // 更新拖拽样式并获取目标项
+            selectItem = this.updateDragStyles(moveEvent, dragContainer, item, contentRect);
         };
 
         // 触摸结束事件
         const touchendHandler = async (endEvent: TouchEvent) => {
+            if (this.isDragging) {
+                // 已进入拖拽：拦住抬手指事件，避免祖先手势按拖动距离与速度判定为下拉关闭菜单
+                endEvent.stopPropagation();
+            }
+
             // 清除长按定时器
             if (longPressTimer) {
                 clearTimeout(longPressTimer);
@@ -604,8 +619,8 @@ export class MenuDragSort {
             }
 
             // 移除触摸事件监听
-            documentSelf.removeEventListener("touchmove", touchmoveHandler);
-            documentSelf.removeEventListener("touchend", touchendHandler);
+            touchHost.removeEventListener("touchmove", touchmoveHandler, true);
+            touchHost.removeEventListener("touchend", touchendHandler, true);
 
             // 只有在拖拽状态下才阻止默认行为
             if (this.isDragging) {
@@ -614,8 +629,8 @@ export class MenuDragSort {
             }
         };
 
-        // 添加触摸事件监听
-        documentSelf.addEventListener("touchmove", touchmoveHandler, { passive: false });
-        documentSelf.addEventListener("touchend", touchendHandler, { passive: false });
+        // 添加触摸事件监听（捕获阶段，见上方 touchHost 说明）
+        touchHost.addEventListener("touchmove", touchmoveHandler, { capture: true, passive: false });
+        touchHost.addEventListener("touchend", touchendHandler, { capture: true, passive: false });
     }
 }
