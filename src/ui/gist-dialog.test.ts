@@ -284,6 +284,43 @@ describe("GistDialog.openImport", () => {
         expect(plugin.showErrorMessage).not.toHaveBeenCalled();
     });
 
+    it("无导入/发布历史：不渲染来源单选，URL 行保持可见（可填链接获取）", async () => {
+        const {dialog, gistSyncService} = setup({importData: makeImportData()});
+        dialog.openImport();
+        await waitChain();
+
+        // 来源单选整组不渲染
+        expect(document.querySelector("[data-action='gistSourceGroup']")).toBeNull();
+        // URL 行可见：否则没有任何填写 Gist 链接的入口
+        const urlRow = document.querySelector("[data-action='gistUrlRow']") as HTMLElement;
+        expect(urlRow.classList.contains("fn__none")).toBe(false);
+        // 结果区在拉取前隐藏（不留空边框）
+        const resultSection = document.querySelector(".jcsm-gist-result-section") as HTMLElement;
+        expect(resultSection.classList.contains("fn__none")).toBe(true);
+
+        setInputValue(document.querySelector("input[data-action='gistUrl']") as HTMLInputElement, GIST_URL);
+        click(document.querySelector("[data-action='gistFetch']") as HTMLElement);
+        await waitChain();
+
+        expect(gistSyncService.fetchImportData).toHaveBeenCalledTimes(1);
+        expect(resultSection.classList.contains("fn__none")).toBe(false);
+        const result = document.querySelector(".jcsm-gist-result") as HTMLElement;
+        expect(result.querySelectorAll("input[data-gist-row]")).toHaveLength(2);
+    });
+
+    it("拉取失败：结果区重新隐藏，只保留错误提示", async () => {
+        const {dialog, plugin} = setup();
+        dialog.openImport();
+        await waitChain();
+
+        setInputValue(document.querySelector("input[data-action='gistUrl']") as HTMLInputElement, GIST_URL);
+        click(document.querySelector("[data-action='gistFetch']") as HTMLElement);
+        await waitChain();
+
+        expect(plugin.showErrorMessage).toHaveBeenCalled();
+        expect((document.querySelector(".jcsm-gist-result-section") as HTMLElement).classList.contains("fn__none")).toBe(true);
+    });
+
     it("存在发布历史（无导入历史）：默认源为「导入上次发布的 Gist」并隐藏 URL 行，切到「指定 Gist」恢复", async () => {
         const {dialog, gistSyncService} = setup({importData: makeImportData()});
         (gistSyncService.loadPublishState as ReturnType<typeof vi.fn>).mockResolvedValue({gistUrl: GIST_URL, public: false, publishedAt: "", fileCount: 1, snippetCount: 1});

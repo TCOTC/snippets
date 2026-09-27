@@ -558,8 +558,10 @@ export class GistDialog {
         <label class="jcsm-gist-mode-item"><span class="jcsm-gist-mode-title"><input type="radio" name="jcsm-gist-mode" value="overwrite">${this.plugin.i18n.gistImportModeOverwrite}</span><span class="jcsm-gist-mode-desc">${this.plugin.i18n.gistImportModeOverwriteDescription}</span></label>
         <label class="jcsm-gist-mode-item"><span class="jcsm-gist-mode-title"><input type="radio" name="jcsm-gist-mode" value="fork">${this.plugin.i18n.gistImportModeFork}</span><span class="jcsm-gist-mode-desc">${this.plugin.i18n.gistImportModeForkDescription}</span></label>
     </div>
-    <div class="fn__hr"></div>
-    <div class="jcsm-gist-result"></div>
+    <div class="jcsm-gist-result-section fn__none">
+        <div class="fn__hr"></div>
+        <div class="jcsm-gist-result"></div>
+    </div>
 </div>
 <div class="b3-dialog__action">
     <button class="b3-button b3-button--cancel" data-type="cancel">${this.plugin.i18n.cancel}</button>
@@ -631,10 +633,11 @@ export class GistDialog {
         });
 
         // 历史源为默认时隐藏 URL 输入行；切到「指定 Gist」才显示
+        // 无历史时来源单选整组不渲染，此时固定显示输入行（否则没有任何入口可填 Gist 链接）
         const urlRow = dialog.element.querySelector("[data-action='gistUrlRow']") as HTMLElement | null;
         const syncSourceUrlRow = () => {
             const source = dialog.element.querySelector("input[name='jcsm-gist-source']:checked") as HTMLInputElement | null;
-            urlRow?.classList.toggle("fn__none", source?.value !== "custom");
+            urlRow?.classList.toggle("fn__none", !!source && source.value !== "custom");
         };
         dialog.element.querySelectorAll("input[name='jcsm-gist-source']").forEach(radio => {
             radio.addEventListener("change", syncSourceUrlRow);
@@ -686,12 +689,15 @@ export class GistDialog {
      * 拉取并渲染 gist 预览
      */
     private async handleFetch(dialogElement: HTMLElement) {
+        const resultSection = dialogElement.querySelector(".jcsm-gist-result-section") as HTMLElement;
         const resultContainer = dialogElement.querySelector(".jcsm-gist-result") as HTMLElement;
         const gistId = parseGistUrl(this.selectedImportGistId(dialogElement));
         if (!gistId) {
             this.plugin.showErrorMessage(this.plugin.i18n.gistImportInvalidUrl);
             return;
         }
+        // 拉取期间才显示结果区（此前无内容时隐藏，避免留下空边框）
+        resultSection.classList.remove("fn__none");
         resultContainer.textContent = this.plugin.i18n.gistImportFetching;
         try {
             const service = this.getSyncService();
@@ -700,6 +706,7 @@ export class GistDialog {
         } catch (error) {
             this.importData = undefined;
             resultContainer.textContent = "";
+            resultSection.classList.add("fn__none");
             this.plugin.showErrorMessage(this.gistErrorMessage(error));
         }
     }
