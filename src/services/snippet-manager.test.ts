@@ -56,6 +56,7 @@ const setup = (serverSnippets: Snippet[] = []) => {
             initSnippetsContainer: vi.fn(),
             setSnippetsTypeSwitchBreathing: vi.fn(),
             promptJSReloadRequired: vi.fn(async () => {}),
+            isGroupedView: () => false,
         },
         snippetsDialog: {openEditDialog: vi.fn()},
         syncService: {broadcast},

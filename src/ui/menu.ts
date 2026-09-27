@@ -3,14 +3,30 @@
 // 菜单项生成与计数/选中/编辑按钮高亮、菜单位置、关闭回调（含自动重载界面联动）、拖拽排序（见 menu-drag-sort.ts）、
 // 以及菜单 + 对话框的全局键盘协调（Esc/Enter/方向键按 zIndex 与开合状态分发）。
 import {Menu, platformUtils} from "siyuan";
-import {genSnippetSwitchHtml, getDialogKeyHandler, hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, PLUGIN_NAME, showElementTooltip, SNIPPET_DIALOG_SELECTOR} from "../utils";
+import {escapeHtml, genSnippetSwitchHtml, getDialogKeyHandler, hideTooltip, htmlToElement, isInputElementActive, moveElementToTop, PLUGIN_NAME, showElementTooltip, SNIPPET_DIALOG_SELECTOR} from "../utils";
 import {filterSnippetsByKeyword, isSnippetsTypeEnabled, snippetTitle, sortSnippets} from "../domain/snippet";
+import {
+    addGroup,
+    cloneGroups,
+    findGroup,
+    genNewGroupId,
+    isUngroupedGroup,
+    removeGroup,
+    renameGroup,
+    SnippetGroup,
+    UNGROUPED_GROUP_ID,
+    ungroupedSnippetIds,
+    withUngroupedAnchors,
+} from "../domain/snippet-groups";
 import {MenuDragSort} from "./menu-drag-sort";
 import type PluginSnippets from "../index";
 import type {Snippet, SnippetType} from "../types";
 
 /** 菜单当前选中项类名（方向键/回车定位用） */
 const CURRENT_ITEM_CLASS = "b3-menu__item--current";
+
+/** 滚动定位菜单项到可视区的最大重试次数（布局未稳定/分组刚展开时逐帧重试，防止停在可视区外） */
+const SCROLL_TO_VISIBLE_MAX_RETRY = 8;
 
 /**
  * 顶栏菜单管理器
@@ -145,13 +161,26 @@ export class SnippetsMenu {
             return;
         }
 
-        // 获取代码片段列表（失败时关闭菜单，getSnippetsList 已弹错误提示）
+        // 并发获取代码片段列表与视图偏好（折叠状态/上次类型）：
+        // 片段列表失败时关闭菜单（getSnippetsList 已弹错误提示）；视图偏好读取失败不阻断
         this.plugin.console.log("openMenu: 获取代码片段列表");
-        if (!(await this.plugin.snippetManager.refreshSnippetsList())) {
+        const refreshPromise = this.plugin.snippetManager.refreshSnippetsList();
+        const uiStatePromise = this.plugin.uiStorage?.load().catch(() => undefined) ?? Promise.resolve(undefined);
+        const [refreshed] = await Promise.all([refreshPromise, uiStatePromise]);
+        if (!refreshed) {
             menu.close();
             this.menu = undefined;
             return;
         }
+
+        // 存储中有上次切换的类型则覆盖当前类型（无记录时用配置默认 defaultSnippetsType）
+        const storedType = this.plugin.uiStorage?.snippetsType;
+        if (storedType === "css" || storedType === "js") {
+            this.plugin.snippetsType = storedType;
+        }
+
+        // 以权威片段列表对账分组缓存（孤儿 id 剔除，见 domain/snippet-groups.ts reconcileGroups）
+        await this.plugin.snippetGroupStore.load(this.plugin.snippetsList);
 
         // 插入菜单顶部
         this.menuItems = menu.element.querySelector(".b3-menu__items")!;
@@ -176,6 +205,7 @@ export class SnippetsMenu {
 <button class="block__icon block__icon--show fn__flex-center ariaLabel${this.plugin.config.snippetSearchType === 0 ? " fn__none" : ""}" data-type="search" data-position="north" aria-label="${this.plugin.i18n.search}"><svg><use xlink:href="#iconSearch"></use></svg></button>
 <button class="block__icon block__icon--show fn__flex-center ariaLabel" data-type="config" data-position="north"><svg><use xlink:href="#iconSettings"></use></svg></button>
 <button class="block__icon block__icon--show fn__flex-center ariaLabel${this.plugin.isReloadUIRequired ? " jcsm-breathing" : ""}" data-type="reload" data-position="north"><svg><use xlink:href="#iconRefresh"></use></svg></button>
+<button class="block__icon block__icon--show fn__flex-center ariaLabel" data-type="group" data-position="north"><svg><use xlink:href="#iconGroups"></use></svg></button>
 <button class="block__icon block__icon--show fn__flex-center ariaLabel" data-type="new" data-position="north"><svg><use xlink:href="#iconAdd"></use></svg></button>
 <span class="fn__space"></span>
 <input class="jcsm-switch jcsm-all-snippets-switch b3-switch fn__flex-center" type="checkbox">
@@ -189,6 +219,8 @@ export class SnippetsMenu {
         settingsButton.setAttribute("aria-label", this.plugin.i18n.pluginConfig);
         const newSnippetButton = menuTop.querySelector("button[data-type='new']") as HTMLButtonElement;
         newSnippetButton.setAttribute("aria-label", this.plugin.i18n.add + " " + this.plugin.snippetsType.toUpperCase());
+        const groupButton = menuTop.querySelector("button[data-type='group']") as HTMLButtonElement;
+        groupButton.setAttribute("aria-label", this.plugin.i18n.groupNew);
         const reloadUIButton = menuTop.querySelector("button[data-type='reload']") as HTMLButtonElement;
         reloadUIButton.setAttribute("aria-label", this.buildTitle(this.plugin.i18n.reloadUI, "reloadUI"));
 
@@ -254,22 +286,42 @@ export class SnippetsMenu {
     }
 
     /**
-     * 初始化代码片段列表容器（供跨窗口排序同步时重渲染菜单项列表，需在菜单已打开且有 menuItems 时调用）
+     * 初始化代码片段列表容器（供跨窗口排序同步/分组变更/配置热应用时重渲染菜单项列表，
+     * 需在菜单已打开且有 menuItems 时调用；开启分组视图时按分组折叠树渲染，否则平铺渲染）
      */
     initSnippetsContainer() {
+        const grouped = this.isGroupedView();
         // 插入代码片段列表容器
         const snippetsContainer = document.createElement("div");
-        snippetsContainer.className = "jcsm-snippets-container";
-        snippetsContainer.insertAdjacentHTML("beforeend", this.genMenuSnippetsItems());
+        snippetsContainer.className = "jcsm-snippets-container" + (grouped ? " jcsm-grouped" : "");
+        snippetsContainer.insertAdjacentHTML("beforeend", grouped ? this.genGroupedMenuHtml() : this.genMenuSnippetsItems());
         this.menuItems.querySelector(".jcsm-snippets-container")?.remove();
         this.menuItems.append(snippetsContainer);
 
-        // “添加第一个 CSS 代码片段”的菜单项
-        const newCssSnippetButton = htmlToElement(`<div class="jcsm-snippet-item b3-menu__item" data-type="new" data-snippet-type="css">${this.plugin.i18n.addFirstCSSSnippet}</div>`);
-        snippetsContainer.appendChild(newCssSnippetButton);
-        // “添加第一个 JS 代码片段”的菜单项
-        const newJsSnippetButton = htmlToElement(`<div class="jcsm-snippet-item b3-menu__item" data-type="new" data-snippet-type="js">${this.plugin.i18n.addFirstJSSnippet}</div>`);
-        snippetsContainer.appendChild(newJsSnippetButton);
+        // 分组视图下片段被包进各自的组区段（.jcsm-group-items），不再是这两个按钮的兄弟节点，
+        // 原有 CSS（同类型片段兄弟节点出现后隐藏按钮）不再生效，因此仅在某类型确实没有任何片段
+        // 时才追加“添加第一个…”空态入口；平铺模式沿用旧逻辑（恒追加、由 CSS 按兄弟关系隐藏）
+        if (!grouped || !this.plugin.snippetsList.some(snippet => snippet.type === "css")) {
+            // “添加第一个 CSS 代码片段”的菜单项
+            const newCssSnippetButton = htmlToElement(`<div class="jcsm-snippet-item b3-menu__item" data-type="new" data-snippet-type="css">${this.plugin.i18n.addFirstCSSSnippet}</div>`);
+            snippetsContainer.appendChild(newCssSnippetButton);
+        }
+        if (!grouped || !this.plugin.snippetsList.some(snippet => snippet.type === "js")) {
+            // “添加第一个 JS 代码片段”的菜单项
+            const newJsSnippetButton = htmlToElement(`<div class="jcsm-snippet-item b3-menu__item" data-type="new" data-snippet-type="js">${this.plugin.i18n.addFirstJSSnippet}</div>`);
+            snippetsContainer.appendChild(newJsSnippetButton);
+        }
+    }
+
+    /**
+     * 外部数据变更（内核 storage 推送 / 跨设备同步）后刷新已打开菜单。
+     * 只要菜单项容器存在就重建，**不以 isGroupedView() 为门槛**：
+     * 删除最后一个真实分组后 isGroupedView() 变为 false，若据此跳过重建会残留已分组的旧界面，
+     * 导致其他前端实例看不到分组删除。initSnippetsContainer 内部会自行选择分组/平铺渲染。
+     */
+    refreshSnippetsContainerAfterExternalChange() {
+        if (!this.menuItems) return;
+        this.initSnippetsContainer();
     }
 
     /**
@@ -344,31 +396,61 @@ export class SnippetsMenu {
     }
 
     /**
-     * 滚动到指定的菜单项，确保其在滚动容器中可见
-     * @param menuItem 要滚动到的菜单项
+     * 从菜单项向上查找最近的实际滚动容器（.jcsm-snippets-container 与它的祖先
+     * .b3-menu__items 都声明了 overflow:auto，真正承接滚动的是被限高那一层；
+     * 以 scrollHeight > clientHeight 判定谁真正需要/承载滚动，避免把 scrollTop 设给
+     * 内容没超高、无法滚动的内层容器导致方向键滚动失效）。
+     * @param element 起始元素（菜单项）
+     * @returns 最近的实际可滚容器；无则返回 null
      */
-    private scrollToMenuItem(menuItem: HTMLElement) {
-        // 获取滚动容器
-        const scrollContainer = this.menuItems.querySelector(".jcsm-snippets-container") as HTMLElement;
+    private findScrollableAncestor(element: HTMLElement): HTMLElement | null {
+        const menuElement = this.menu?.element;
+        let node: HTMLElement | null = element;
+        while (node && node !== menuElement && node.parentElement) {
+            // 只有内容确实超高（可滚）才作为候选滚动容器，避免把 scrollTop 赋给无滚动条的内层
+            if (node.scrollHeight > node.clientHeight + 1) {
+                const overflowY = getComputedStyle(node).overflowY;
+                if (overflowY === "auto" || overflowY === "scroll") {
+                    return node;
+                }
+            }
+            node = node.parentElement;
+        }
+        return null;
+    }
+
+    /**
+     * 滚动到指定的菜单项，确保其在滚动容器中可见
+     * 滚动目标是“最近的实际可滚容器”（可能为 .jcsm-snippets-container 或 .b3-menu__items）；
+     * 只做一次滚动定位：选中项是否可见由 selectMenuItem 的"先展开所在折叠分组"保证，
+     * 展开完成后单帧位置即已就绪，无需对 scrollTop 做叠加重试（叠加会造成快速连按方向键
+     * 时多条帧链累积滚动、把滚动条顶到尽头，导致容器看似无法滚动）。
+     * @param menuItem 要滚动到的菜单项
+     * @param retry 等待布局就绪的重试次数（仅位置未就绪时使用，不滚动）
+     */
+    private scrollToMenuItem(menuItem: HTMLElement, retry = 0) {
+        // 找到真正可滚的容器；找不到（内容未超高、无需滚动）则回退片段列表容器并直接跳过
+        const scrollContainer = this.findScrollableAncestor(menuItem) ?? this.menuItems.querySelector(".jcsm-snippets-container") as HTMLElement | null;
         if (!scrollContainer) return;
 
         // 使用 requestAnimationFrame 确保元素完全渲染后再获取位置信息
         requestAnimationFrame(() => {
-            // 菜单已关闭或滚动容器已脱离文档时终止重试，避免高度为 0 时无限自递归
+            // 菜单已关闭或滚动容器已脱离文档时终止
             if (!this.menu || !scrollContainer.isConnected) return;
 
-            // 获取菜单项相对于滚动容器的位置信息
             const containerRect = scrollContainer.getBoundingClientRect();
             const itemRect = menuItem.getBoundingClientRect();
 
-            // 检查位置信息是否有效（高度不为0）
+            // 位置信息尚未就绪（高度为 0，如所在分组刚展开、布局未排定）时稍后重试；
+            // 此分支只等待、不滚动，不会叠加滚动
             if (containerRect.height === 0 || itemRect.height === 0) {
-                // 如果位置信息无效，再次尝试
-                requestAnimationFrame(() => this.scrollToMenuItem(menuItem));
+                if (retry < SCROLL_TO_VISIBLE_MAX_RETRY) {
+                    requestAnimationFrame(() => this.scrollToMenuItem(menuItem, retry + 1));
+                }
                 return;
             }
 
-            // 计算菜单项是否在可视区域内
+            // 计算菜单项是否在可视区域内并滚动到位（一次到位，不叠加）
             const isAbove = itemRect.top < containerRect.top;
             const isBelow = itemRect.bottom > containerRect.bottom;
 
@@ -445,6 +527,8 @@ export class SnippetsMenu {
             // 切换代码片段类型
             this.plugin.snippetsType = newType;
             this.setMenuSnippetsType(newType);
+            // 持久化上次类型（供下次打开菜单恢复；经思源内核 localStorage，见 ui-storage.ts）
+            void this.plugin.uiStorage?.saveSnippetsType(newType);
         }
     };
 
@@ -480,6 +564,8 @@ export class SnippetsMenu {
                 if (type === "css" || type === "js") {
                     this.plugin.snippetsType = type;
                     this.setMenuSnippetsType(type);
+                    // 持久化上次类型（供下次打开菜单恢复；经思源内核 localStorage，见 ui-storage.ts）
+                    void this.plugin.uiStorage?.saveSnippetsType(type);
                 }
             }
 
@@ -519,10 +605,34 @@ export class SnippetsMenu {
                 } else if (type === "reload") {
                     // 重新加载界面（扫描打开的编辑对话框未保存变更并二次确认，见 SnippetsDialog.reloadUI）
                     this.plugin.snippetsDialog.reloadUI();
+                } else if (type === "group") {
+                    // 新建分组（归属当前分区类型；无分组时创建首个分组即进入分组视图）
+                    this.addGroup();
                 } else if (type === "new") {
                     // 新建代码片段
                     this.plugin.snippetManager.createSnippet();
                 }
+            }
+        }
+
+        // 分组视图下：组头折叠与组头"重命名/删除"按钮分发（点击组头非按钮区域则切换折叠）
+        if (this.isGroupedView()) {
+            const groupButton = target.closest("button[data-group-action]") as HTMLButtonElement | null;
+            if (groupButton) {
+                const action = groupButton.dataset.groupAction;
+                const groupHeader = groupButton.closest(".jcsm-group-header") as HTMLElement | null;
+                if (action === "rename" && groupHeader) {
+                    this.renameGroup(groupHeader.dataset.groupId!);
+                } else if (action === "delete" && groupHeader) {
+                    this.deleteGroup(groupHeader.dataset.groupId!);
+                }
+                return;
+            }
+            const headerElement = target.closest(".jcsm-group-header") as HTMLElement | null;
+            if (headerElement) {
+                const section = headerElement.closest(".jcsm-group-section") as HTMLElement;
+                this.toggleGroupSectionCollapsed(section);
+                return;
             }
         }
 
@@ -628,7 +738,24 @@ export class SnippetsMenu {
         // 传入指定列表（如新增副本的单个菜单项）时不排序；默认按插件排序方式处理全量列表
         // （含深拷贝与按键排序，见 domain/snippet.ts sortSnippets）
         const snippetsList = argSnippetsList ?? sortSnippets(this.plugin.snippetsList ?? [], this.plugin.config.snippetSortType);
+        return snippetsList.map(snippet => this.buildSnippetRow(snippet)).join("");
+    }
 
+    /**
+     * 是否分组视图（菜单分组渲染/分组拖拽/分组操作均以本判断分支）
+     * 分组无独立开关：存在至少一个真实分组即按分组折叠展示；没有任何分组时回退为平铺列表，
+     * 与未开启分组功能前一致。未分组占位（UNGROUPED_GROUP_ID）不计入，仅表达组序位置。
+     */
+    isGroupedView(): boolean {
+        return (this.plugin.snippetGroupStore?.groups?.some(group => !isUngroupedGroup(group))) ?? false;
+    }
+
+    /**
+     * 生成单个代码片段菜单项 HTML（分组渲染与平铺渲染共用，保证两种形态下片段项 DOM 一致）
+     * @param snippet 代码片段
+     * @returns 代码片段菜单项 HTML 字符串
+     */
+    private buildSnippetRow(snippet: Snippet): string {
         const isTouch = this.plugin.isMobile || this.isTouchDevice;
         const showPublishCheckbox = this.isShowPublishCheckbox();
 
@@ -641,14 +768,12 @@ export class SnippetsMenu {
         const itemButtonsHtml = actionButtons
             .map(button => `<button class="block__icon block__icon--show fn__flex-center${isTouch ? " jcsm-touch" : ""}${button.show ? "" : " fn__none"}" data-type="${button.type}"><svg><use xlink:href="#${button.icon}"></use></svg></button>`)
             .join("\n    ");
-        let snippetsHtml = "";
 
-        snippetsList.forEach((snippet: Snippet) => {
-            // 创建临时的 DOM 元素来安全地设置代码片段名称 https://github.com/TCOTC/snippets/issues/21
-            const safeSnippetName = document.createElement("span");
-            safeSnippetName.textContent = snippetTitle(snippet);
+        // 创建临时的 DOM 元素来安全地设置代码片段名称 https://github.com/TCOTC/snippets/issues/21
+        const safeSnippetName = document.createElement("span");
+        safeSnippetName.textContent = snippetTitle(snippet);
 
-            snippetsHtml += `
+        return `
 <div class="jcsm-snippet-item b3-menu__item" data-type="${snippet.type}" data-id="${snippet.id}">
     <span class="jcsm-snippet-name fn__flex-1" placeholder="${this.plugin.i18n.emptySnippet}">${safeSnippetName.innerHTML}</span>
     <span class="fn__space"></span>
@@ -659,9 +784,298 @@ export class SnippetsMenu {
     ${genSnippetSwitchHtml("snippetSwitch", snippet.enabled, "jcsm-switch ")}
 </div>
             `;
-        });
+    }
 
-        return snippetsHtml;
+    /**
+     * 折叠状态映射键（组内 map 键 "<css|js>.<分组 id|default>"，见 services/ui-storage.ts）
+     * @param snippetType 片段类型
+     * @param key 分组 id 或未分组占位 id
+     * @returns 映射键
+     */
+    private groupCollapsedMapKey(snippetType: SnippetType, key: string): string {
+        return `${snippetType}.${key}`;
+    }
+
+    /**
+     * 读取分组折叠状态（默认展开；折叠是视图偏好，经 plugin.uiStorage 存思源内核 localStorage，
+     * 跨窗口一致：本窗口切换即写库广播，打开菜单时由内核拉取最新）
+     * @param snippetType 片段类型
+     * @param key 分组 id 或未分组占位 id
+     * @returns 是否折叠
+     */
+    private isGroupCollapsed(snippetType: SnippetType, key: string): boolean {
+        return this.plugin.uiStorage?.groupCollapsed?.[this.groupCollapsedMapKey(snippetType, key)] === true;
+    }
+
+    /**
+     * 写入分组折叠状态（同步更新缓存 map 并异步落库到思源内核 localStorage；只记录折叠为 true 的项）
+     * @param snippetType 片段类型
+     * @param key 分组 id 或未分组占位 id
+     * @param collapsed 是否折叠
+     */
+    private setGroupCollapsed(snippetType: SnippetType, key: string, collapsed: boolean) {
+        const uiStorage = this.plugin.uiStorage;
+        if (!uiStorage) return;
+        const next = { ...uiStorage.groupCollapsed };
+        const mapKey = this.groupCollapsedMapKey(snippetType, key);
+        if (collapsed) {
+            next[mapKey] = true;
+        } else {
+            delete next[mapKey];
+        }
+        uiStorage.groupCollapsed = next;
+        void uiStorage.saveGroupCollapsed(next);
+    }
+
+    /**
+     * 生成分组视图下片段列表容器 HTML（CSS/JS 两类型各自判断；
+     * 只有该类型存在至少一个用户分组时才按分组折叠树渲染并显示内置“未分组”，
+     * 否则该类型直接平铺列出片段、不显示“未分组”标题。
+     * 未分组占位分组在组序中的位置即“未分组”区段的位置，真实分组照常渲染。
+     * 新建分组入口在菜单顶栏分组按钮，见 menuClickHandler data-type="group"）
+     * @returns 分组视图 HTML 字符串
+     */
+    genGroupedMenuHtml(): string {
+        const groups = cloneGroups(this.plugin.snippetGroupStore.groups ?? []);
+        let html = "";
+        (["css", "js"] as SnippetType[]).forEach(type => {
+            const typeGroups = groups.filter(group => group.type === type);
+            const realGroups = typeGroups.filter(group => !isUngroupedGroup(group));
+            if (realGroups.length === 0) {
+                // 该类型尚无用户分组：平铺列出片段，不显示“未分组”（避免未启用分组的类型多出组头）
+                html += this.genTypePlainItems(type);
+                return;
+            }
+            const hasAnchor = typeGroups.some(group => isUngroupedGroup(group));
+            typeGroups.forEach(group => {
+                // 未分组占位按其当前位置渲染为“未分组”区段（真实成员由未分组集合推导，不落盘）
+                html += isUngroupedGroup(group)
+                    ? this.genUngroupedSectionHtml(type, typeGroups)
+                    : this.genGroupSectionHtml(type, group);
+            });
+            // 防御：分组缓存未补齐占位时，未分组兜底渲染在该类型所有组之后
+            if (!hasAnchor) {
+                html += this.genUngroupedSectionHtml(type, typeGroups);
+            }
+        });
+        return html;
+    }
+
+    /**
+     * 平铺生成某类型的片段行（该类型尚无用户分组时使用，不产生“未分组”组头）
+     * @param snippetType 片段类型
+     * @returns 片段行 HTML 字符串
+     */
+    private genTypePlainItems(snippetType: SnippetType): string {
+        const snippetsList = this.plugin.snippetsList ?? [];
+        return snippetsList
+            .filter(snippet => snippet.type === snippetType)
+            .map(snippet => this.buildSnippetRow(snippet))
+            .join("");
+    }
+
+    /**
+     * 以片段 id 反查片段（构建分组/未分组行时用，找不到则跳过——对账已剔除孤儿 id，这里仅防御）
+     * @param snippetsList 权威片段列表
+     * @param snippetType 片段类型
+     * @returns 片段 id → 片段 的映射
+     */
+    private buildSnippetIdMap(snippetsList: Snippet[], snippetType: SnippetType): Map<string, Snippet> {
+        const map = new Map<string, Snippet>();
+        snippetsList.forEach(snippet => {
+            if (snippet.type === snippetType) {
+                map.set(snippet.id, snippet);
+            }
+        });
+        return map;
+    }
+
+    /**
+     * 生成单个分组区段 HTML（组头 + 组内片段行，折叠时隐藏组内行）
+     * @param snippetType 片段类型
+     * @param group 分组
+     * @returns 区段 HTML 字符串
+     */
+    private genGroupSectionHtml(snippetType: SnippetType, group: SnippetGroup): string {
+        const snippetMap = this.buildSnippetIdMap(this.plugin.snippetsList ?? [], snippetType);
+        const rows = group.snippetIds
+            .map(id => snippetMap.get(id))
+            .filter((snippet): snippet is Snippet => !!snippet)
+            .map(snippet => this.buildSnippetRow(snippet))
+            .join("");
+        const collapsed = this.isGroupCollapsed(snippetType, group.id);
+        const name = group.name ? escapeHtml(group.name) : escapeHtml(this.plugin.i18n.groupEmptyName);
+        // 折叠箭头用思源列表项同款 #iconRight（默认展开朝下、折叠朝右，见 index.scss rotate）
+        // 参考思源 b3-list-item--hide-action：操作按钮收进 .jcsm-group-action 容器，默认隐藏，
+        // 仅鼠标悬浮在组头时才显示（触摸设备给组头加 jcsm-touch 类常显）；按钮位于计数左侧
+        const isTouch = this.plugin.isMobile || this.isTouchDevice;
+        return `
+<section class="jcsm-group-section${collapsed ? " jcsm-collapsed" : ""}" data-snippet-type="${snippetType}" data-group-id="${group.id}">
+    <div class="jcsm-group-header${isTouch ? " jcsm-touch" : ""}" data-group-id="${group.id}" title="${name}">
+        <span class="jcsm-caret fn__flex-center" aria-hidden="true"><svg><use xlink:href="#iconRight"></use></svg></span>
+        <span class="jcsm-group-name fn__flex-1">${name}</span>
+        <span class="jcsm-group-action fn__flex-center">
+            <button class="block__icon block__icon--show fn__flex-center ariaLabel" data-group-action="rename" aria-label="${escapeHtml(this.plugin.i18n.groupRename)}" data-position="north"><svg><use xlink:href="#iconEdit"></use></svg></button>
+            <button class="block__icon block__icon--show fn__flex-center ariaLabel" data-group-action="delete" aria-label="${escapeHtml(this.plugin.i18n.groupDelete)}" data-position="north"><svg><use xlink:href="#iconTrashcan"></use></svg></button>
+        </span>
+        <span class="jcsm-group-count">${group.snippetIds.length}</span>
+    </div>
+    <div class="jcsm-group-items">${rows}</div>
+</section>
+            `;
+    }
+
+    /**
+     * 生成某类型的"未分组"内置区段 HTML（收纳未被任何同类型真实分组引用的片段，按全局数组序展示）。
+     * 区段带固定占位分组 id（UNGROUPED_GROUP_ID），供组间拖拽排序把“未分组”当作普通分组移动位置。
+     * @param snippetType 片段类型
+     * @param typeGroups 该类型下的分组（含占位，用于推导未分组成员）
+     * @returns 区段 HTML 字符串
+     */
+    private genUngroupedSectionHtml(snippetType: SnippetType, typeGroups: SnippetGroup[]): string {
+        const snippetsList = this.plugin.snippetsList ?? [];
+        const ungroupedIds = ungroupedSnippetIds(typeGroups, snippetsList, snippetType);
+        const snippetMap = this.buildSnippetIdMap(snippetsList, snippetType);
+        const rows = ungroupedIds
+            .map(id => snippetMap.get(id))
+            .filter((snippet): snippet is Snippet => !!snippet)
+            .map(snippet => this.buildSnippetRow(snippet))
+            .join("");
+        const collapsed = this.isGroupCollapsed(snippetType, UNGROUPED_GROUP_ID);
+        const isTouch = this.plugin.isMobile || this.isTouchDevice;
+        const label = escapeHtml(this.plugin.i18n.groupUngrouped);
+        return `
+<section class="jcsm-group-section${collapsed ? " jcsm-collapsed" : ""}" data-snippet-type="${snippetType}" data-group-id="${UNGROUPED_GROUP_ID}" data-ungrouped="true">
+    <div class="jcsm-group-header${isTouch ? " jcsm-touch" : ""}" data-group-id="${UNGROUPED_GROUP_ID}" data-ungrouped="true" title="${label}">
+        <span class="jcsm-caret fn__flex-center" aria-hidden="true"><svg><use xlink:href="#iconRight"></use></svg></span>
+        <span class="jcsm-group-name fn__flex-1">${label}</span>
+        <span class="jcsm-group-count">${ungroupedIds.length}</span>
+    </div>
+    <div class="jcsm-group-items">${rows}</div>
+</section>
+            `;
+    }
+
+    /**
+     * 切换分组/未分组区段折叠并持久化到 localStorage
+     * @param section 区段元素
+     */
+    private toggleGroupSectionCollapsed(section: HTMLElement) {
+        const snippetType = section.dataset.snippetType as SnippetType;
+        const key = section.dataset.groupId ?? UNGROUPED_GROUP_ID;
+        const collapsed = section.classList.toggle("jcsm-collapsed");
+        this.setGroupCollapsed(snippetType, key, collapsed);
+    }
+
+    /**
+     * 若片段条目所在分组区段处于折叠态则展开（方向键定位到组内片段前调用），
+     * 使被定位的条目可见；展开态持久化到 localStorage
+     * @param item 片段菜单项
+     */
+    private expandSectionForItem(item: HTMLElement) {
+        const section = item.closest(".jcsm-group-section") as HTMLElement | null;
+        if (!section || !section.classList.contains("jcsm-collapsed")) {
+            return;
+        }
+        const snippetType = section.dataset.snippetType as SnippetType;
+        const key = section.dataset.groupId ?? UNGROUPED_GROUP_ID;
+        section.classList.remove("jcsm-collapsed");
+        this.setGroupCollapsed(snippetType, key, false);
+    }
+
+    /**
+     * 查找当前分区类型下的分组
+     * @param groupId 分组 id
+     * @returns 分组（不存在或类型不符时为 undefined）
+     */
+    private findCurrentTypeGroup(groupId: string): SnippetGroup | undefined {
+        return findGroup(this.plugin.snippetGroupStore.groups ?? [], this.plugin.snippetsType, groupId);
+    }
+
+    /**
+     * 新建分组（归属当前显示的分区类型；名称经输入对话框收集，空名取消）
+     */
+    addGroup() {
+        const title = this.plugin.i18n.groupNewTitle;
+        this.plugin.snippetsDialog.openPrompt(title, this.plugin.i18n.groupNamePlaceholder, "", (rawName) => {
+            const name = rawName.trim();
+            if (!name) {
+                this.plugin.showErrorMessage(this.plugin.i18n.groupNameRequired);
+                return;
+            }
+            const groupId = genNewGroupId(this.plugin.snippetGroupStore.groups ?? [], () => window.Lute.NewNodeID());
+            const nextGroups = addGroup(this.plugin.snippetGroupStore.groups, {
+                id: groupId, type: this.plugin.snippetsType, name, snippetIds: [],
+            });
+            void this.commitGroups(nextGroups);
+        });
+    }
+
+    /**
+     * 重命名分组（输入对话框预填当前名称，空名取消）
+     * @param groupId 分组 id
+     */
+    renameGroup(groupId: string) {
+        const group = this.findCurrentTypeGroup(groupId);
+        if (!group) return;
+        this.plugin.snippetsDialog.openPrompt(this.plugin.i18n.groupRenameTitle, this.plugin.i18n.groupNamePlaceholder, group.name, (rawName) => {
+            const name = rawName.trim();
+            if (!name) {
+                this.plugin.showErrorMessage(this.plugin.i18n.groupNameRequired);
+                return;
+            }
+            void this.commitGroups(renameGroup(this.plugin.snippetGroupStore.groups, groupId, name));
+        });
+    }
+
+    /**
+     * 删除分组（组内片段并入未分组，不删除片段本身；先二次确认）
+     * @param groupId 分组 id
+     */
+    deleteGroup(groupId: string) {
+        const group = this.findCurrentTypeGroup(groupId);
+        if (!group) return;
+        const name = group.name || this.plugin.i18n.groupEmptyName;
+        this.plugin.snippetsDialog.openConfirm(
+            this.plugin.i18n.groupDelete,
+            this.plugin.i18n.groupDeleteDescription.replace("${x}", escapeHtml(name)),
+            "jcsm-group-delete",
+            undefined,
+            this.plugin.i18n.delete,
+            () => {
+                // 同步清理该分组的折叠持久化状态（折叠键 "<type>.<groupId>"，见 ui-storage.ts），
+                // 避免删除后残留无主折叠项
+                this.removeGroupCollapsed(group.type, groupId);
+                void this.commitGroups(removeGroup(this.plugin.snippetGroupStore.groups, groupId));
+            }
+        );
+    }
+
+    /**
+     * 移除某分组（按类型）的折叠持久化状态（删除分组时调用，防残留）
+     * @param snippetType 分组类型
+     * @param groupId 分组 id
+     */
+    private removeGroupCollapsed(snippetType: SnippetType, groupId: string) {
+        const uiStorage = this.plugin.uiStorage;
+        if (!uiStorage || !(this.groupCollapsedMapKey(snippetType, groupId) in uiStorage.groupCollapsed)) {
+            return;
+        }
+        this.setGroupCollapsed(snippetType, groupId, false);
+    }
+
+    /**
+     * 落盘新分组集合（先补齐/清理未分组占位，保证组序表达正确）并就地重建分组视图
+     * @param nextGroups 变更后的分组集合
+     */
+    private async commitGroups(nextGroups: SnippetGroup[]) {
+        const normalized = withUngroupedAnchors(nextGroups);
+        this.plugin.snippetGroupStore.groups = normalized;
+        await this.plugin.snippetGroupStore.save();
+        // 菜单打开时重建片段列表容器以反映最新分组（删光真实分组会回到平铺视图）
+        if (this.menuItems) {
+            this.initSnippetsContainer();
+        }
     }
 
     /**
@@ -708,6 +1122,10 @@ export class SnippetsMenu {
      */
     private selectMenuItem(menuItem: HTMLElement) {
         this.clearMenuSelection();
+        // 分组视图下若该项所在分组处于折叠态先展开，保证被选中条目可见（回车/高亮有意义）
+        if (this.isGroupedView()) {
+            this.expandSectionForItem(menuItem);
+        }
         menuItem.classList.add(CURRENT_ITEM_CLASS);
         this.scrollToMenuItem(menuItem);
     }

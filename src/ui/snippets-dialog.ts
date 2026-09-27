@@ -684,6 +684,100 @@ export class SnippetsDialog {
     }
 
     /**
+     * 打开文本输入对话框（供分组新建/重命名等收集单行文本）
+     * 以 data-key 前缀 jcsm- 自动纳入模态协调；Esc 取消、Enter 确认、点遮罩/关闭取消。
+     * @param title 对话框标题
+     * @param placeholder 输入框占位文案
+     * @param value 输入框初始值（自动聚焦并全选）
+     * @param confirm 确认回调（参数为输入框当前内容，由调用方校验）
+     * @param cancel 取消回调
+     */
+    openPrompt(title: string, placeholder: string, value: string, confirm: (value: string) => void, cancel?: () => void) {
+        const dialog = new Dialog({
+            title,
+            content: `
+<div class="b3-dialog__content">
+    <input class="b3-text-field fn__block" data-type="value" type="text" placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(value)}">
+</div>
+<div class="b3-dialog__action">
+    <button class="b3-button b3-button--cancel" data-type="cancel">${this.plugin.i18n.cancel}</button>
+    <div class="fn__space"></div>
+    <button class="b3-button b3-button--text" data-type="confirm">${this.plugin.i18n.confirm}</button>
+</div>
+            `,
+            width: this.plugin.isMobile ? "92vw" : "520px",
+        });
+        // 将 Dialog 实例挂到元素上，供 closeByElement 按元素关闭时取回（见 utils.attachDialogObject）
+        attachDialogObject(dialog.element, dialog);
+
+        dialog.element.setAttribute("data-key", "jcsm-group-input");
+        dialog.element.setAttribute("data-modal", "true");
+
+        const readValue = () => (dialog.element.querySelector("input[data-type='value']") as HTMLInputElement).value;
+
+        const closeElement = dialog.element.querySelector(".b3-dialog__close") as HTMLElement;
+        const scrimElement = dialog.element.querySelector(".b3-dialog__scrim") as HTMLElement;
+
+        // 自动聚焦并全选初始内容，便于直接输入新名字替换旧值
+        const input = dialog.element.querySelector("input[data-type='value']") as HTMLInputElement;
+        input?.focus();
+        input?.select();
+
+        dialog.destroyNative = dialog.destroy;
+        dialog.destroy = () => {
+            this.plugin.console.log("groupPromptDialog destroy");
+            cancel?.();
+            this.closeByElement(dialog.element);
+        };
+
+        // 登记对话框级键盘动作（焦点在输入框内时由输入框自身 keydown 处理 Enter，故这里仅处理 Esc）
+        setDialogKeyHandler(dialog.element, (key) => {
+            if (key === "Escape") {
+                cancel?.();
+                this.closeByElement(dialog.element);
+            }
+        });
+
+        // 输入框 Enter 确认
+        input?.addEventListener("keydown", (event: KeyboardEvent) => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                confirm?.(readValue());
+                this.closeByElement(dialog.element);
+            }
+        });
+
+        // 在菜单打开的情况下，移动端无法上下划动对话框中的滚动容器，需要阻止事件冒泡
+        this.plugin.addListener(dialog.element, "touchmove", (event: TouchEvent) => {
+            event.stopPropagation();
+        }, {passive: true});
+
+        this.plugin.addListener(dialog.element, "click", (event: MouseEvent) => {
+            this.plugin.console.log("groupPromptDialog click", event);
+            // 阻止冒泡，否则点击 Dialog 时会导致 menu 关闭
+            event.stopPropagation();
+
+            let target = event.target as HTMLElement;
+            while (target && target !== dialog.element) {
+                if (target.dataset.type === "cancel") {
+                    cancel?.();
+                    this.closeByElement(dialog.element);
+                    break;
+                } else if (target.dataset.type === "confirm") {
+                    confirm?.(readValue());
+                    this.closeByElement(dialog.element);
+                    break;
+                } else if (target === closeElement || target === scrimElement) {
+                    cancel?.();
+                    this.closeByElement(dialog.element);
+                    break;
+                }
+                target = target.parentElement as HTMLElement;
+            }
+        }, {capture: true});
+    }
+
+    /**
      * 重载界面（菜单重载按钮/文件监听自动重载/命令注册均调用本方法）
      * 遍历所有打开的代码片段编辑对话框，存在未保存变更时弹确认框二次确认后再请求重载界面。
      */

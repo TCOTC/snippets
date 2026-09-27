@@ -5,6 +5,9 @@
 //   - snippetIds：组成员 id 有序集合（组内顺序的权威来源，拖拽调整即重排本数组）；
 //   - 分组顺序由外层 groups 数组顺序表达（空组也可存在）。
 // 未分组片段 = 列表中未被任何同类型分组引用的片段（不落盘，读取时由 reconcile 推导）。
+// 分组间的顺序同样存于 groups 数组；未分组在组序中的位置用一个"占位分组"表达
+// （id 固定为 UNGROUPED_GROUP_ID，type 区分 CSS/JS 各一个，snippetIds 恒为空、不记录成员），
+// 使组头拖拽排序能把"未分组"当作普通分组移动位置。
 // 对账原则（防御其他插件改动内核片段 id / 删除片段）：引用不存在的 id 直接剔除；
 // 真实存在但未引用的片段永远显示在未分组，绝不丢失（issue#20 讨论中"只保证不丢"原则）。
 import type {Snippet, SnippetType} from "../types";
@@ -21,6 +24,84 @@ export interface SnippetGroup {
     name: string;
     /** 组成员片段 id（有序，组内顺序权威来源） */
     snippetIds: string[];
+}
+
+/** 未分组占位分组的固定 id（仅表达"未分组"在组序中的位置，绝不记录成员） */
+export const UNGROUPED_GROUP_ID = "default";
+
+/**
+ * 是否为未分组占位分组（占位组 name 恒空、snippetIds 恒空，不参与真实分组语义）
+ * @param group 分组
+ * @returns 是否为未分组占位分组
+ */
+export function isUngroupedGroup(group: SnippetGroup): boolean {
+    return group.id === UNGROUPED_GROUP_ID;
+}
+
+/**
+ * 分组集合中是否存在至少一个真实分组（排除未分组占位）
+ * @param groups 分组集合
+ * @returns 是否存在真实分组
+ */
+export function hasRealGroups(groups: SnippetGroup[]): boolean {
+    return groups.some(group => !isUngroupedGroup(group));
+}
+
+/**
+ * 对分组集合补齐/清理未分组占位分组
+ * - 某类型存在真实分组但缺占位：追加占位（未分组初始排在该类型所有组之后）；
+ * - 某类型只有占位（真实分组被删光）：移除该占位，使菜单可回到平铺；
+ * - 真实分组之间已排好的占位（被用户拖到中间）保持原位置不动。
+ * 返回全新的有序分组数组，不影响入参。
+ * @param groups 分组集合
+ * @returns 补齐/清理后的分组集合
+ */
+export function withUngroupedAnchors(groups: SnippetGroup[]): SnippetGroup[] {
+    if (!Array.isArray(groups)) return [];
+    const result: SnippetGroup[] = [];
+    (["css", "js"] as SnippetType[]).forEach(type => {
+        const seq = groups.filter(group => group.type === type);
+        const realGroups = seq.filter(group => !isUngroupedGroup(group));
+        if (realGroups.length === 0) {
+            // 无真实分组：丢弃可能残留的占位（菜单据此回平铺）
+            return;
+        }
+        const hasAnchor = seq.some(group => isUngroupedGroup(group));
+        if (hasAnchor) {
+            // 保序：真实分组与占位维持现有相对顺序（占位可能被用户拖到中间）
+            result.push(...seq);
+        } else {
+            // 缺占位：真实分组在前，占位追加到末尾（未分组默认排在各组之后）
+            result.push(...realGroups, {id: UNGROUPED_GROUP_ID, type, name: "", snippetIds: []});
+        }
+    });
+    return result;
+}
+
+/**
+ * 在同一类型内移动分组（含未分组占位）的相对位置（组间拖拽排序用）。
+ * 移动后该类型分组保持相对顺序，仅被移动组改变位置；其他类型分组整体保持在前，
+ * 具体相对顺序由分组文件 groups 数组表达（菜单按类型分区独立渲染，跨类型位置无影响）。
+ * @param groups 分组集合
+ * @param snippetType 片段类型
+ * @param groupId 被移动分组 id（可为未分组占位）
+ * @param targetGroupId 目标分组 id（可为未分组占位）
+ * @param isTop 是否移动到目标分组上方
+ * @returns 处理后的分组集合（无有效移动时返回原样副本）
+ */
+export function moveGroup(groups: SnippetGroup[], snippetType: SnippetType, groupId: string, targetGroupId: string, isTop: boolean): SnippetGroup[] {
+    const others = groups.filter(group => group.type !== snippetType);
+    const seq = groups.filter(group => group.type === snippetType);
+    const from = seq.findIndex(group => group.id === groupId);
+    if (from < 0) return cloneGroups(groups);
+    let to = seq.findIndex(group => group.id === targetGroupId);
+    if (to < 0 || from === to) return cloneGroups(groups);
+    const [moved] = seq.splice(from, 1);
+    // 移除被移动组后重算目标索引（被移动组在目标之前时目标位置前移一位）
+    to = seq.findIndex(group => group.id === targetGroupId);
+    const insertIndex = isTop ? to : to + 1;
+    seq.splice(insertIndex, 0, moved);
+    return [...others, ...seq];
 }
 
 /**

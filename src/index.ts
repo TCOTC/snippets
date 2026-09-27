@@ -13,6 +13,8 @@ import {SnippetManager} from "./services/snippet-manager";
 import {GistTokenService} from "./services/gist-token";
 import {GistSyncService} from "./services/gist-sync";
 import {WsMainSnippetSync} from "./services/ws-main";
+import {SnippetGroupStore} from "./services/snippet-groups";
+import {SnippetUiStorage} from "./services/ui-storage";
 import {SnippetsMenu} from "./ui/menu";
 
 import {
@@ -123,6 +125,18 @@ export default class PluginSnippets extends Plugin {
      */
     wsMainSync!: WsMainSnippetSync;
 
+    /**
+     * 代码片段分组存储服务（分组映射独立持久化于 plugin-groups.json，
+     * 实现见 src/services/snippet-groups.ts；菜单分组渲染与组 CRUD 经本服务读写）
+     */
+    snippetGroupStore!: SnippetGroupStore;
+
+    /**
+     * 插件视图偏好存储服务（菜单折叠状态与上次类型经思源内核 localStorage 持久化，
+     * 实现见 src/services/ui-storage.ts；卸载时经 clear() 移除本地存储）
+     */
+    uiStorage!: SnippetUiStorage;
+
     // ================================ 运行态 ================================
     // 运行期会话状态（供菜单/文件监听/编辑对话框等各模块读取；插件重载后以内核数据或配置默认值重建）。
     // 插件配置字段已收敛到 config 对象（src/config/config.ts），不再挂在插件根上。
@@ -223,6 +237,12 @@ export default class PluginSnippets extends Plugin {
         // 初始化 ws-main 消息同步服务（运行态经插件实例引用，start 见下方布局无关装配段）
         this.wsMainSync = new WsMainSnippetSync(this);
 
+        // 初始化代码片段分组存储服务（分组映射独立持久化，与配置互不覆盖，见 src/services/snippet-groups.ts）
+        this.snippetGroupStore = new SnippetGroupStore(this);
+
+        // 初始化插件视图偏好存储服务（折叠/类型经内核 localStorage 持久化，见 src/services/ui-storage.ts）
+        this.uiStorage = new SnippetUiStorage(this);
+
         // ================================ 布局无关装配 ================================
         // 以下初始化只依赖内核 HTTP / window.siyuan.config / window.Lute / document.body 静态骨架，
         // 不依赖布局就绪后的 DOM（顶栏 #barPlugins 等）；思源保证 onload 先于 onLayoutReady 完成，
@@ -255,6 +275,10 @@ export default class PluginSnippets extends Plugin {
 
         // 初始化插件设置（loadData 走内核 HTTP，不依赖布局 DOM；顶栏按钮位置等运行期再读取配置）
         await this.configService.init();
+
+        // 预载分组映射（onload 阶段 snippetsList 为空，仅校验文件形状；
+        // 菜单打开时会以权威片段列表再次对账，见 SnippetsMenu.open）
+        await this.snippetGroupStore.load(this.snippetsList);
         // 插件设置加载之后启动文件监听
         if (this.config.fileWatchEnabled && this.config.fileWatchEnabled !== "disabled") {
             this.fileWatchService.start();
@@ -295,6 +319,14 @@ export default class PluginSnippets extends Plugin {
     public async onDataChanged() {
         // 重新读取配置并热应用（applyConfig 内部按值 diff，无变化不触发 onApply 副作用）
         await this.configService.reloadFromStorage();
+
+        // 跨窗口/跨设备：分组映射文件变更推送（storage 同步）→ 重新对账分组缓存
+        await this.snippetGroupStore.load(this.snippetsList);
+
+        // 菜单打开时重建列表，让其他实例的分组增删改（含删除最后一个分组）即时反映。
+        // 重建门槛在 SnippetsMenu.refreshSnippetsContainerAfterExternalChange 内统一处理
+        // （不能以 isGroupedView() 为门槛，否则删除最后一个分组后不会重建）
+        this.menuView.refreshSnippetsContainerAfterExternalChange();
     }
 
     /**
@@ -352,6 +384,10 @@ export default class PluginSnippets extends Plugin {
             this.showErrorMessage(this.i18n.removeConfigFailed + " [" + removeResponse.code + ": " + removeResponse.msg + "]", 20000, "error");
             return;
         }
+
+        // 移除写入思源本地存储的视图偏好（折叠状态/上次类型存于内核 localStorage，
+        // 不随插件数据目录删除，须经 /api/storage/removeLocalStorageVals 显式清理）
+        await this.uiStorage.clear();
 
         console.log(this.displayName, "plugin uninstalled");
     }

@@ -8,7 +8,7 @@
 // 读取时经 domain/snippet-groups.ts reconcileGroups 与权威片段列表对账（孤儿 id 剔除）。
 import type PluginSnippets from "../index";
 import type {Snippet} from "../types";
-import {isSnippetGroupArray, reconcileGroups, SnippetGroup} from "../domain/snippet-groups";
+import {isSnippetGroupArray, reconcileGroups, SnippetGroup, withUngroupedAnchors} from "../domain/snippet-groups";
 
 /** 分组持久化文件名（loadData/saveData 存储键） */
 export const PLUGIN_GROUPS_STORAGE_NAME = "plugin-groups.json";
@@ -44,13 +44,15 @@ export class SnippetGroupStore {
     }
 
     /**
-     * 加载分组缓存（与权威片段列表对账后缓存到内存）。
+     * 加载分组缓存（与权威片段列表对账后补齐未分组占位再缓存到内存）。
      * 内核文件不存在/损坏时回退为空并缓存，不阻断调用方。
      * @param snippets 权威片段列表（对账用）
      */
     async load(snippets: Snippet[]): Promise<void> {
         const stored = await this.loadStoredGroups();
-        this.groups = isSnippetGroupArray(stored) ? reconcileGroups(stored, snippets) : [];
+        const reconciled = isSnippetGroupArray(stored) ? reconcileGroups(stored, snippets) : [];
+        // 补齐未分组占位（存在真实分组的类型各自追加，供"未分组"参与组间拖拽排序）
+        this.groups = withUngroupedAnchors(reconciled);
     }
 
     /**

@@ -5,6 +5,7 @@ import {fetchPost, fetchSyncPost} from "siyuan";
 import type PluginSnippets from "../index";
 import {deepClone, isSnippetsTypeEnabled, isValidCssSnippetContent, isValidJavaScriptCode, snippetTitle} from "../domain/snippet";
 import {escapeHtml, genNewSnippetId, isPreviewingSnippet, SNIPPET_DIALOG_SELECTOR} from "../utils";
+import {unassignSnippetFromGroup} from "../domain/snippet-groups";
 import type {Snippet, SnippetType} from "../types";
 import type {BroadcastHandlers} from "./sync";
 
@@ -256,11 +257,16 @@ export class SnippetManager {
             deleteButton = dialog.querySelector(".jcsm-dialog .jcsm-dialog-container button[data-action=\"delete\"]") as HTMLButtonElement;
             confirmButton = dialog.querySelector(".jcsm-dialog .b3-dialog__action button[data-action=\"confirm\"]") as HTMLButtonElement;
         }
+        // 是否分组视图（分组模式下增删改后整体重建分组列表更稳妥，避免新片段项游离在分组结构之外）
+        const grouped = this.plugin.menuView.isGroupedView();
         // 应用代码片段变更，修改相关的元素
         if (isAddOrUpdate) {
             // 打开菜单时才需要修改菜单项
             if (this.plugin.menuView.menu) {
-                if (snippetMenuItem) {
+                if (grouped && (copySnippet || !snippetMenuItem)) {
+                    // 新增/副本：重建分组视图，让新片段落到未分组或按其归属落到对应分组
+                    this.plugin.menuView.initSnippetsContainer();
+                } else if (snippetMenuItem) {
                     // 有菜单项
                     if (copySnippet) {
                         // 在指定菜单项的上方插入新的副本菜单项
@@ -287,7 +293,17 @@ export class SnippetManager {
             if (confirmButton) confirmButton.textContent = this.plugin.i18n.save; // 将“新建”按钮的文案改为“保存”
         } else {
             // 移除菜单项
-            snippetMenuItem?.remove();
+            if (grouped && this.plugin.menuView.menu) {
+                // 同步清理分组映射中的引用（删除的片段不再属于任何组，保持组计数与下次对账一致）后重建分组视图
+                const groupStore = this.plugin.snippetGroupStore;
+                if (groupStore.groups.some(g => g.snippetIds.includes(snippet.id))) {
+                    groupStore.groups = unassignSnippetFromGroup(groupStore.groups, snippet.id);
+                    void groupStore.save();
+                }
+                this.plugin.menuView.initSnippetsContainer();
+            } else {
+                snippetMenuItem?.remove();
+            }
 
             // 修改对应的 Dialog
             deleteButton?.classList.add("fn__none"); // 隐藏删除按钮

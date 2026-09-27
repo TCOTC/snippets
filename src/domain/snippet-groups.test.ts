@@ -1,15 +1,17 @@
 ﻿// domain/snippet-groups.ts 单测
 // 覆盖：cloneGroups/isSnippetGroupArray/reconcileGroups（孤儿 id 剔除、组内去重、非法组剔除）、
 //       ungroupedSnippetIds、findGroupBySnippetId/findGroup、assignSnippetToGroup（跨组迁移/去重）、
-//       unassignSnippetFromGroup、moveSnippetWithinGroup、addGroup/renameGroup/removeGroup、genNewGroupId。
+//       unassignSnippetFromGroup、moveSnippetWithinGroup、addGroup/renameGroup/removeGroup、genNewGroupId、
+//       未分组占位（isUngroupedGroup/hasRealGroups/withUngroupedAnchors）与组间排序 moveGroup。
 // 全部纯函数无 DOM / 无插件依赖。
 import {describe, expect, it} from "vitest";
 import type {Snippet, SnippetType} from "../types";
 import type {SnippetGroup} from "./snippet-groups";
 import {
     addGroup, assignSnippetToGroup, cloneGroups, findGroup, findGroupBySnippetId, genNewGroupId,
-    isSnippetGroupArray, moveSnippetWithinGroup, reconcileGroups, removeGroup, renameGroup,
-    unassignSnippetFromGroup, ungroupedSnippetIds
+    hasRealGroups, isSnippetGroupArray, isUngroupedGroup, moveGroup, moveSnippetWithinGroup,
+    reconcileGroups, removeGroup, renameGroup, unassignSnippetFromGroup, ungroupedSnippetIds,
+    UNGROUPED_GROUP_ID, withUngroupedAnchors
 } from "./snippet-groups";
 
 const makeSnippet = (id: string, type: SnippetType): Snippet => ({ id, name: id, type, content: "x", enabled: true });
@@ -203,5 +205,79 @@ describe("跨组一致性", () => {
         const reconciled = reconcileGroups(groups, [makeSnippet("a", "css"), makeSnippet("b", "css")]);
         expect(reconciled[0].snippetIds).toEqual(["a"]);
         expect(reconciled[1].snippetIds).toEqual(["a", "b"]);
+    });
+});
+
+describe("未分组占位分组", () => {
+    it("isUngroupedGroup / hasRealGroups 识别占位", () => {
+        const anchor = {id: UNGROUPED_GROUP_ID, type: "css" as SnippetType, name: "", snippetIds: []};
+        expect(isUngroupedGroup(anchor)).toBe(true);
+        expect(isUngroupedGroup(g("g1", "css", []))).toBe(false);
+        expect(hasRealGroups([anchor])).toBe(false);
+        expect(hasRealGroups([anchor, g("g1", "css", [])])).toBe(true);
+    });
+
+    it("withUngroupedAnchors 为有真实分组的类型补齐占位（追加到该类型组后）", () => {
+        const result = withUngroupedAnchors([g("g1", "css", []), g("j1", "js", [])]);
+        // css 组后出现占位，js 组后出现占位
+        expect(result.map(x => x.id)).toEqual(["g1", UNGROUPED_GROUP_ID, "j1", UNGROUPED_GROUP_ID]);
+    });
+
+    it("withUngroupedAnchors 保留已被用户拖到中间的真实占位位置，不重复补", () => {
+        const groups = [g("g1", "css", []), {id: UNGROUPED_GROUP_ID, type: "css" as SnippetType, name: "", snippetIds: []}, g("g2", "css", [])];
+        const result = withUngroupedAnchors(groups);
+        expect(result.map(x => x.id)).toEqual(["g1", UNGROUPED_GROUP_ID, "g2"]);
+    });
+
+    it("withUngroupedAnchors 在某类型真实分组删光时移除占位", () => {
+        const groups = [
+            {id: UNGROUPED_GROUP_ID, type: "css" as SnippetType, name: "", snippetIds: []},
+            g("j1", "js", []),
+            {id: UNGROUPED_GROUP_ID, type: "js" as SnippetType, name: "", snippetIds: []},
+        ];
+        const result = withUngroupedAnchors(groups);
+        // css 无真实组 → 移除占位；js 保留占位
+        expect(result.map(x => x.id)).toEqual(["j1", UNGROUPED_GROUP_ID]);
+        expect(result.every(x => x.type === "js")).toBe(true);
+    });
+
+    it("占位不被 reconcile 当作孤儿/非法剔除", () => {
+        const anchor = {id: UNGROUPED_GROUP_ID, type: "css" as SnippetType, name: "", snippetIds: []};
+        const result = reconcileGroups([anchor, g("g1", "css", ["a"])], [makeSnippet("a", "css")]);
+        expect(result.map(x => x.id)).toContain(UNGROUPED_GROUP_ID);
+    });
+});
+
+describe("moveGroup（组间排序）", () => {
+    it("同类型内把分组移动到目标分组上方", () => {
+        const groups = [g("g1", "css", []), g("g2", "css", []), g("g3", "css", []), g("j1", "js", [])];
+        const result = moveGroup(groups, "css", "g3", "g1", true);
+        // css 顺序变为 g3,g1,g2（其余类型 js 保持）
+        const cssIds = result.filter(x => x.type === "css").map(x => x.id);
+        expect(cssIds).toEqual(["g3", "g1", "g2"]);
+    });
+
+    it("同类型内把分组移动到目标分组下方", () => {
+        const groups = [g("g1", "css", []), g("g2", "css", []), g("g3", "css", [])];
+        const result = moveGroup(groups, "css", "g1", "g3", false);
+        const cssIds = result.filter(x => x.type === "css").map(x => x.id);
+        expect(cssIds).toEqual(["g2", "g3", "g1"]);
+    });
+
+    it("把未分组占位移动到分组之间（未分组参与组间排序）", () => {
+        const anchor = {id: UNGROUPED_GROUP_ID, type: "css" as SnippetType, name: "", snippetIds: []};
+        const groups = [g("g1", "css", []), g("g2", "css", []), anchor];
+        const result = moveGroup(groups, "css", UNGROUPED_GROUP_ID, "g2", true);
+        expect(result.filter(x => x.type === "css").map(x => x.id)).toEqual(["g1", UNGROUPED_GROUP_ID, "g2"]);
+    });
+
+    it("目标不存在或位置无变化时返回原样副本", () => {
+        const groups = [g("g1", "css", []), g("g2", "css", [])];
+        const noTarget = moveGroup(groups, "css", "g1", "nope", true);
+        expect(noTarget.map(x => x.id)).toEqual(["g1", "g2"]);
+        const same = moveGroup(groups, "css", "g1", "g1", true);
+        expect(same.map(x => x.id)).toEqual(["g1", "g2"]);
+        // 不改入参
+        expect(groups.map(x => x.id)).toEqual(["g1", "g2"]);
     });
 });

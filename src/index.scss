@@ -127,6 +127,13 @@
     &[data-type="js"] ~ .jcsm-snippets-container .jcsm-snippet-item:is([data-type="css"], [data-snippet-type="css"]) {
       display: none !important;
     }
+    // 分组视图下整组隐藏（组头与组内片段同进退，避免平铺项级过滤在分组里出现"空组头"）
+    &[data-type="css"] ~ .jcsm-snippets-container .jcsm-group-section[data-snippet-type="js"] {
+      display: none !important;
+    }
+    &[data-type="js"] ~ .jcsm-snippets-container .jcsm-group-section[data-snippet-type="css"] {
+      display: none !important;
+    }
   }
 
   .jcsm-snippets-container {
@@ -214,6 +221,124 @@
       input.fn__none[data-type="publishSwitch"] + .fn__space {
         display: none !important;
       }
+    }
+  }
+}
+
+// 分组视图（.jcsm-grouped 容器开启；分组折叠树：组头 + 组内片段 + 内置未分组）
+#commonMenu[data-name="PluginSnippets"] .jcsm-snippets-container.jcsm-grouped {
+  .jcsm-group-section {
+    .jcsm-group-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 30px;
+      line-height: 30px;
+      padding: 0 6px;
+      margin: 1px 0;
+      border-radius: var(--b3-border-radius);
+      cursor: pointer;
+      user-select: none;
+      color: var(--b3-theme-on-surface);
+
+      &:hover {
+        background-color: var(--b3-list-hover);
+      }
+
+      // 折叠箭头（思源列表项同款 #iconRight）：默认（展开）朝下，折叠后朝右
+      .jcsm-caret {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 16px;
+        height: 16px;
+        color: var(--b3-theme-on-surface-light);
+        transition: transform 0.15s ease;
+        transform: rotate(90deg);
+
+        svg {
+          width: 12px;
+          height: 12px;
+        }
+      }
+
+      .jcsm-group-name {
+        font-weight: bold;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .jcsm-group-count {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-size: 0.8em;
+        min-width: 1.5em;
+        height: 1.25em;
+        padding: 0 0.3em;
+        border-radius: var(--b3-border-radius);
+        background-color: var(--b3-theme-surface);
+        color: var(--b3-theme-on-surface);
+      }
+
+      // 组头操作按钮：参考思源 b3-list-item--hide-action，操作区收进 .jcsm-group-action 容器，
+      // 默认隐藏（计数因此贴右不留空位），仅鼠标悬浮在组头时才显示；触摸设备（jcsm-touch）常显
+      .jcsm-group-action {
+        display: none;
+        gap: 2px;
+      }
+
+      &:hover > .jcsm-group-action {
+        display: flex;
+      }
+
+      &.jcsm-touch > .jcsm-group-action {
+        display: flex;
+      }
+
+      // 组头作为组间拖拽的落点指示线（复用片段项的 dragover__top/bottom 语义）
+      &.dragover__top,
+      &.dragover__bottom {
+        position: relative;
+
+        &::after {
+          content: "";
+          position: absolute;
+          left: 0;
+          right: 0;
+          height: 4px;
+          background-color: var(--b3-theme-primary-lighter);
+          pointer-events: none;
+          z-index: 1;
+        }
+      }
+
+      &.dragover__top::after {
+        top: -3px;
+      }
+
+      &.dragover__bottom::after {
+        bottom: -3px;
+      }
+    }
+
+    // 组内片段项略缩进一级，与其他内容区分
+    .jcsm-group-items .jcsm-snippet-item {
+      padding-left: 14px;
+    }
+  }
+
+  // 折叠：隐藏组内片段（组头与计数保留）
+  .jcsm-group-section.jcsm-collapsed {
+    .jcsm-caret {
+      transform: rotate(0deg);
+    }
+
+    > .jcsm-group-items {
+      display: none !important;
     }
   }
 }
