@@ -1,9 +1,10 @@
 // 插件视图偏好持久化（思源内核 localStorage API）
 // 职责：把菜单折叠状态、上次代码片段类型这类"视图偏好"经内核 localStorage 端点读写——
-//   - 读取：/api/storage/getLocalStorageVals（请求式，打开菜单时与片段列表并发拉取）；
-//   - 写入：/api/storage/setLocalStorageVals（写后由内核广播给其他会话，跨窗口一致）；
-//   - 卸载：/api/storage/removeLocalStorageVals（值存于思源本地存储而非插件数据目录，
+//   - 读取：/api/storage/getLocalStorageVal（请求式，打开菜单时与片段列表并发拉取）；
+//   - 写入：/api/storage/setLocalStorageVal（写后由内核广播给其他会话，跨窗口一致）；
+//   - 卸载：/api/storage/removeLocalStorageVal（值存于思源本地存储而非插件数据目录，
 //     卸载时不会随 removeData 删除，须显式移除）。
+// 折叠状态与上次类型合并为单个键（值为完整 SnippetUiState JSON 对象），
 // 与"插件数据文件"(loadData/saveData, plugin-groups.json / plugin-config.json) 不同：
 // 本地存储是键值视图偏好，不走 data/storage/petal 目录，也不触发 PushPluginStorageDataChanged。
 import type PluginSnippets from "../index";

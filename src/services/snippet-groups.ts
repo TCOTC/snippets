@@ -6,9 +6,11 @@
 // 分组文件不含片段代码原文、不含折叠状态（折叠是视图偏好，存 localStorage），
 // 仅含分组 id/type/name/snippetIds（成员 id 集合），代码仍在内核权威片段列表。
 // 读取时经 domain/snippet-groups.ts reconcileGroups 与权威片段列表对账（孤儿 id 剔除）。
+// 没有任何真实分组时不保留分组文件：save() 直接 removeData 删除该文件（菜单回退平铺，
+// 也避免空文件随设备同步而占用空间）。
 import type PluginSnippets from "../index";
 import type {Snippet} from "../types";
-import {isSnippetGroupArray, reconcileGroups, SnippetGroup, withUngroupedAnchors} from "../domain/snippet-groups";
+import {hasRealGroups, isSnippetGroupArray, reconcileGroups, SnippetGroup, withUngroupedAnchors} from "../domain/snippet-groups";
 
 /** 分组持久化文件名（loadData/saveData 存储键） */
 export const PLUGIN_GROUPS_STORAGE_NAME = "plugin-groups.json";
@@ -56,10 +58,18 @@ export class SnippetGroupStore {
     }
 
     /**
-     * 持久化当前分组缓存（变更后调用；失败时保持内存态，不抛错）
+     * 持久化当前分组缓存（变更后调用；失败时保持内存态，不抛错）。
+     * 没有任何真实分组（仅可能残留未分组占位）时删除分组文件，使菜单回退平铺；
+     * 该删除经内核 storage 推送同步到其他实例。
      */
     async save(): Promise<void> {
         try {
+            if (!hasRealGroups(this.groups)) {
+                // 无真实分组：清空缓存并删除分组文件（文件不存在时内核返回 404，无副作用）
+                this.groups = [];
+                await this.plugin.removeData(PLUGIN_GROUPS_STORAGE_NAME);
+                return;
+            }
             await this.saveStoredGroups(this.groups);
         } catch (error) {
             this.plugin.console.error("save snippet groups failed:", error);
