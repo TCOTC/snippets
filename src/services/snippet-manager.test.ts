@@ -306,6 +306,39 @@ describe("SnippetManager", () => {
             expect(document.getElementById("snippetCSScss-1")).toBe(element);
             expect(plugin.snippetStore.remove).toHaveBeenCalledWith("css-1");
         });
+
+        it("远程删除：先在 Store 中移除再重建菜单，重建时列表已不含该片段", async () => {
+            const serverList = [makeSnippet("css-1", "css", "body {}"), makeSnippet("css-2", "css", "p {}")];
+            const {manager, plugin} = setup(serverList);
+            plugin.snippetsList = [...serverList];
+            // 分组视图：删除后经 initSnippetsContainer 重建整棵列表
+            const menuView = plugin.menuView as unknown as {
+                menu: unknown;
+                menuItems: HTMLElement;
+                isGroupedView: () => boolean;
+                initSnippetsContainer: () => void;
+            };
+            menuView.menu = {};
+            menuView.menuItems = document.createElement("div");
+            menuView.isGroupedView = () => true;
+            (plugin as unknown as {snippetGroupStore: unknown}).snippetGroupStore = {groups: [], save: vi.fn()};
+
+            const order: string[] = [];
+            let listAtRebuild: Snippet[] = [];
+            vi.mocked(plugin.snippetStore.remove).mockImplementation((id: string) => {
+                order.push("remove");
+                plugin.snippetsList = plugin.snippetsList.filter((snippet: Snippet) => snippet.id !== id);
+            });
+            vi.mocked(menuView.initSnippetsContainer).mockImplementation(() => {
+                order.push("rebuild");
+                listAtRebuild = [...plugin.snippetsList];
+            });
+
+            await manager.deleteSnippet("css-1", "css", "remote");
+
+            expect(order).toEqual(["remove", "rebuild"]);
+            expect(listAtRebuild.map((snippet: Snippet) => snippet.id)).toEqual(["css-2"]);
+        });
     });
 
     describe("toggleSnippet / toggleSnippetPublish", () => {

@@ -236,9 +236,10 @@ export class SnippetManager {
         }
         const snippet = this.plugin.snippetsList.find((s: Snippet) => s.id === id);
         if (snippet) {
-            this.applySnippetUIChange(snippet, false);
-            // 从 Store 中删除：统一在列表更新之后触发计数刷新事件（否则计数仍是删除前的值）
+            // 与本地分支顺序一致：先在 Store 中删除（更新列表并刷新计数），再刷新菜单 UI。
+            // 分组视图下 applySnippetUIChange 会重建整棵列表，若此时列表中仍含该片段，已删除项会残留在菜单里
             this.plugin.snippetStore.remove(id);
+            this.applySnippetUIChange(snippet, false);
         }
     }
 

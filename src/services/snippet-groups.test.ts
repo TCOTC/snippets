@@ -53,6 +53,28 @@ describe("SnippetGroupStore", () => {
             await store.load([makeSnippet("c1", "css")]);
             expect(store.groups).toEqual([]);
         });
+
+        it("分组文件被删除后重新读取不返回陈旧缓存", async () => {
+            const stored = [{id: "g1", type: "css", name: "样式", snippetIds: ["c1"]}];
+            plugin = createPlugin(stored);
+            store = new SnippetGroupStore(plugin);
+            await store.load([makeSnippet("c1", "css")]);
+            expect(store.groups.map(group => group.id)).toEqual(["g1", UNGROUPED_GROUP_ID]);
+
+            // 复刻思源 Plugin.loadData 在文件不存在时的行为：走 failCallback，仅当该键无缓存时
+            // 才初始化为空串，已存在缓存则直接返回缓存值
+            vi.mocked(plugin.loadData).mockImplementation(async (storageName: string) => {
+                const data = plugin.data as Record<string, any>;
+                if (typeof data[storageName] === "undefined") {
+                    data[storageName] = "";
+                }
+                return data[storageName];
+            });
+
+            // 分组文件已被删除 → 再次读取应得到空分组，而不是上一次的分组
+            await store.load([makeSnippet("c1", "css")]);
+            expect(store.groups).toEqual([]);
+        });
     });
 
     describe("save", () => {

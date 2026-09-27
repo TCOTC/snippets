@@ -30,8 +30,12 @@ export class SnippetGroupStore {
 
     /**
      * 从内核拉取分组文件并返回内容（loadData 同步插件 data；无文件时为空串）
+     * 读取前清除 plugin.data 中的同名缓存：思源 Plugin.loadData 在文件不存在时走 failCallback
+     * 直接 resolve 上一缓存值（内核 /api/file/getFile 对缺失文件返回 HTTP 202 与 code 404），
+     * 不清缓存会读到分组文件删除前的内容
      */
     private async loadStoredGroups(): Promise<any> {
+        delete this.plugin.data[PLUGIN_GROUPS_STORAGE_NAME];
         await this.plugin.loadData(PLUGIN_GROUPS_STORAGE_NAME);
         return this.plugin.data[PLUGIN_GROUPS_STORAGE_NAME];
     }
