@@ -585,24 +585,6 @@ const createSnippetsConfigItems = (plugin: PluginSnippets): SnippetsConfigItem[]
         onApply: () => plugin.fileWatchService.handleIntervalChange(),
     },
     {
-        key: "topBarPosition",
-        description: "topBarPositionDescription",
-        type: "selectString",
-        options: [
-            { value: "left", text: "topBarPositionLeft" },
-            { value: "right", text: "topBarPositionRight" }
-        ],
-        ignore: plugin.isMobile,
-        // 修改 topBarPosition 之后，移除并重建顶栏按钮；菜单已打开时按新位置重排
-        onApply: async () => {
-            plugin.menuView.removeTopBarElement();
-            await plugin.menuView.initTopBar();
-            if (plugin.menuView.menu) {
-                plugin.menuView.setMenuPosition(true);
-            }
-        },
-    },
-    {
         key: "githubToken",
         type: "createActionElement",
         // GitHub Token 管理区域整行铺满（direction row → 设置对话框以 100% 宽插入并保留 fn__block；

@@ -308,7 +308,7 @@ export default class PluginSnippets extends Plugin {
      */
     public async onLayoutReady() {
         // 初始化顶栏按钮（addTopBar 依赖布局就绪后的顶栏 DOM #barPlugins，须在 onLayoutReady 中调用；
-        // 按钮位置取自已加载完成的插件设置）
+        // 按钮插入位置取 addTopBar 默认值，最终位置由思源顶栏拖拽顺序恢复）
         void this.menuView.initTopBar();
     }
 

@@ -69,13 +69,6 @@ export class SnippetsMenu {
     private readonly isTouchDevice = ("ontouchstart" in window) && navigator.maxTouchPoints > 1;
 
     /**
-     * 移除顶栏按钮（schema onApply（topBarPosition 变更）使用；与 initTopBar 配合用于重建，如顶栏位置变更）
-     */
-    removeTopBarElement() {
-        this.topBarElement?.remove();
-    }
-
-    /**
      * 关闭菜单（供插件生命周期等在需要时主动关闭；Menu 关闭会触发关闭回调）
      */
     close() {
@@ -107,14 +100,14 @@ export class SnippetsMenu {
 
     /**
      * 初始化顶栏按钮
-     * 顶栏按钮即菜单入口：schema onApply（topBarPosition 变更）/生命周期装配均调用本方法。
+     * 顶栏按钮即菜单入口，由插件生命周期在布局就绪时调用；按钮位置由思源顶栏的自由拖拽记忆决定，
+     * 这里不传 position（默认插入到顶栏右侧），实际位置与菜单展开方向在打开菜单时按按钮位置计算。
      */
     async initTopBar() {
         const title = this.buildTitle(this.plugin.displayName, "openSnippetsManager");
         this.topBarElement = this.plugin.addTopBar({
             icon: "iconJcsm",
             title: title,
-            position: this.plugin.config.topBarPosition || "right",
             callback: () => {
                 this.openSnippetsManager();
             }
@@ -326,10 +319,10 @@ export class SnippetsMenu {
 
     /**
      * 设置菜单位置
-     * @param isUpdate 是否仅更新菜单位置
+     * 顶栏按钮支持自由拖拽，按按钮在窗口中的位置决定菜单贴靠哪一侧：按钮中心在窗口左半边时贴
+     * 窗口左侧，在右半边时贴窗口右侧；同侧停靠栏（dock）展开时向外避让其标签栏宽度，避免遮挡。
      */
-    setMenuPosition(isUpdate = false) {
-        this.plugin.console.log("setMenuPosition: isUpdate =", isUpdate);
+    setMenuPosition() {
         const menu = this.menu;
         if (!menu) return;
 
@@ -342,26 +335,28 @@ export class SnippetsMenu {
             rect = document.querySelector("#barPlugins")!.getBoundingClientRect();
         }
 
-        // this.topBarPosition 不存在的时候就默认为 right
-        const dock = this.plugin.config.topBarPosition === "left" ? document.querySelector("#dockLeft") : document.querySelector("#dockRight");
-        const dockRect = dock?.getBoundingClientRect();
-        const dockWidth = ((dockRect?.width || 0) + 1).toString() + "px";
+        // 按钮中心落在窗口左半边时贴窗口左侧，否则贴窗口右侧
+        const isLeft = rect.left + rect.width / 2 < window.innerWidth / 2;
+        this.plugin.console.log("setMenuPosition: isLeft =", isLeft);
 
-        if (!isUpdate) {
-            menu.open({
-                x: rect.right,
-                y: rect.bottom + 1,
-                isLeft: false,
-            });
-        }
+        // 同侧停靠栏展开时向外避让它的标签栏宽度，+ 1px 留出间隙
+        const dock = document.querySelector(isLeft ? "#dockLeft" : "#dockRight");
+        const dockWidth = (dock?.getBoundingClientRect().width || 0) + 1;
+        const dockWidthStyle = dockWidth + "px";
+
+        menu.open({
+            x: isLeft ? dockWidth : window.innerWidth - dockWidth,
+            y: rect.bottom + 1,
+            isLeft: !isLeft,
+        });
         // 不要用鼠标位置、菜单要固定宽度，否则切换 CSS 和 JS 时，菜单可能会大幅抖动或者超出窗口边界
         menu.element.style.width = "min(400px, 90vw)";
-        if (this.plugin.config.topBarPosition === "left") {
+        if (isLeft) {
             menu.element.style.right = "";
-            menu.element.style.left = dockWidth;
+            menu.element.style.left = dockWidthStyle;
         } else {
-            menu.element.style.right = dockWidth;
             menu.element.style.left = "";
+            menu.element.style.right = dockWidthStyle;
         }
 
         // 顶栏按钮样式

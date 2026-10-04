@@ -35,9 +35,6 @@ const createFakePlugin = (stored: unknown = undefined) => {
             menu: undefined,
             menuItems: undefined,
             genMenuSnippetsItems: vi.fn(),
-            removeTopBarElement: vi.fn(),
-            initTopBar: vi.fn(),
-            setMenuPosition: vi.fn(),
             setMenuSnippetCount: vi.fn(),
         },
         fileWatchService: {

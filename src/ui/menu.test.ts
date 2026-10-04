@@ -5,6 +5,7 @@
 //       globalKeyDownHandler（模态对话框路由 Esc/Enter、非模态 Esc 按 zIndex 路由、编辑器内阻止冒泡）。
 // @vitest-environment jsdom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
+import {Menu} from "siyuan";
 import type PluginSnippets from "../index";
 import {SnippetsConfig} from "../config/config";
 import type {Snippet, SnippetType} from "../types";
@@ -295,6 +296,76 @@ describe("SnippetsMenu", () => {
             const event = {key: "a", stopPropagation: vi.fn()} as unknown as KeyboardEvent;
             menu.globalKeyDownHandler(event);
             expect(event.stopPropagation).toHaveBeenCalled();
+        });
+    });
+
+    describe("setMenuPosition", () => {
+        /** 设定窗口宽度（jsdom 默认 1024，按需覆盖） */
+        const stubWindowWidth = (width: number) => {
+            Object.defineProperty(window, "innerWidth", {value: width, configurable: true, writable: true});
+        };
+
+        /** 桩顶栏按钮并设定它在窗口中的位置（左边缘 / 宽度） */
+        const stubTopBar = (left: number, width: number) => {
+            const element = document.createElement("div");
+            element.getBoundingClientRect = () => ({
+                left,
+                right: left + width,
+                width,
+                top: 0,
+                bottom: 28,
+                height: 28,
+            }) as DOMRect;
+            plugin.addTopBar = vi.fn(() => element);
+        };
+
+        /** 桩同侧停靠栏元素（菜单贴边时向外避让其标签栏宽度） */
+        const stubDock = (id: string, width: number) => {
+            const element = document.createElement("div");
+            element.id = id;
+            element.getBoundingClientRect = () => ({
+                left: 0,
+                right: width,
+                width,
+                top: 0,
+                bottom: 0,
+                height: 0,
+            }) as DOMRect;
+            document.body.appendChild(element);
+        };
+
+        afterEach(() => {
+            stubWindowWidth(1024);
+        });
+
+        it("按钮在窗口左半边时菜单贴窗口左侧（避让左停靠栏）", async () => {
+            stubWindowWidth(1000);
+            stubTopBar(100, 30);
+            stubDock("dockLeft", 24);
+            await menu.initTopBar();
+            const menuInstance = new Menu("PluginSnippets");
+            menu.menu = menuInstance;
+
+            menu.setMenuPosition();
+
+            expect(menuInstance.element.style.left).toBe("25px");
+            expect(menuInstance.element.style.right).toBe("");
+            expect(menuInstance.open).toHaveBeenCalledWith({x: 25, y: 29, isLeft: false});
+        });
+
+        it("按钮在窗口右半边时菜单贴窗口右侧（避让右停靠栏）", async () => {
+            stubWindowWidth(1000);
+            stubTopBar(900, 30);
+            stubDock("dockRight", 24);
+            await menu.initTopBar();
+            const menuInstance = new Menu("PluginSnippets");
+            menu.menu = menuInstance;
+
+            menu.setMenuPosition();
+
+            expect(menuInstance.element.style.left).toBe("");
+            expect(menuInstance.element.style.right).toBe("25px");
+            expect(menuInstance.open).toHaveBeenCalledWith({x: 975, y: 29, isLeft: true});
         });
     });
 });

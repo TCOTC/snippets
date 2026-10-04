@@ -29,7 +29,6 @@ describe("SnippetsConfig 默认值", () => {
         expect(config.fileWatchEnabled).toBe("disabled");
         expect(config.fileWatchPath).toBe("data/snippets");
         expect(config.fileWatchInterval).toBe(5);
-        expect(config.topBarPosition).toBe("right");
     });
 
     it("默认对象相互独立（多实例互不影响）", () => {

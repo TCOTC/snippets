@@ -35,6 +35,8 @@ export const platformUtils = {
 export class Menu {
     element: HTMLElement;
     isOpen = false;
+    open = vi.fn();
+    close = vi.fn();
 
     constructor() {
         this.element = document.createElement("div");

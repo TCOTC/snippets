@@ -60,9 +60,6 @@ export class SnippetsConfig {
     /** 文件夹监听间隔（秒） */
     fileWatchInterval = 5;
 
-    /** 顶栏按钮位置 */
-    topBarPosition: "left" | "right" = "right";
-
     /** “修改 JS 后重新加载界面”通知开关（feedback.ts 按 i18n 键动态读取 *Notice 字段） */
     reloadUIAfterModifyJSNotice = true;
 }
