@@ -1,5 +1,6 @@
 // services/formatter.ts 纯函数单测（node 环境：Prettier 无 DOM 依赖）
-// 覆盖：JS/CSS 格式化（两空格/制表符/四空格缩进跟随）、光标偏移换算、语法错误抛出、空白内容短路
+// 覆盖：JS/CSS 格式化（两空格/制表符/四空格缩进跟随）、不按行宽软折行、光标偏移换算、
+//       语法错误抛出、空白内容短路
 import {describe, expect, it} from "vitest";
 import {formatCodeWithCursor} from "./formatter";
 
@@ -49,6 +50,18 @@ describe("formatCodeWithCursor - JS", () => {
         const promise = formatCodeWithCursor("const n:number=1;", "js", "  ", 0);
         await expect(promise).rejects.toThrow();
     });
+
+    it("长实参的函数调用不按行宽折行", async () => {
+        const code = "const a = foo(\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\");";
+        const result = await formatCodeWithCursor(code, "js", "  ", 0);
+        expect(result.code).toBe('const a = foo("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");\n');
+    });
+
+    it("长对象字面量保持一行", async () => {
+        const code = "const o = {alpha: 1, beta: 2, gamma: 3, delta: 4, epsilon: 5, zeta: 6, eta: 7, theta: 8}";
+        const result = await formatCodeWithCursor(code, "js", "  ", 0);
+        expect(result.code).toBe("const o = { alpha: 1, beta: 2, gamma: 3, delta: 4, epsilon: 5, zeta: 6, eta: 7, theta: 8 };\n");
+    });
 });
 
 describe("formatCodeWithCursor - CSS", () => {
@@ -60,6 +73,26 @@ describe("formatCodeWithCursor - CSS", () => {
     it("CSS 语法错误（未闭合块）时抛出", async () => {
         const promise = formatCodeWithCursor("body {", "css", "  ", 0);
         await expect(promise).rejects.toThrow();
+    });
+
+    it("长复合选择器保持整行，不在组合符或 :not(...) 内折行", async () => {
+        // Prettier 默认行宽 80 会把这条选择器折成「组合符处一行 + :not( 内部再折」，对 CSS 片段毫无意义；
+        // FORMAT_PRINT_WIDTH 放宽后折行只发生在逗号处，与用户手写的选择器排版一致
+        const code = '.av__row:not(.av__row--header) .av__cell[data-wrap="true"]:not([data-dtype="mSelect"]):not([data-dtype="mAsset"]){display:-webkit-box;overflow:hidden}';
+        const expected = '.av__row:not(.av__row--header) .av__cell[data-wrap="true"]:not([data-dtype="mSelect"]):not([data-dtype="mAsset"]) {\n  display: -webkit-box;\n  overflow: hidden;\n}\n';
+        const result = await formatCodeWithCursor(code, "css", "  ", 0);
+        expect(result.code).toBe(expected);
+    });
+
+    it("多个选择器仍按逗号各占一行", async () => {
+        const result = await formatCodeWithCursor(".a, .b {color:red}", "css", "  ", 0);
+        expect(result.code).toBe(".a,\n.b {\n  color: red;\n}\n");
+    });
+
+    it("超长函数值保持整行（软折行不触发）", async () => {
+        const code = "a {background: linear-gradient(45deg, red 0%, blue 25%, green 50%, yellow 75%, orange 100%)}";
+        const result = await formatCodeWithCursor(code, "css", "  ", 0);
+        expect(result.code).toBe("a {\n  background: linear-gradient(45deg, red 0%, blue 25%, green 50%, yellow 75%, orange 100%);\n}\n");
     });
 });
 

@@ -7,6 +7,7 @@
 // - JS parser 选 meriyah 而非 babel：prettier 各 JS parser 解析后共用同一 estree 打印器，
 //   输出逐字节一致；meriyah 体积最小（124 KB vs babel 311 KB）且覆盖 stage 3/JSX/装饰器，
 //   仅不支持 TS 语法（粘贴 TS 片段会报语法错误，由调用方提示）；
+// - 折行宽度见 FORMAT_PRINT_WIDTH：不按行宽做软折行，只在语法必须换行处换行；
 // - 打包注意：Prettier 体积较大（standalone + 所需插件约 500 KB 未压缩），因此必须静态
 //   import 打进插件单一 bundle，且仅在用户执行格式化时才真正调用，避免启动开销。
 import * as prettierModule from "prettier/standalone";
@@ -41,6 +42,16 @@ const unwrapPlugin = (pluginModule: unknown): Plugin => {
 const jsPlugins = [unwrapPlugin(pluginMeriyah), unwrapPlugin(pluginEstree)];
 // CSS 格式化只需 postcss
 const postcssPlugins = [unwrapPlugin(pluginPostcss)];
+
+/**
+ * 格式化折行宽度：Prettier 的 printWidth 只管「软折行」，即语法允许折叠时是否写成一行。
+ * JS 侧是函数实参、对象/数组字面量，CSS 侧是复合选择器在组合符（空格、>、+）或
+ * :not(...) 等伪类括号内是否折行。代码片段都是短代码，被折成
+ * `.a\n  .b:not(\n    [data-dtype="x"]\n  )` 或 `foo(\n  "a",\n  "b"\n)` 只会更难读，
+ * 所以取一个实际达不到的宽度让软折行一律不触发；语句、代码块、逗号分隔的选择器列表
+ * 属于硬折行，不受该值影响。
+ */
+const FORMAT_PRINT_WIDTH = Number.MAX_SAFE_INTEGER;
 
 /**
  * 格式化结果
@@ -94,6 +105,8 @@ export async function formatCodeWithCursor(code: string, snippetType: "css" | "j
         plugins,
         cursorOffset,
         ...toPrettierIndentOptions(indentUnitText),
+        // 不按行宽做软折行（理由见 FORMAT_PRINT_WIDTH）
+        printWidth: FORMAT_PRINT_WIDTH,
     });
     return {code: result.formatted, cursorOffset: result.cursorOffset};
 }
