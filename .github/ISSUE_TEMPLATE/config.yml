@@ -1,0 +1,18 @@
+# 这个文件是**推给收录仓库**的，不是本仓自己的 issue 模板。
+# 同目录的 sync-issue-template.mjs 会原样写到每个 TCOTC/<包名> 的
+# .github/ISSUE_TEMPLATE/config.yml：改这里 → 推 main → 全部收录仓库跟着变。
+#
+# 放在 scripts/ 而不是 .github/ 根下，就为了不被误认成本仓自己的模板。
+#
+# ⚠️ 别挪进 .github/ISSUE_TEMPLATE/ —— 那会把本仓自己的 issue 入口改成
+#    「只剩两条跳回自己的链接，且不能新建 issue」。
+#
+# 中文与英文各一条、不混排：混排的句子对哪一边的读者都是多余的噪音。
+blank_issues_enabled: false
+contact_links:
+  - name: 在源码仓库反馈
+    url: https://github.com/TCOTC/siyuan-packages/issues
+    about: 报告问题或提出功能建议请到源码仓库。本仓库只存放集市发布产物。
+  - name: Report in the source repository
+    url: https://github.com/TCOTC/siyuan-packages/issues
+    about: Please report bugs or request features in the source repository. This repository only hosts Bazaar releases.
